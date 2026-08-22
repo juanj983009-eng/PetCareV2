@@ -1,0 +1,68 @@
+# Java and Maven
+*.class
+*.jar
+*.war
+*.ear
+target/
+out/
+build/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Visual Studio Code
+.vscode/
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Logs and runtime artifacts
+*.log
+logs/
+log/
+*.pid
+*.pid.lock
+hs_err_pid*
+replay_pid*
+
+# Generated files and reports
+generated/
+dist/
+coverage/
+reports/
+test-results/
+.scannerwork/
+
+# Temporary and backup files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# macOS metadata occasionally introduced by collaborators
+.DS_Store
+
