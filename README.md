@@ -4,9 +4,9 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-El repositorio se encuentra en la etapa de preparación de Sprint 0. Por ahora contiene documentación funcional y técnica, directorios reservados para frontend y backend, y archivos básicos de configuración del repositorio.
+El repositorio se encuentra en Sprint 0. La HU-001 incorpora un esqueleto técnico compilable del backend y la estructura del monolito modular; el frontend continúa reservado y vacío.
 
-**Todavía no existe código ejecutable.** No se ha generado el proyecto Spring Boot, no hay dependencias, migraciones, contenedores ni frontend implementado. `compose.yaml` se mantiene vacío deliberadamente.
+**Todavía no existe funcionalidad de negocio.** No hay entidades, casos de uso, controladores, endpoints propios, migraciones, contenedores ni frontend implementado. `compose.yaml` se mantiene vacío deliberadamente.
 
 ## Alcance resumido del MVP
 
@@ -60,7 +60,7 @@ Quedan fuera del MVP las integraciones reales con WhatsApp y SUNAT, pagos y susc
 
 - Git.
 - JDK Eclipse Temurin 17 LTS.
-- Maven para las tareas iniciales; el proyecto utilizará Maven Wrapper cuando se genere el backend.
+- Maven Wrapper incluido en el backend; no es necesario instalar Maven globalmente para compilar y probar el proyecto.
 - Docker Desktop con Docker Compose.
 - Un editor o IDE con soporte para Java.
 
@@ -70,7 +70,7 @@ No es necesario instalar PostgreSQL localmente. Cuando exista configuración eje
 
 ```text
 petcare-enterprise/
-├── backend/          # reservado; actualmente vacío
+├── backend/          # esqueleto Spring Boot y módulos del backend
 ├── docs/             # documentación funcional y técnica
 ├── frontend/         # reservado; actualmente vacío
 ├── .env.example      # nombres y valores ficticios de configuración local
@@ -84,6 +84,30 @@ petcare-enterprise/
 
 La documentación fuente se encuentra en [`docs/`](docs/). Antes de planificar o implementar una historia deben revisarse `AGENTS.md`, la preparación para desarrollo y las notas relevantes para el módulo afectado.
 
-## Ejecución
+## Backend
 
-Todavía no hay instrucciones para compilar o levantar la aplicación porque no existe código ejecutable. La configuración de Spring Boot, Maven Wrapper, Docker Compose y PostgreSQL se añadirá en cambios posteriores de Sprint 0, una vez aprobados de forma independiente.
+Desde PowerShell, entra al backend:
+
+```powershell
+cd backend
+```
+
+Comprueba la versión del Maven Wrapper:
+
+```powershell
+.\mvnw.cmd --version
+```
+
+Ejecuta las pruebas, incluidas las reglas de arquitectura:
+
+```powershell
+.\mvnw.cmd test
+```
+
+Genera el paquete sin repetir las pruebas:
+
+```powershell
+.\mvnw.cmd package -DskipTests
+```
+
+Docker Desktop y PostgreSQL no son necesarios para ejecutar las pruebas de HU-001. La aplicación está configurada para usar PostgreSQL en un entorno real, pero esa infraestructura se incorporará en cambios posteriores.

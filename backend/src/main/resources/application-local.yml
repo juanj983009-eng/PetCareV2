@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/${POSTGRES_DB:petcare}}
+    username: ${POSTGRES_USER:petcare}
+    password: ${POSTGRES_PASSWORD:local-development-only}
+    driver-class-name: org.postgresql.Driver
+
