@@ -22,5 +22,8 @@ public abstract class PostgreSqlIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.flyway.enabled", () -> true);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
+        registry.add("petcare.security.jwt.secret", () -> "test-only-jwt-secret-that-is-long-enough-1234567890");
+        registry.add("petcare.security.jwt.issuer", () -> "https://petcare.test");
+        registry.add("petcare.security.jwt.access-token-ttl", () -> "PT15M");
     }
 }

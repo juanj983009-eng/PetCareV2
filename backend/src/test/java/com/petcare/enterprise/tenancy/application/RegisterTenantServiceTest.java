@@ -95,6 +95,11 @@ class RegisterTenantServiceTest {
         public void save(Tenant tenant) {
             saved = tenant;
         }
+
+        @Override
+        public Optional<Tenant> findBySlugForAuthentication(String slug) {
+            return Optional.empty();
+        }
     }
 
     private static final class RecordingBranchRepository implements BranchRepository {
@@ -107,6 +112,11 @@ class RegisterTenantServiceTest {
 
         @Override
         public Optional<Branch> findByTenantIdAndId(UUID tenantId, UUID branchId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Branch> findByTenantIdAndName(UUID tenantId, String name) {
             return Optional.empty();
         }
     }

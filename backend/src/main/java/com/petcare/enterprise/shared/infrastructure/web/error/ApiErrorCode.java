@@ -3,6 +3,7 @@ package com.petcare.enterprise.shared.infrastructure.web.error;
 public enum ApiErrorCode {
     VALIDATION_FAILED,
     MALFORMED_REQUEST,
+    INVALID_CREDENTIALS,
     UNAUTHORIZED,
     ACCESS_DENIED,
     RESOURCE_NOT_FOUND,

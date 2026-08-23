@@ -1,0 +1,54 @@
+:root {
+  color-scheme: light;
+  --petcare-ink: #17342f;
+  --petcare-primary: #17664f;
+  --petcare-surface: #f2f7f5;
+}
+
+body {
+  color: var(--petcare-ink);
+  background:
+    radial-gradient(circle at 15% 15%, rgb(72 176 139 / 18%), transparent 28rem),
+    linear-gradient(145deg, #f8fbfa, var(--petcare-surface));
+}
+
+.auth-card,
+.dashboard-card {
+  border-radius: 1.25rem;
+}
+
+.brand-mark {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border-radius: 1rem;
+  color: #fff;
+  background: var(--petcare-primary);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--petcare-primary);
+  --bs-btn-border-color: var(--petcare-primary);
+  --bs-btn-hover-bg: #0f513f;
+  --bs-btn-hover-border-color: #0f513f;
+  --bs-btn-active-bg: #0b4434;
+  --bs-btn-active-border-color: #0b4434;
+}
+
+.text-primary {
+  color: var(--petcare-primary) !important;
+}
+
+@media (max-width: 575.98px) {
+  main {
+    align-items: stretch !important;
+  }
+
+  .auth-card,
+  .dashboard-card {
+    border-radius: .9rem;
+  }
+}

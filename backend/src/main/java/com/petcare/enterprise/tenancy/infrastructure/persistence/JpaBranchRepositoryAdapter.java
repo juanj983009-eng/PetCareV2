@@ -24,4 +24,9 @@ class JpaBranchRepositoryAdapter implements BranchRepository {
     public Optional<Branch> findByTenantIdAndId(UUID tenantId, UUID branchId) {
         return repository.findByTenantIdAndId(tenantId, branchId).map(BranchJpaEntity::toDomain);
     }
+
+    @Override
+    public Optional<Branch> findByTenantIdAndName(UUID tenantId, String name) {
+        return repository.findByTenantIdAndName(tenantId, name).map(BranchJpaEntity::toDomain);
+    }
 }

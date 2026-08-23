@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface SpringDataBranchRepository extends JpaRepository<BranchJpaEntity, UUID> {
 
     Optional<BranchJpaEntity> findByTenantIdAndId(UUID tenantId, UUID id);
+
+    Optional<BranchJpaEntity> findByTenantIdAndName(UUID tenantId, String name);
 }

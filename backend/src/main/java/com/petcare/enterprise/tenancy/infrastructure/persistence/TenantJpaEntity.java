@@ -55,4 +55,8 @@ class TenantJpaEntity {
     static TenantJpaEntity from(Tenant tenant) {
         return new TenantJpaEntity(tenant);
     }
+
+    Tenant toDomain() {
+        return Tenant.create(id, name, ruc, slug, plan, status, createdAt);
+    }
 }

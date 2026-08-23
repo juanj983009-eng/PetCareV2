@@ -1,5 +1,6 @@
 const CORRELATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const ACCESS_TOKEN_KEY = "petcare.accessToken";
 
 export class ApiRequestError extends Error {
   constructor({ kind, status = null, code, message, fieldErrors = [], correlationId = null }) {
@@ -14,13 +15,16 @@ export class ApiRequestError extends Error {
 }
 
 export async function requestJson(input, options = {}) {
+  const { useAccessToken = true, ...fetchOptions } = options;
+  const accessToken = useAccessToken ? getAccessToken() : null;
   let response;
   try {
     response = await fetch(input, {
-      ...options,
+      ...fetchOptions,
       headers: {
         Accept: "application/json",
-        ...(options.headers ?? {})
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(fetchOptions.headers ?? {})
       }
     });
   } catch {
@@ -63,6 +67,25 @@ export async function requestJson(input, options = {}) {
     });
   }
   return body;
+}
+
+export function setAccessToken(token) {
+  if (typeof token !== "string" || token.length === 0) {
+    throw new TypeError("El access token no es válido.");
+  }
+  sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+}
+
+export function clearAccessToken() {
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+export function hasAccessToken() {
+  return getAccessToken() !== null;
+}
+
+function getAccessToken() {
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
 export function isApiError(value) {

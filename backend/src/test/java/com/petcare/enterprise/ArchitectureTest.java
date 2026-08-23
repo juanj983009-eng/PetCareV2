@@ -61,8 +61,10 @@ class ArchitectureTest {
             .because("presentation delegates tenant resolution to application use cases");
 
     @ArchTest
-    static final ArchRule spring_data_repositories_stay_inside_tenancy_persistence = noClasses()
-            .that().resideOutsideOfPackage("..tenancy.infrastructure.persistence..")
+    static final ArchRule spring_data_repositories_stay_inside_module_persistence = noClasses()
+            .that().resideOutsideOfPackages(
+                    "..tenancy.infrastructure.persistence..",
+                    "..identity.infrastructure.persistence..")
             .should().dependOnClassesThat().haveSimpleNameStartingWith("SpringData")
             .allowEmptyShould(true)
             .because("internal JPA repositories must not be consumed outside their adapter package");

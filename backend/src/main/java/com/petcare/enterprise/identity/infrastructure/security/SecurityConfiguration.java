@@ -12,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 
 @Configuration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -28,26 +29,36 @@ class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/platform/tenants").hasAuthority("PLATFORM_TENANT_CREATE")
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint((request, response, exception) -> errorWriter.write(
-                                response,
-                                HttpStatus.UNAUTHORIZED,
-                                errorFactory.create(
-                                        ApiErrorCode.UNAUTHORIZED,
-                                        "Debes autenticarte para continuar.")))
+                        .authenticationEntryPoint(authenticationEntryPoint(errorFactory, errorWriter))
                         .accessDeniedHandler((request, response, exception) -> errorWriter.write(
                                 response,
                                 HttpStatus.FORBIDDEN,
                                 errorFactory.create(
                                         ApiErrorCode.ACCESS_DENIED,
                                         "No tienes permiso para realizar esta operación."))))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authenticationEntryPoint(errorFactory, errorWriter))
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(new PetCareJwtAuthenticationConverter())))
                 .addFilterBefore(new TenantMdcFilter(tenantContext), AuthorizationFilter.class)
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .formLogin(formLogin -> formLogin.disable())
                 .logout(logout -> logout.disable())
                 .build();
+    }
+
+    private static AuthenticationEntryPoint authenticationEntryPoint(
+            ApiErrorResponseFactory errorFactory,
+            ApiErrorResponseWriter errorWriter) {
+        return (request, response, exception) -> errorWriter.write(
+                response,
+                HttpStatus.UNAUTHORIZED,
+                errorFactory.create(
+                        ApiErrorCode.UNAUTHORIZED,
+                        "Debes autenticarte para continuar."));
     }
 
 }

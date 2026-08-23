@@ -29,3 +29,21 @@ management:
 logging:
   pattern:
     level: "%5p [correlationId:%X{correlationId:-} tenantId:%X{tenantId:-} userId:%X{userId:-} branchId:%X{branchId:-}]"
+
+petcare:
+  security:
+    jwt:
+      secret: ${PETCARE_JWT_SECRET}
+      issuer: ${PETCARE_JWT_ISSUER:https://petcare.local}
+      access-token-ttl: ${PETCARE_JWT_ACCESS_TOKEN_TTL:PT15M}
+  bootstrap:
+    enabled: ${PETCARE_BOOTSTRAP_ENABLED:false}
+    tenant-name: ${PETCARE_BOOTSTRAP_TENANT_NAME:}
+    tenant-slug: ${PETCARE_BOOTSTRAP_TENANT_SLUG:}
+    tenant-plan: ${PETCARE_BOOTSTRAP_TENANT_PLAN:STARTER}
+    branch-name: ${PETCARE_BOOTSTRAP_BRANCH_NAME:}
+    branch-time-zone: ${PETCARE_BOOTSTRAP_BRANCH_TIME_ZONE:America/Lima}
+    admin-first-name: ${PETCARE_BOOTSTRAP_ADMIN_FIRST_NAME:}
+    admin-last-name: ${PETCARE_BOOTSTRAP_ADMIN_LAST_NAME:}
+    admin-email: ${PETCARE_BOOTSTRAP_ADMIN_EMAIL:}
+    admin-password: ${PETCARE_BOOTSTRAP_ADMIN_PASSWORD:}

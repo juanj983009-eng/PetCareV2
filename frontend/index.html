@@ -3,65 +3,88 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PetCare Enterprise — En preparación</title>
-  <style>
-    :root {
-      color-scheme: light;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f7f6;
-      color: #17342f;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      min-height: 100vh;
-      margin: 0;
-      display: grid;
-      place-items: center;
-      padding: 1.5rem;
-    }
-
-    main {
-      width: min(100%, 42rem);
-      padding: clamp(2rem, 6vw, 4rem);
-      border: 1px solid #d7e2df;
-      border-radius: 1rem;
-      background: #ffffff;
-      box-shadow: 0 1rem 3rem rgb(23 52 47 / 10%);
-      text-align: center;
-    }
-
-    .status {
-      display: inline-block;
-      margin-bottom: 1rem;
-      padding: .4rem .75rem;
-      border-radius: 999px;
-      background: #dff5ed;
-      color: #17664f;
-      font-size: .875rem;
-      font-weight: 700;
-    }
-
-    h1 {
-      margin: 0 0 1rem;
-      font-size: clamp(2rem, 8vw, 3.5rem);
-      line-height: 1.05;
-    }
-
-    p {
-      margin: 0;
-      color: #526863;
-      font-size: clamp(1rem, 3vw, 1.15rem);
-      line-height: 1.6;
-    }
-  </style>
+  <meta name="description" content="Acceso seguro a PetCare Enterprise">
+  <title>PetCare Enterprise — Iniciar sesión</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/assets/css/app.css" rel="stylesheet">
 </head>
 <body>
-  <main>
-    <span class="status">Entorno local activo</span>
-    <h1>PetCare Enterprise</h1>
-    <p>La plataforma se encuentra en preparación. Este shell técnico confirma que el frontend está disponible.</p>
+  <main class="min-vh-100 d-flex align-items-center py-4" id="main-content">
+    <div class="container">
+      <section id="login-view" class="row justify-content-center" aria-labelledby="login-title">
+        <div class="col-12 col-md-8 col-lg-5 col-xl-4">
+          <div class="card border-0 shadow-lg auth-card">
+            <div class="card-body p-4 p-sm-5">
+              <div class="brand-mark mx-auto mb-3" aria-hidden="true">P</div>
+              <p class="text-uppercase text-center text-primary fw-semibold small mb-2">PetCare Enterprise</p>
+              <h1 id="login-title" class="h3 text-center mb-2">Inicia sesión</h1>
+              <p class="text-secondary text-center mb-4">Accede al espacio seguro de tu clínica.</p>
+
+              <div id="login-errors" aria-live="assertive"></div>
+
+              <form id="login-form" novalidate>
+                <div class="mb-3">
+                  <label for="clinicSlug" class="form-label">Clínica</label>
+                  <input id="clinicSlug" name="clinicSlug" class="form-control" type="text"
+                    autocomplete="organization" inputmode="url" minlength="3" maxlength="80"
+                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*" aria-describedby="clinicSlugHelp" required>
+                  <div id="clinicSlugHelp" class="form-text">Usa el identificador proporcionado por tu clínica.</div>
+                  <div class="invalid-feedback">Ingresa un slug válido en minúsculas.</div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="email" class="form-label">Correo electrónico</label>
+                  <input id="email" name="email" class="form-control" type="email"
+                    autocomplete="username" maxlength="180" required>
+                  <div class="invalid-feedback">Ingresa un correo válido.</div>
+                </div>
+
+                <div class="mb-4">
+                  <label for="password" class="form-label">Contraseña</label>
+                  <input id="password" name="password" class="form-control" type="password"
+                    autocomplete="current-password" maxlength="200" required>
+                  <div class="invalid-feedback">Ingresa tu contraseña.</div>
+                </div>
+
+                <button id="login-button" class="btn btn-primary w-100 py-2" type="submit">
+                  <span id="login-button-label">Iniciar sesión</span>
+                  <span id="login-spinner" class="spinner-border spinner-border-sm ms-2"
+                    aria-hidden="true" hidden></span>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="dashboard-view" class="row justify-content-center" aria-labelledby="dashboard-title" hidden>
+        <div class="col-12 col-lg-9">
+          <div class="card border-0 shadow-lg dashboard-card">
+            <div class="card-body p-4 p-sm-5">
+              <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-3 mb-4">
+                <div>
+                  <p class="text-uppercase text-primary fw-semibold small mb-2">PetCare Enterprise</p>
+                  <h1 id="dashboard-title" class="h2 mb-1" tabindex="-1">Dashboard inicial</h1>
+                  <p class="text-secondary mb-0">Tu sesión protegida está activa.</p>
+                </div>
+                <span class="badge text-bg-success align-self-start">Acceso autenticado</span>
+              </div>
+
+              <div class="alert alert-primary mb-4" role="status">
+                HU-005 completó el acceso seguro. Los indicadores operativos se incorporarán en HU-034.
+              </div>
+
+              <div>
+                <h2 class="h6">Autoridades efectivas</h2>
+                <div id="authority-list" class="d-flex flex-wrap gap-2" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <script type="module" src="/assets/js/auth.js"></script>
 </body>
 </html>

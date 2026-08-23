@@ -38,11 +38,11 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void appliesV1AndV2FromAnEmptyPostgreSqlSchema() {
+    void appliesV1V2AndV3FromAnEmptyPostgreSqlSchema() {
         assertThat(flyway.info().applied())
                 .filteredOn(info -> info.getVersion() != null)
                 .extracting(info -> info.getVersion().toString())
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
     }
 
     @Test

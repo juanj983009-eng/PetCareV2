@@ -5,6 +5,7 @@ import com.petcare.enterprise.tenancy.application.TenantRepository;
 import com.petcare.enterprise.tenancy.application.TenantSlugAlreadyExistsException;
 import com.petcare.enterprise.tenancy.domain.Tenant;
 import java.util.Locale;
+import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
@@ -32,6 +33,11 @@ class JpaTenantRepositoryAdapter implements TenantRepository {
             }
             throw new TenantPersistenceConflictException("Tenant data conflicts with an existing record", exception);
         }
+    }
+
+    @Override
+    public Optional<Tenant> findBySlugForAuthentication(String slug) {
+        return repository.findBySlug(slug).map(TenantJpaEntity::toDomain);
     }
 
     private static String rootMessage(Throwable throwable) {

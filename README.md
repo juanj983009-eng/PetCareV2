@@ -4,11 +4,11 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-Sprint 0 está técnicamente completo. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003 y HU-039: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant y el contrato uniforme de errores.
+Sprint 0 está técnicamente completo y HU-005 está implementada para revisión. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039 y HU-005: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores y el inicio de sesión multi-tenant con JWT.
 
-El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, de las tablas `tenants`, `branches` y `audit_entries`, y de las migraciones inmutables V1 y V2. La última evidencia conocida registra 56 pruebas aprobadas; no implica que se hayan ejecutado de nuevo al actualizar este documento.
+El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login` y de `GET /api/v1/auth/session` para comprobar una sesión autenticada. Las migraciones inmutables V1 y V2 se complementan con V3, que incorpora la identidad, el RBAC mínimo y los eventos append-only de autenticación. La validación de HU-005 registra 77 pruebas aprobadas.
 
-El frontend sigue siendo una base técnica servida por Nginx, con proxy `/api/`, cliente HTTP y utilidades seguras para errores y formularios. Aún no existen login, JWT, usuarios persistidos ni RBAC persistido. HU-005 es la siguiente historia y será responsable de esas capacidades, de V3 y del bootstrap interno de las primeras credenciales.
+El frontend servido por Nginx ofrece el formulario responsive de acceso y un dashboard inicial mínimo. El access token se conserva exclusivamente en `sessionStorage` y su uso está centralizado en el cliente HTTP. El cierre de sesión y el tratamiento completo de expiración permanecen pendientes para HU-006; la administración de usuarios y permisos corresponde a HU-007 y HU-008.
 
 ## Alcance resumido del MVP
 
@@ -53,7 +53,7 @@ Quedan fuera del MVP las integraciones reales con WhatsApp y SUNAT, pagos y susc
 | Unicidad de correo | Único dentro de cada tenant |
 | Contexto de tenant | `TenantContext` desde Sprint 0 |
 | Auditoría | Base append-only desde Sprint 0 |
-| JWT | Autenticación real en Sprint 1 |
+| JWT | Access token firmado con HMAC SHA-256, issuer y expiración verificados por Spring Security |
 | RBAC del MVP | Roles obligatoriamente por tenant y catálogo global de permisos |
 | Primer administrador | Bootstrap interno desactivado por defecto y configurado por entorno |
 | Eventos de autenticación | Tabla append-only separada; tenant opcional cuando el slug no se resuelve |
@@ -117,6 +117,35 @@ Genera el paquete sin repetir las pruebas:
 
 Docker Desktop debe estar iniciado para ejecutar la suite completa, porque las pruebas de integración levantan PostgreSQL mediante Testcontainers. No es necesario instalar PostgreSQL directamente en el equipo.
 
+## Autenticación de HU-005
+
+El login acepta exclusivamente este cuerpo:
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "clinicSlug": "clinica-demo",
+  "email": "admin@example.test",
+  "password": "valor-local-no-real"
+}
+```
+
+Una autenticación válida devuelve HTTP `200` con `accessToken`, `tokenType` (`Bearer`), `expiresAt` e `identity`. La identidad contiene los UUID confiables de usuario, tenant y sucursal primaria opcional, además de las autoridades efectivas obtenidas desde PostgreSQL. El token incluye `sub`, `iss`, `iat`, `exp`, `jti`, `uid`, `tid`, `bid` cuando existe y `authorities`.
+
+Las credenciales rechazadas devuelven HTTP `401` con el contrato uniforme y el código estable `INVALID_CREDENTIALS`; la respuesta no distingue clínica, usuario, contraseña ni estado incorrectos. La validación de entrada continúa devolviendo HTTP `400` mediante el mismo contrato. En ambos casos se conserva el correlation ID.
+
+La configuración JWT se recibe desde el entorno:
+
+- `PETCARE_JWT_SECRET`: obligatorio y de al menos 32 bytes; nunca debe versionarse un secreto real.
+- `PETCARE_JWT_ISSUER`: URI absoluta del emisor; valor local sugerido `https://petcare.local`.
+- `PETCARE_JWT_ACCESS_TOKEN_TTL`: duración ISO-8601 positiva, con máximo de una hora; el valor local es `PT15M`.
+
+V3 crea `users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `user_branches` y `authentication_events`. Los roles pertenecen a un tenant, los permisos son globales y las relaciones poseen restricciones tenant-aware. Cada intento de login registra un evento independiente y append-only, incluso si el tenant o usuario no pudo resolverse.
+
+El bootstrap interno está desactivado por defecto. Para habilitarlo se usa `PETCARE_BOOTSTRAP_ENABLED=true` junto con todas las variables `PETCARE_BOOTSTRAP_*` del archivo `.env.example`. No tiene endpoint, no contiene credenciales predeterminadas, reutiliza el registro de tenant de HU-002, genera el hash BCrypt inmediatamente y es idempotente: no duplica asociaciones ni cambia la contraseña de un usuario existente.
+
 ## Entorno local con Docker Compose
 
 La configuración levanta tres servicios:
@@ -160,7 +189,7 @@ Para revisar la ejecución de Flyway:
 docker compose logs backend
 ```
 
-Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql` y `V2__create_tenancy_and_audit.sql` ya fueron aplicadas y son inmutables; cualquier cambio posterior debe realizarse mediante una nueva migración versionada. V3 pertenecerá a HU-005 y todavía no existe.
+Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql`, `V2__create_tenancy_and_audit.sql` y `V3__create_identity_and_authentication_events.sql` ya fueron validadas y deben tratarse como inmutables; cualquier cambio posterior debe realizarse mediante una nueva migración versionada.
 
 El repositorio no contiene credenciales reales. Los valores de `.env.example` son ficticios y cualquier secreto local debe mantenerse únicamente en archivos ignorados por Git.
 
