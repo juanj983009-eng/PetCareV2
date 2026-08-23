@@ -1,5 +1,6 @@
 package com.petcare.enterprise.tenancy.presentation;
 
+import com.petcare.enterprise.audit.application.CorrelationIdProvider;
 import com.petcare.enterprise.tenancy.application.RegisterTenantCommand;
 import com.petcare.enterprise.tenancy.application.RegisterTenantUseCase;
 import com.petcare.enterprise.tenancy.application.RegisteredTenant;
@@ -9,7 +10,6 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,16 +20,17 @@ class TenantController {
     static final String CORRELATION_HEADER = "X-Correlation-ID";
 
     private final RegisterTenantUseCase registerTenantUseCase;
+    private final CorrelationIdProvider correlationIdProvider;
 
-    TenantController(RegisterTenantUseCase registerTenantUseCase) {
+    TenantController(RegisterTenantUseCase registerTenantUseCase, CorrelationIdProvider correlationIdProvider) {
         this.registerTenantUseCase = registerTenantUseCase;
+        this.correlationIdProvider = correlationIdProvider;
     }
 
     @PostMapping
     ResponseEntity<CreateTenantResponse> create(
-            @Valid @RequestBody CreateTenantRequest request,
-            @RequestHeader(value = CORRELATION_HEADER, required = false) String correlationHeader) {
-        UUID correlationId = CorrelationIds.resolve(correlationHeader);
+            @Valid @RequestBody CreateTenantRequest request) {
+        UUID correlationId = correlationIdProvider.currentCorrelationId();
         RegisteredTenant registered = registerTenantUseCase.register(new RegisterTenantCommand(
                 request.name(),
                 request.ruc(),

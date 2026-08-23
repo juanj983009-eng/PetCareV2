@@ -35,6 +35,39 @@ class ArchitectureTest {
             .because("application use cases must not depend on transport adapters");
 
     @ArchTest
+    static final ArchRule domain_and_application_do_not_read_security_or_http_context = noClasses()
+            .that().resideInAnyPackage("..domain..", "..application..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "org.springframework.security..",
+                    "jakarta.servlet..")
+            .allowEmptyShould(true)
+            .because("trusted request identity is resolved only by an infrastructure adapter");
+
+    @ArchTest
+    static final ArchRule only_authorized_adapter_reads_spring_security_context = noClasses()
+            .that().doNotHaveFullyQualifiedName(
+                    BASE_PACKAGE + ".identity.infrastructure.security.SpringSecurityTenantContext")
+            .should().dependOnClassesThat().haveFullyQualifiedName(
+                    "org.springframework.security.core.context.SecurityContextHolder")
+            .allowEmptyShould(true)
+            .because("SpringSecurityTenantContext is the single SecurityContext boundary");
+
+    @ArchTest
+    static final ArchRule presentation_does_not_resolve_tenant_identity = noClasses()
+            .that().resideInAPackage("..presentation..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..identity.infrastructure.security..")
+            .allowEmptyShould(true)
+            .because("presentation delegates tenant resolution to application use cases");
+
+    @ArchTest
+    static final ArchRule spring_data_repositories_stay_inside_tenancy_persistence = noClasses()
+            .that().resideOutsideOfPackage("..tenancy.infrastructure.persistence..")
+            .should().dependOnClassesThat().haveSimpleNameStartingWith("SpringData")
+            .allowEmptyShould(true)
+            .because("internal JPA repositories must not be consumed outside their adapter package");
+
+    @ArchTest
     static final ArchRule presentation_is_not_used_from_domain = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAPackage("..presentation..")

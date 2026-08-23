@@ -31,7 +31,6 @@ class RegisterTenantServiceTest {
         RegisteredTenant result = service.register(command("clinic-service-test", correlationId));
 
         assertThat(tenantRepository.saved.id()).isEqualTo(result.id());
-        assertThat(branchRepository.explicitTenantId).isEqualTo(result.id());
         assertThat(branchRepository.saved.tenantId()).isEqualTo(result.id());
         assertThat(auditWriter.saved.tenantId()).isEqualTo(result.id());
         assertThat(auditWriter.saved.entityType()).isEqualTo("TENANT");
@@ -99,12 +98,10 @@ class RegisterTenantServiceTest {
     }
 
     private static final class RecordingBranchRepository implements BranchRepository {
-        private UUID explicitTenantId;
         private Branch saved;
 
         @Override
-        public void save(UUID tenantId, Branch branch) {
-            explicitTenantId = tenantId;
+        public void saveForPlatformRegistration(Branch branch) {
             saved = branch;
         }
 

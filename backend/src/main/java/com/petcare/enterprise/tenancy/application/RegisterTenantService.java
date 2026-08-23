@@ -60,7 +60,7 @@ public class RegisterTenantService implements RegisterTenantUseCase {
                 now);
 
         tenantRepository.save(tenant);
-        branchRepository.save(tenant.id(), branch);
+        branchRepository.saveForPlatformRegistration(branch);
         auditLogWriter.append(new AuditRecord(
                 UUID.randomUUID(),
                 tenant.id(),
