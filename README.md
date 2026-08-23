@@ -4,9 +4,9 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-El repositorio se encuentra en Sprint 0. La HU-001 incorpora un esqueleto técnico compilable del backend y la estructura del monolito modular; el frontend continúa reservado y vacío.
+El repositorio se encuentra en Sprint 0. La HU-001 incorpora el esqueleto técnico compilable del backend y la estructura del monolito modular. La HU-037 añade un entorno local reproducible con PostgreSQL, backend y un shell técnico estático para el frontend.
 
-**Todavía no existe funcionalidad de negocio.** No hay entidades, casos de uso, controladores, endpoints propios, migraciones, contenedores ni frontend implementado. `compose.yaml` se mantiene vacío deliberadamente.
+**Todavía no existe funcionalidad de negocio.** No hay entidades, casos de uso, controladores ni endpoints propios. La única migración existente es una comprobación técnica de Flyway y no crea tablas de negocio. El frontend muestra exclusivamente una página de disponibilidad del entorno.
 
 ## Alcance resumido del MVP
 
@@ -64,19 +64,19 @@ Quedan fuera del MVP las integraciones reales con WhatsApp y SUNAT, pagos y susc
 - Docker Desktop con Docker Compose.
 - Un editor o IDE con soporte para Java.
 
-No es necesario instalar PostgreSQL localmente. Cuando exista configuración ejecutable, la base de datos se levantará mediante Docker Compose.
+No es necesario instalar PostgreSQL ni Maven globalmente. PostgreSQL y los servicios de la aplicación se levantan mediante Docker Compose.
 
 ## Estructura actual
 
 ```text
 petcare-enterprise/
-├── backend/          # esqueleto Spring Boot y módulos del backend
+├── backend/          # Spring Boot, módulos, Dockerfile y migraciones
 ├── docs/             # documentación funcional y técnica
-├── frontend/         # reservado; actualmente vacío
+├── frontend/         # shell técnico estático servido por Nginx
 ├── .env.example      # nombres y valores ficticios de configuración local
 ├── .gitignore
 ├── AGENTS.md         # reglas permanentes para agentes de desarrollo
-├── compose.yaml      # reservado; actualmente vacío
+├── compose.yaml      # PostgreSQL, backend y frontend
 └── README.md
 ```
 
@@ -110,4 +110,57 @@ Genera el paquete sin repetir las pruebas:
 .\mvnw.cmd package -DskipTests
 ```
 
-Docker Desktop y PostgreSQL no son necesarios para ejecutar las pruebas de HU-001. La aplicación está configurada para usar PostgreSQL en un entorno real, pero esa infraestructura se incorporará en cambios posteriores.
+Docker Desktop y PostgreSQL no son necesarios para ejecutar estas pruebas aisladas. La aplicación usa PostgreSQL cuando se inicia con el perfil local.
+
+## Entorno local con Docker Compose
+
+La configuración levanta tres servicios:
+
+- `postgres`: PostgreSQL 18 con datos persistentes en un volumen nombrado y sin puerto publicado al host.
+- `backend`: aplicación Spring Boot construida con Java 17 y Maven Wrapper; expone Actuator para comprobar su salud.
+- `frontend`: Nginx con un shell técnico responsive y proxy preparado para una futura ruta `/api/`.
+
+Desde la raíz del repositorio, crea la configuración local a partir del ejemplo seguro:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Puedes cambiar los valores ficticios de desarrollo en `.env`. Este archivo está ignorado por Git y nunca debe contener credenciales de producción.
+
+Valida y construye el entorno:
+
+```powershell
+docker compose config
+docker compose build
+```
+
+Inicia los servicios en segundo plano:
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+Cuando los tres servicios estén saludables:
+
+- Frontend: <http://localhost:8081>
+- Salud del backend: <http://localhost:8080/actuator/health>
+
+Los puertos pueden cambiarse mediante `FRONTEND_PORT` y `BACKEND_PORT` en `.env`. PostgreSQL solo es accesible dentro de la red privada de Compose.
+
+Para revisar la ejecución de Flyway:
+
+```powershell
+docker compose logs backend
+```
+
+Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql` ya fue aplicada y es inmutable; cualquier cambio posterior debe realizarse mediante una nueva migración versionada.
+
+Detén y elimina los contenedores y redes sin borrar el volumen de PostgreSQL:
+
+```powershell
+docker compose down
+```
+
+No uses `docker compose down -v` si deseas conservar los datos locales.
