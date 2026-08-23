@@ -120,7 +120,7 @@ class TenantContextHttpIntegrationTest extends PostgreSqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
     @Test
@@ -130,7 +130,7 @@ class TenantContextHttpIntegrationTest extends PostgreSqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
     private static UsernamePasswordAuthenticationToken trustedAuthentication(

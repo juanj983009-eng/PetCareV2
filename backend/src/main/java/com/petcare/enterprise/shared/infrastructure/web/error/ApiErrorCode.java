@@ -1,0 +1,15 @@
+package com.petcare.enterprise.shared.infrastructure.web.error;
+
+public enum ApiErrorCode {
+    VALIDATION_FAILED,
+    MALFORMED_REQUEST,
+    UNAUTHORIZED,
+    ACCESS_DENIED,
+    RESOURCE_NOT_FOUND,
+    METHOD_NOT_ALLOWED,
+    UNSUPPORTED_MEDIA_TYPE,
+    CONFLICT,
+    INTERNAL_ERROR,
+    TENANT_SLUG_ALREADY_EXISTS,
+    TENANT_DATA_CONFLICT
+}

@@ -1,72 +1,69 @@
 package com.petcare.enterprise.tenancy.presentation;
 
-import com.petcare.enterprise.audit.application.CorrelationIdProvider;
+import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorCode;
+import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponse;
+import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponseFactory;
+import com.petcare.enterprise.tenancy.application.TenantAccessDeniedException;
+import com.petcare.enterprise.tenancy.application.TenantAuthenticationRequiredException;
 import com.petcare.enterprise.tenancy.application.TenantPersistenceConflictException;
 import com.petcare.enterprise.tenancy.application.TenantSlugAlreadyExistsException;
 import com.petcare.enterprise.tenancy.domain.DomainValidationException;
-import java.util.List;
-import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = TenantController.class)
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 class TenantExceptionHandler {
 
-    private final CorrelationIdProvider correlationIdProvider;
+    private final ApiErrorResponseFactory errorFactory;
 
-    TenantExceptionHandler(CorrelationIdProvider correlationIdProvider) {
-        this.correlationIdProvider = correlationIdProvider;
+    TenantExceptionHandler(ApiErrorResponseFactory errorFactory) {
+        this.errorFactory = errorFactory;
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ApiErrorResponse> validation(MethodArgumentNotValidException exception) {
-        List<ApiErrorResponse.FieldError> errors = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new ApiErrorResponse.FieldError(error.getField(), error.getDefaultMessage()))
-                .toList();
-        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed", errors);
-    }
-
-    @ExceptionHandler({HttpMessageNotReadableException.class, DomainValidationException.class})
-    ResponseEntity<ApiErrorResponse> malformedRequest(Exception exception) {
-        return response(
+    @ExceptionHandler(DomainValidationException.class)
+    ResponseEntity<ApiErrorResponse> malformedDomainValue(DomainValidationException exception) {
+        return errorFactory.response(
                 HttpStatus.BAD_REQUEST,
-                "INVALID_REQUEST",
-                "The request is invalid",
-                List.of());
+                ApiErrorCode.MALFORMED_REQUEST,
+                "La solicitud contiene un valor no válido.");
     }
 
     @ExceptionHandler(TenantSlugAlreadyExistsException.class)
     ResponseEntity<ApiErrorResponse> duplicatedSlug(
             TenantSlugAlreadyExistsException exception) {
-        return response(
+        return errorFactory.response(
                 HttpStatus.CONFLICT,
-                "TENANT_SLUG_ALREADY_EXISTS",
-                "The tenant slug is already in use",
-                List.of());
+                ApiErrorCode.TENANT_SLUG_ALREADY_EXISTS,
+                "El slug de la clínica ya está en uso.");
     }
 
     @ExceptionHandler(TenantPersistenceConflictException.class)
     ResponseEntity<ApiErrorResponse> persistenceConflict(
             TenantPersistenceConflictException exception) {
-        return response(
+        return errorFactory.response(
                 HttpStatus.CONFLICT,
-                "TENANT_DATA_CONFLICT",
-                "Tenant data conflicts with an existing record",
-                List.of());
+                ApiErrorCode.TENANT_DATA_CONFLICT,
+                "Los datos de la clínica entran en conflicto con un registro existente.");
     }
 
-    private ResponseEntity<ApiErrorResponse> response(
-            HttpStatus status,
-            String code,
-            String message,
-            List<ApiErrorResponse.FieldError> fieldErrors) {
-        UUID correlationId = correlationIdProvider.currentCorrelationId();
-        return ResponseEntity.status(status)
-                .header(TenantController.CORRELATION_HEADER, correlationId.toString())
-                .body(new ApiErrorResponse(code, message, fieldErrors, correlationId));
+    @ExceptionHandler(TenantAuthenticationRequiredException.class)
+    ResponseEntity<ApiErrorResponse> unauthenticated(TenantAuthenticationRequiredException exception) {
+        return errorFactory.response(
+                HttpStatus.UNAUTHORIZED,
+                ApiErrorCode.UNAUTHORIZED,
+                "Debes autenticarte para continuar.");
+    }
+
+    @ExceptionHandler(TenantAccessDeniedException.class)
+    ResponseEntity<ApiErrorResponse> invalidTenantIdentity(TenantAccessDeniedException exception) {
+        return errorFactory.response(
+                HttpStatus.FORBIDDEN,
+                ApiErrorCode.ACCESS_DENIED,
+                "No tienes permiso para realizar esta operación.");
     }
 }

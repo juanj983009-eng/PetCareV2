@@ -93,7 +93,7 @@ class TenantControllerIntegrationTest extends PostgreSqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(invalid)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
                 .andExpect(jsonPath("$.correlationId").isNotEmpty());
     }
 
@@ -109,7 +109,7 @@ class TenantControllerIntegrationTest extends PostgreSqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(invalid)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
     }
 
     @Test
@@ -147,7 +147,7 @@ class TenantControllerIntegrationTest extends PostgreSqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(request(uniqueSlug("forbidden")))))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
     }
 
     @Test

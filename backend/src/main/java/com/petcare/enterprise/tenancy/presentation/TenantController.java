@@ -17,8 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/platform/tenants")
 class TenantController {
 
-    static final String CORRELATION_HEADER = "X-Correlation-ID";
-
     private final RegisterTenantUseCase registerTenantUseCase;
     private final CorrelationIdProvider correlationIdProvider;
 
@@ -44,8 +42,6 @@ class TenantController {
                 correlationId));
 
         URI location = URI.create("/api/v1/platform/tenants/" + registered.id());
-        return ResponseEntity.created(location)
-                .header(CORRELATION_HEADER, correlationId.toString())
-                .body(CreateTenantResponse.from(registered));
+        return ResponseEntity.created(location).body(CreateTenantResponse.from(registered));
     }
 }
