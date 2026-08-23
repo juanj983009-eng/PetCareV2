@@ -4,9 +4,11 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-El repositorio se encuentra en Sprint 0. La HU-001 incorpora el esqueleto técnico compilable del backend y la estructura del monolito modular. La HU-037 añade un entorno local reproducible con PostgreSQL, backend y un shell técnico estático para el frontend.
+Sprint 0 está técnicamente completo. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003 y HU-039: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant y el contrato uniforme de errores.
 
-**Todavía no existe funcionalidad de negocio.** No hay entidades, casos de uso, controladores ni endpoints propios. La única migración existente es una comprobación técnica de Flyway y no crea tablas de negocio. El frontend muestra exclusivamente una página de disponibilidad del entorno.
+El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, de las tablas `tenants`, `branches` y `audit_entries`, y de las migraciones inmutables V1 y V2. La última evidencia conocida registra 56 pruebas aprobadas; no implica que se hayan ejecutado de nuevo al actualizar este documento.
+
+El frontend sigue siendo una base técnica servida por Nginx, con proxy `/api/`, cliente HTTP y utilidades seguras para errores y formularios. Aún no existen login, JWT, usuarios persistidos ni RBAC persistido. HU-005 es la siguiente historia y será responsable de esas capacidades, de V3 y del bootstrap interno de las primeras credenciales.
 
 ## Alcance resumido del MVP
 
@@ -52,6 +54,9 @@ Quedan fuera del MVP las integraciones reales con WhatsApp y SUNAT, pagos y susc
 | Contexto de tenant | `TenantContext` desde Sprint 0 |
 | Auditoría | Base append-only desde Sprint 0 |
 | JWT | Autenticación real en Sprint 1 |
+| RBAC del MVP | Roles obligatoriamente por tenant y catálogo global de permisos |
+| Primer administrador | Bootstrap interno desactivado por defecto y configurado por entorno |
+| Eventos de autenticación | Tabla append-only separada; tenant opcional cuando el slug no se resuelve |
 | Administración de BD | pgAdmin opcional mediante perfil de desarrollo |
 | Frontend | HTML5, Bootstrap 5 y JavaScript moderno |
 | Node.js | No se utilizará salvo necesidad futura justificada |
@@ -110,7 +115,7 @@ Genera el paquete sin repetir las pruebas:
 .\mvnw.cmd package -DskipTests
 ```
 
-Docker Desktop y PostgreSQL no son necesarios para ejecutar estas pruebas aisladas. La aplicación usa PostgreSQL cuando se inicia con el perfil local.
+Docker Desktop debe estar iniciado para ejecutar la suite completa, porque las pruebas de integración levantan PostgreSQL mediante Testcontainers. No es necesario instalar PostgreSQL directamente en el equipo.
 
 ## Entorno local con Docker Compose
 
@@ -118,7 +123,7 @@ La configuración levanta tres servicios:
 
 - `postgres`: PostgreSQL 18 con datos persistentes en un volumen nombrado y sin puerto publicado al host.
 - `backend`: aplicación Spring Boot construida con Java 17 y Maven Wrapper; expone Actuator para comprobar su salud.
-- `frontend`: Nginx con un shell técnico responsive y proxy preparado para una futura ruta `/api/`.
+- `frontend`: Nginx con un shell técnico responsive, cliente HTTP, utilidades de formulario y proxy `/api/` hacia el backend.
 
 Desde la raíz del repositorio, crea la configuración local a partir del ejemplo seguro:
 
@@ -155,7 +160,9 @@ Para revisar la ejecución de Flyway:
 docker compose logs backend
 ```
 
-Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql` ya fue aplicada y es inmutable; cualquier cambio posterior debe realizarse mediante una nueva migración versionada.
+Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql` y `V2__create_tenancy_and_audit.sql` ya fueron aplicadas y son inmutables; cualquier cambio posterior debe realizarse mediante una nueva migración versionada. V3 pertenecerá a HU-005 y todavía no existe.
+
+El repositorio no contiene credenciales reales. Los valores de `.env.example` son ficticios y cualquier secreto local debe mantenerse únicamente en archivos ignorados por Git.
 
 Detén y elimina los contenedores y redes sin borrar el volumen de PostgreSQL:
 
