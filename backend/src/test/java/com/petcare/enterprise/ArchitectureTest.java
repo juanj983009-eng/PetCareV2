@@ -48,6 +48,13 @@ class ArchitectureTest {
             .allowEmptyShould(true)
             .because("module dependencies must remain acyclic");
 
+    @ArchTest
+    static final ArchRule tenancy_does_not_access_audit_infrastructure = noClasses()
+            .that().resideInAPackage("..tenancy..")
+            .should().dependOnClassesThat().resideInAPackage("..audit.infrastructure..")
+            .allowEmptyShould(true)
+            .because("tenancy must use the explicit audit application interface");
+
     private ArchitectureTest() {
     }
 }
