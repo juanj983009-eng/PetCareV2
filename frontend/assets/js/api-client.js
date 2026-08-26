@@ -1,6 +1,7 @@
 const CORRELATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const ACCESS_TOKEN_KEY = "petcare.accessToken";
+let sessionRejectedHandler = null;
 
 export class ApiRequestError extends Error {
   constructor({ kind, status = null, code, message, fieldErrors = [], correlationId = null }) {
@@ -37,8 +38,9 @@ export async function requestJson(input, options = {}) {
 
   const body = await parseJsonBody(response);
   if (!response.ok) {
+    let error;
     if (isApiError(body)) {
-      throw new ApiRequestError({
+      error = new ApiRequestError({
         kind: "HTTP",
         status: response.status,
         code: body.code,
@@ -46,13 +48,17 @@ export async function requestJson(input, options = {}) {
         fieldErrors: body.fieldErrors,
         correlationId: body.correlationId
       });
+    } else {
+      error = new ApiRequestError({
+        kind: "INVALID_RESPONSE",
+        status: response.status,
+        code: "INVALID_ERROR_RESPONSE",
+        message: "El servidor devolvió una respuesta de error no reconocida.",
+        correlationId: correlationIdFrom(response)
+      });
     }
-    throw new ApiRequestError({
-      kind: "INVALID_RESPONSE",
-      status: response.status,
-      code: "INVALID_ERROR_RESPONSE",
-      message: "El servidor devolvió una respuesta de error no reconocida."
-    });
+    rejectStoredSession(response.status, useAccessToken, accessToken, error);
+    throw error;
   }
 
   if (response.status === 204) {
@@ -84,8 +90,28 @@ export function hasAccessToken() {
   return getAccessToken() !== null;
 }
 
+export function setSessionRejectedHandler(handler) {
+  if (handler !== null && typeof handler !== "function") {
+    throw new TypeError("El manejador de sesión rechazada debe ser una función.");
+  }
+  sessionRejectedHandler = handler;
+  return () => {
+    if (sessionRejectedHandler === handler) {
+      sessionRejectedHandler = null;
+    }
+  };
+}
+
 function getAccessToken() {
   return sessionStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function rejectStoredSession(status, useAccessToken, accessToken, error) {
+  if (status !== 401 || !useAccessToken || accessToken === null || getAccessToken() !== accessToken) {
+    return;
+  }
+  clearAccessToken();
+  sessionRejectedHandler?.(error);
 }
 
 export function isApiError(value) {
@@ -112,6 +138,11 @@ async function parseJsonBody(response) {
   } catch {
     return null;
   }
+}
+
+function correlationIdFrom(response) {
+  const value = response.headers.get("X-Correlation-ID");
+  return value !== null && CORRELATION_ID_PATTERN.test(value) ? value : null;
 }
 
 function isFieldError(value) {

@@ -42,6 +42,11 @@ body {
   color: var(--petcare-primary) !important;
 }
 
+:focus-visible {
+  outline: .2rem solid rgb(23 102 79 / 35%);
+  outline-offset: .15rem;
+}
+
 @media (max-width: 575.98px) {
   main {
     align-items: stretch !important;

@@ -4,11 +4,11 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-Sprint 0 está técnicamente completo y HU-005 está implementada para revisión. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039 y HU-005: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores y el inicio de sesión multi-tenant con JWT.
+Sprint 0 está técnicamente completo y HU-005 y HU-006 están implementadas. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039, HU-005 y HU-006: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores y el ciclo local de sesión multi-tenant con JWT.
 
 El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login` y de `GET /api/v1/auth/session` para comprobar una sesión autenticada. Las migraciones inmutables V1 y V2 se complementan con V3, que incorpora la identidad, el RBAC mínimo y los eventos append-only de autenticación. La validación de HU-005 registra 77 pruebas aprobadas.
 
-El frontend servido por Nginx ofrece el formulario responsive de acceso y un dashboard inicial mínimo. El access token se conserva exclusivamente en `sessionStorage` y su uso está centralizado en el cliente HTTP. El cierre de sesión y el tratamiento completo de expiración permanecen pendientes para HU-006; la administración de usuarios y permisos corresponde a HU-007 y HU-008.
+El frontend servido por Nginx ofrece el formulario responsive de acceso, validación de la sesión almacenada, cierre de sesión local, tratamiento accesible de expiración y un dashboard inicial mínimo. El access token se conserva exclusivamente en `sessionStorage` y su uso y rechazo están centralizados en el cliente HTTP. La administración de usuarios y permisos corresponde a HU-007 y HU-008.
 
 ## Alcance resumido del MVP
 
@@ -145,6 +145,16 @@ La configuración JWT se recibe desde el entorno:
 V3 crea `users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `user_branches` y `authentication_events`. Los roles pertenecen a un tenant, los permisos son globales y las relaciones poseen restricciones tenant-aware. Cada intento de login registra un evento independiente y append-only, incluso si el tenant o usuario no pudo resolverse.
 
 El bootstrap interno está desactivado por defecto. Para habilitarlo se usa `PETCARE_BOOTSTRAP_ENABLED=true` junto con todas las variables `PETCARE_BOOTSTRAP_*` del archivo `.env.example`. No tiene endpoint, no contiene credenciales predeterminadas, reutiliza el registro de tenant de HU-002, genera el hash BCrypt inmediatamente y es idempotente: no duplica asociaciones ni cambia la contraseña de un usuario existente.
+
+## Sesión y expiración de HU-006
+
+Al cargar la aplicación, el frontend no confía en claims decodificados localmente: si existe un access token muestra una vista de validación y consulta `GET /api/v1/auth/session` antes de exponer el dashboard. Sin token muestra el login sin realizar esa solicitud.
+
+El botón **Cerrar sesión** elimina inmediatamente el token de `sessionStorage` y la identidad mantenida en memoria, vacía la contraseña y vuelve al login sin mostrar un aviso de expiración. La operación es local e idempotente y no requiere un endpoint backend.
+
+Un `401` recibido por una solicitud autenticada elimina la sesión local y muestra un mensaje de sesión expirada con el correlation ID cuando está disponible. El `401 INVALID_CREDENTIALS` del login no activa este flujo. Un `403`, un error de red o una respuesta inválida no eliminan el token; durante un fallo de validación el dashboard permanece oculto y se ofrece un reintento seguro.
+
+El logout no revoca el JWT en el servidor. Como el sistema utiliza access tokens stateless de corta duración y no implementa refresh tokens, el token previamente emitido seguirá siendo criptográficamente válido hasta expirar. No existen blacklist, Redis, tabla de revocación ni endpoint ficticio de logout.
 
 ## Entorno local con Docker Compose
 

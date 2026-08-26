@@ -38,6 +38,13 @@ export function applyApiError(form, apiError, summaryContainer) {
   title.textContent = apiError.message || "No fue posible completar la operación.";
   summary.append(title);
 
+  if (apiError.correlationId) {
+    const correlation = document.createElement("p");
+    correlation.classList.add("mb-0", "mt-2", "small");
+    correlation.textContent = `Código de seguimiento: ${apiError.correlationId}`;
+    summary.append(correlation);
+  }
+
   if (unmatchedErrors.length > 0) {
     const list = document.createElement("ul");
     list.classList.add("mb-0", "mt-2");
