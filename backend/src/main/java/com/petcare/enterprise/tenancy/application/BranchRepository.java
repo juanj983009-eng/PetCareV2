@@ -1,6 +1,7 @@
 package com.petcare.enterprise.tenancy.application;
 
 import com.petcare.enterprise.tenancy.domain.Branch;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,4 +15,7 @@ public interface BranchRepository {
 
     /** Trusted bootstrap lookup constrained to one tenant. */
     Optional<Branch> findByTenantIdAndName(UUID tenantId, String name);
+
+    /** Tenant-bound directory used by identity forms; never returns another tenant's branches. */
+    List<Branch> findAllByTenantId(UUID tenantId);
 }

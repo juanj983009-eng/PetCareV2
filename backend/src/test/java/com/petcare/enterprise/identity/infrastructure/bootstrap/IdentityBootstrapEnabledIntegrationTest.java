@@ -50,7 +50,13 @@ class IdentityBootstrapEnabledIntegrationTest extends PostgreSqlIntegrationTest 
         assertThat(count("roles", "name = 'ADMINISTRADOR'")).isOne();
         assertThat(count("permissions", "code = 'DASHBOARD_VIEW'")).isOne();
         assertThat(count("user_roles", "true")).isOne();
-        assertThat(count("role_permissions", "true")).isOne();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT p.code
+                FROM role_permissions rp
+                JOIN permissions p ON p.id = rp.permission_id
+                ORDER BY p.code
+                """, String.class))
+                .containsExactly("DASHBOARD_VIEW", "USER_MANAGE", "USER_READ");
         assertThat(count("user_branches", "primary_branch = true")).isOne();
     }
 

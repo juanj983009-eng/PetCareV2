@@ -2,6 +2,7 @@ package com.petcare.enterprise.tenancy.infrastructure.persistence;
 
 import com.petcare.enterprise.tenancy.application.BranchRepository;
 import com.petcare.enterprise.tenancy.domain.Branch;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -28,5 +29,12 @@ class JpaBranchRepositoryAdapter implements BranchRepository {
     @Override
     public Optional<Branch> findByTenantIdAndName(UUID tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name).map(BranchJpaEntity::toDomain);
+    }
+
+    @Override
+    public List<Branch> findAllByTenantId(UUID tenantId) {
+        return repository.findAllByTenantIdOrderByNameAsc(tenantId).stream()
+                .map(BranchJpaEntity::toDomain)
+                .toList();
     }
 }

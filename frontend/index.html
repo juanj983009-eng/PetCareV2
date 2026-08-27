@@ -91,7 +91,7 @@
       </section>
 
       <section id="dashboard-view" class="row justify-content-center" aria-labelledby="dashboard-title" hidden>
-        <div class="col-12 col-lg-9">
+        <div class="col-12 col-xl-11">
           <div class="card border-0 shadow-lg dashboard-card">
             <div class="card-body p-4 p-sm-5">
               <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-3 mb-4">
@@ -102,26 +102,190 @@
                 </div>
                 <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
                   <span class="badge text-bg-success align-self-sm-center">Acceso autenticado</span>
+                  <button id="users-nav-button" class="btn btn-outline-primary" type="button" hidden>
+                    Gestionar usuarios
+                  </button>
                   <button id="logout-button" class="btn btn-outline-danger" type="button">
                     Cerrar sesión
                   </button>
                 </div>
               </div>
 
-              <div class="alert alert-primary mb-4" role="status">
-                La sesión está activa. Los indicadores operativos se incorporarán en HU-034.
+              <div id="dashboard-home">
+                <div class="alert alert-primary mb-4" role="status">
+                  La sesión está activa. Los indicadores operativos se incorporarán en HU-034.
+                </div>
+
+                <div>
+                  <h2 class="h6">Autoridades efectivas</h2>
+                  <div id="authority-list" class="d-flex flex-wrap gap-2" aria-live="polite"></div>
+                </div>
               </div>
 
-              <div>
-                <h2 class="h6">Autoridades efectivas</h2>
-                <div id="authority-list" class="d-flex flex-wrap gap-2" aria-live="polite"></div>
-              </div>
+              <section id="users-view" aria-labelledby="users-title" hidden>
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+                  <div>
+                    <button id="users-back-button" class="btn btn-link px-0 mb-2" type="button">← Volver al dashboard</button>
+                    <h2 id="users-title" class="h3 mb-1" tabindex="-1">Usuarios</h2>
+                    <p class="text-secondary mb-0">Administra el acceso del personal de esta clínica.</p>
+                  </div>
+                  <button id="new-user-button" class="btn btn-primary align-self-lg-end" type="button" hidden>
+                    Registrar usuario
+                  </button>
+                </div>
+
+                <div id="users-notice" class="alert alert-success" role="status" tabindex="-1" hidden></div>
+
+                <form id="user-filters" class="row g-3 align-items-end mb-4" role="search">
+                  <div class="col-12 col-lg-4">
+                    <label for="user-search" class="form-label">Buscar</label>
+                    <input id="user-search" class="form-control" type="search" maxlength="180"
+                      placeholder="Nombre o correo">
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-2">
+                    <label for="user-role-filter" class="form-label">Rol</label>
+                    <select id="user-role-filter" class="form-select"><option value="">Todos los roles</option></select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-2">
+                    <label for="user-status-filter" class="form-label">Estado</label>
+                    <select id="user-status-filter" class="form-select">
+                      <option value="">Todos</option>
+                      <option value="ACTIVO">Activo</option>
+                      <option value="INACTIVO">Inactivo</option>
+                      <option value="BLOQUEADO">Bloqueado</option>
+                    </select>
+                  </div>
+                  <div class="col-7 col-sm-5 col-lg-2">
+                    <label for="user-sort" class="form-label">Ordenar por</label>
+                    <select id="user-sort" class="form-select">
+                      <option value="firstName">Nombre</option>
+                      <option value="lastName">Apellido</option>
+                      <option value="email">Correo</option>
+                      <option value="status">Estado</option>
+                      <option value="createdAt">Fecha de registro</option>
+                    </select>
+                  </div>
+                  <div class="col-5 col-sm-3 col-lg-2">
+                    <label for="user-direction" class="form-label">Dirección</label>
+                    <select id="user-direction" class="form-select">
+                      <option value="asc">Ascendente</option>
+                      <option value="desc">Descendente</option>
+                    </select>
+                  </div>
+                  <div class="col-12 d-flex flex-wrap gap-2">
+                    <button class="btn btn-primary" type="submit">Aplicar filtros</button>
+                    <button id="clear-user-filters" class="btn btn-outline-secondary" type="button">Limpiar</button>
+                  </div>
+                </form>
+
+                <div id="users-loading" class="text-center py-5" role="status" hidden>
+                  <div class="spinner-border text-primary" aria-hidden="true"></div>
+                  <p class="mt-2 mb-0">Cargando usuarios…</p>
+                </div>
+                <div id="users-empty" class="text-center border rounded-3 py-5 px-3" role="status" hidden>
+                  <h3 class="h5">No hay usuarios para mostrar</h3>
+                  <p class="text-secondary mb-0">Ajusta los filtros o registra el primer usuario.</p>
+                </div>
+                <div id="users-error" class="alert alert-danger" role="alert" hidden>
+                  <p id="users-error-message" class="mb-0"></p>
+                  <p id="users-error-correlation" class="small mt-2 mb-0" hidden></p>
+                  <button id="retry-users-list" class="btn btn-outline-danger mt-3" type="button">Reintentar</button>
+                </div>
+
+                <div id="users-content" hidden>
+                  <div class="table-responsive d-none d-md-block">
+                    <table class="table table-hover align-middle">
+                      <caption class="visually-hidden">Usuarios de la clínica autenticada</caption>
+                      <thead>
+                        <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Sede</th><th>Estado</th><th class="text-end">Acciones</th></tr>
+                      </thead>
+                      <tbody id="users-table-body"></tbody>
+                    </table>
+                  </div>
+                  <div id="users-cards" class="d-grid gap-3 d-md-none"></div>
+                  <nav class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-4"
+                    aria-label="Paginación de usuarios">
+                    <p id="users-page-status" class="small text-secondary mb-0" aria-live="polite"></p>
+                    <div class="btn-group">
+                      <button id="users-previous-page" class="btn btn-outline-primary" type="button">Anterior</button>
+                      <button id="users-next-page" class="btn btn-outline-primary" type="button">Siguiente</button>
+                    </div>
+                  </nav>
+                </div>
+              </section>
             </div>
           </div>
         </div>
       </section>
     </div>
   </main>
+
+  <dialog id="user-editor-dialog" class="petcare-dialog" aria-labelledby="user-editor-title">
+    <div class="card border-0">
+      <div class="card-body p-4">
+        <h2 id="user-editor-title" class="h4 mb-3">Registrar usuario</h2>
+        <div id="user-form-errors" aria-live="assertive"></div>
+        <form id="user-form" novalidate>
+          <input id="user-version" type="hidden" value="0">
+          <div class="row g-3">
+            <div class="col-12 col-sm-6">
+              <label for="user-first-name" class="form-label">Nombres</label>
+              <input id="user-first-name" name="firstName" class="form-control" maxlength="100" required>
+              <div class="invalid-feedback">Ingresa los nombres.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label for="user-last-name" class="form-label">Apellidos</label>
+              <input id="user-last-name" name="lastName" class="form-control" maxlength="100" required>
+              <div class="invalid-feedback">Ingresa los apellidos.</div>
+            </div>
+            <div class="col-12">
+              <label for="user-email" class="form-label">Correo electrónico</label>
+              <input id="user-email" name="email" class="form-control" type="email" maxlength="180" required>
+              <div class="invalid-feedback">Ingresa un correo válido.</div>
+            </div>
+            <div id="user-password-group" class="col-12">
+              <label for="user-initial-password" class="form-label">Contraseña inicial</label>
+              <input id="user-initial-password" name="initialPassword" class="form-control" type="password"
+                autocomplete="new-password" minlength="12" maxlength="200" required>
+              <div class="form-text">Mínimo 12 caracteres. No volverá a mostrarse.</div>
+              <div class="invalid-feedback">Ingresa al menos 12 caracteres.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label for="user-role" class="form-label">Rol</label>
+              <select id="user-role" name="roleId" class="form-select" required>
+                <option value="">Selecciona un rol</option>
+              </select>
+              <div class="invalid-feedback">Selecciona un rol.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label for="user-branch" class="form-label">Sede principal</label>
+              <select id="user-branch" name="branchId" class="form-select" required>
+                <option value="">Selecciona una sede</option>
+              </select>
+              <div class="invalid-feedback">Selecciona una sede.</div>
+            </div>
+          </div>
+          <div class="d-flex flex-column-reverse flex-sm-row justify-content-end gap-2 mt-4">
+            <button id="cancel-user-button" class="btn btn-outline-secondary" type="button">Cancelar</button>
+            <button id="save-user-button" class="btn btn-primary" type="submit">Guardar usuario</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="user-status-dialog" class="petcare-dialog petcare-dialog-sm" aria-labelledby="user-status-title">
+    <div class="card border-0">
+      <div class="card-body p-4">
+        <h2 id="user-status-title" class="h4">Cambiar estado</h2>
+        <p id="user-status-message"></p>
+        <div class="d-flex flex-column-reverse flex-sm-row justify-content-end gap-2">
+          <button id="cancel-user-status" class="btn btn-outline-secondary" type="button">Cancelar</button>
+          <button id="confirm-user-status" class="btn btn-danger" type="button">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
   <script type="module" src="/assets/js/auth.js"></script>
 </body>

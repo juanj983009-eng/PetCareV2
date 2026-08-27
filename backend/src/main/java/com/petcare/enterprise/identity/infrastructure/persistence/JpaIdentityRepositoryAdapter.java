@@ -56,9 +56,15 @@ class JpaIdentityRepositoryAdapter implements IdentityRepository {
 
     @Override
     public BootstrapIdentityResult ensureBootstrapIdentity(BootstrapIdentity command) {
-        PermissionJpaEntity permission = permissions.findByCode(PermissionJpaEntity.DASHBOARD_VIEW)
+        PermissionJpaEntity dashboard = permissions.findByCode(PermissionJpaEntity.DASHBOARD_VIEW)
                 .orElseGet(() -> permissions.saveAndFlush(
                         PermissionJpaEntity.bootstrapDashboardView(command.createdAt())));
+        PermissionJpaEntity userRead = permissions.findByCode(PermissionJpaEntity.USER_READ)
+                .orElseGet(() -> permissions.saveAndFlush(
+                        PermissionJpaEntity.bootstrapUserRead(command.createdAt())));
+        PermissionJpaEntity userManage = permissions.findByCode(PermissionJpaEntity.USER_MANAGE)
+                .orElseGet(() -> permissions.saveAndFlush(
+                        PermissionJpaEntity.bootstrapUserManage(command.createdAt())));
         RoleJpaEntity role = roles.findByTenantIdAndNameIgnoreCase(command.tenantId(), ADMINISTRATOR_ROLE)
                 .orElseGet(() -> roles.saveAndFlush(
                         RoleJpaEntity.bootstrapAdministrator(command.tenantId(), command.createdAt())));
@@ -76,7 +82,17 @@ class JpaIdentityRepositoryAdapter implements IdentityRepository {
                 INSERT INTO role_permissions (tenant_id, role_id, permission_id, assigned_at)
                 VALUES (:tenantId, :userId, :roleId, :assignedAt)
                 ON CONFLICT DO NOTHING
-                """, command.tenantId(), role.id(), permission.id(), command.createdAt());
+                """, command.tenantId(), role.id(), dashboard.id(), command.createdAt());
+        insertAssociation("""
+                INSERT INTO role_permissions (tenant_id, role_id, permission_id, assigned_at)
+                VALUES (:tenantId, :userId, :roleId, :assignedAt)
+                ON CONFLICT DO NOTHING
+                """, command.tenantId(), role.id(), userRead.id(), command.createdAt());
+        insertAssociation("""
+                INSERT INTO role_permissions (tenant_id, role_id, permission_id, assigned_at)
+                VALUES (:tenantId, :userId, :roleId, :assignedAt)
+                ON CONFLICT DO NOTHING
+                """, command.tenantId(), role.id(), userManage.id(), command.createdAt());
         entityManager.createNativeQuery("""
                         INSERT INTO user_branches (
                             tenant_id, user_id, branch_id, primary_branch, assigned_at

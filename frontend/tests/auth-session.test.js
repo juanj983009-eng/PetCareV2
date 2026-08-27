@@ -360,7 +360,12 @@ function loginResponse() {
 }
 
 function sessionResponse() {
-  return { userId: USER_ID, tenantId: TENANT_ID, branchId: BRANCH_ID };
+  return {
+    userId: USER_ID,
+    tenantId: TENANT_ID,
+    branchId: BRANCH_ID,
+    authorities: ["DASHBOARD_VIEW"]
+  };
 }
 
 function apiError(status, code, message) {

@@ -202,6 +202,14 @@ class LoginServiceTest {
         }
 
         @Override
+        public List<Branch> findAllByTenantId(UUID tenantId) {
+            return Optional.ofNullable(branch)
+                    .filter(value -> value.tenantId().equals(tenantId))
+                    .stream()
+                    .toList();
+        }
+
+        @Override
         public Optional<Branch> findByTenantIdAndName(UUID tenantId, String name) {
             return Optional.ofNullable(branch)
                     .filter(value -> value.tenantId().equals(tenantId) && value.name().equals(name));

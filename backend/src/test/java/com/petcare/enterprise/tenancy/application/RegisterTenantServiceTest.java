@@ -12,6 +12,7 @@ import com.petcare.enterprise.tenancy.domain.TenantStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -113,6 +114,11 @@ class RegisterTenantServiceTest {
         @Override
         public Optional<Branch> findByTenantIdAndId(UUID tenantId, UUID branchId) {
             return Optional.empty();
+        }
+
+        @Override
+        public List<Branch> findAllByTenantId(UUID tenantId) {
+            return List.of();
         }
 
         @Override

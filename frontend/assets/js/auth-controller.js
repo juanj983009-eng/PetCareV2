@@ -2,7 +2,7 @@ import { ApiRequestError } from "./api-client.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function createAuthController({ document, window, client, errors }) {
+export function createAuthController({ document, window, client, errors, lifecycle = {} }) {
   const elements = findElements(document);
   let authenticatedIdentity = null;
   let status = "INITIALIZING";
@@ -62,7 +62,7 @@ export function createAuthController({ document, window, client, errors }) {
       const login = validLoginResponse(response);
       client.setAccessToken(login.accessToken);
       sessionEpoch += 1;
-      await restoreSession(login.identity.authorities);
+      await restoreSession();
     } catch (error) {
       if (!client.hasAccessToken()) {
         showLoginError(normalizeError(error));
@@ -76,7 +76,7 @@ export function createAuthController({ document, window, client, errors }) {
     }
   }
 
-  function restoreSession(authorities = []) {
+  function restoreSession() {
     if (!client.hasAccessToken()) {
       showLogin();
       return Promise.resolve();
@@ -85,10 +85,9 @@ export function createAuthController({ document, window, client, errors }) {
       return validationPromise;
     }
 
-    const trustedAuthorities = Array.isArray(authorities) ? authorities : [];
     const validationEpoch = sessionEpoch;
     showSessionValidation();
-    const pending = validateSession(trustedAuthorities, validationEpoch);
+    const pending = validateSession(validationEpoch);
     validationPromise = pending;
     return pending.finally(() => {
       if (validationPromise === pending) {
@@ -97,16 +96,13 @@ export function createAuthController({ document, window, client, errors }) {
     });
   }
 
-  async function validateSession(authorities, validationEpoch) {
+  async function validateSession(validationEpoch) {
     try {
       const session = validSessionResponse(await client.requestJson("/api/v1/auth/session"));
       if (validationEpoch !== sessionEpoch || !client.hasAccessToken()) {
         return;
       }
-      authenticatedIdentity = Object.freeze({
-        ...session,
-        authorities: Object.freeze([...authorities])
-      });
+      authenticatedIdentity = session;
       showDashboard();
     } catch (error) {
       if (validationEpoch === sessionEpoch && client.hasAccessToken()) {
@@ -124,6 +120,7 @@ export function createAuthController({ document, window, client, errors }) {
     errors.clearApiErrors(elements.form, elements.loginErrors);
     elements.form.classList.remove("was-validated");
     showLogin();
+    lifecycle.ended?.();
   }
 
   function handleSessionRejected(error) {
@@ -132,6 +129,7 @@ export function createAuthController({ document, window, client, errors }) {
     authenticatedIdentity = null;
     elements.password.value = "";
     showLogin(sessionExpiredError(error));
+    lifecycle.ended?.();
   }
 
   function synchronizeAfterNavigation(event) {
@@ -139,6 +137,7 @@ export function createAuthController({ document, window, client, errors }) {
       authenticatedIdentity = null;
       elements.password.value = "";
       showLogin();
+      lifecycle.ended?.();
       return;
     }
     if (event.type === "pageshow" && event.persisted) {
@@ -198,6 +197,7 @@ export function createAuthController({ document, window, client, errors }) {
         elements.authorityList.append(badge);
       }
     }
+    lifecycle.authenticated?.(authenticatedIdentity);
     elements.dashboardTitle.focus({ preventScroll: true });
   }
 
@@ -285,13 +285,16 @@ function validSessionResponse(value) {
     || !UUID_PATTERN.test(value.userId)
     || !UUID_PATTERN.test(value.tenantId)
     || (value.branchId !== null && !UUID_PATTERN.test(value.branchId))
+    || !Array.isArray(value.authorities)
+    || !value.authorities.every((authority) => typeof authority === "string")
   ) {
     throw invalidResponse();
   }
   return Object.freeze({
     userId: value.userId,
     tenantId: value.tenantId,
-    branchId: value.branchId
+    branchId: value.branchId,
+    authorities: Object.freeze([...value.authorities])
   });
 }
 

@@ -4,11 +4,11 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-Sprint 0 está técnicamente completo y HU-005 y HU-006 están implementadas. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039, HU-005 y HU-006: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores y el ciclo local de sesión multi-tenant con JWT.
+Sprint 0 está técnicamente completo y HU-005, HU-006 y HU-007 están implementadas. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039, HU-005, HU-006 y HU-007: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores, el ciclo local de sesión multi-tenant con JWT y la gestión tenant-aware de usuarios.
 
-El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login` y de `GET /api/v1/auth/session` para comprobar una sesión autenticada. Las migraciones inmutables V1 y V2 se complementan con V3, que incorpora la identidad, el RBAC mínimo y los eventos append-only de autenticación. La validación de HU-005 registra 77 pruebas aprobadas.
+El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login`, de `GET /api/v1/auth/session` para comprobar una sesión autenticada y de `/api/v1/users` para administrar usuarios dentro del tenant autenticado. Las migraciones inmutables V1, V2 y V3 se complementan con V4, que incorpora concurrencia optimista, búsqueda y permisos para gestionar usuarios.
 
-El frontend servido por Nginx ofrece el formulario responsive de acceso, validación de la sesión almacenada, cierre de sesión local, tratamiento accesible de expiración y un dashboard inicial mínimo. El access token se conserva exclusivamente en `sessionStorage` y su uso y rechazo están centralizados en el cliente HTTP. La administración de usuarios y permisos corresponde a HU-007 y HU-008.
+El frontend servido por Nginx ofrece el formulario responsive de acceso, validación de la sesión almacenada, cierre de sesión local, tratamiento accesible de expiración, un dashboard inicial y la gestión responsive de usuarios para quienes poseen las autoridades necesarias. El access token se conserva exclusivamente en `sessionStorage` y su uso y rechazo están centralizados en el cliente HTTP. La administración completa de roles y permisos continúa reservada para HU-008.
 
 ## Alcance resumido del MVP
 
@@ -156,6 +156,16 @@ Un `401` recibido por una solicitud autenticada elimina la sesión local y muest
 
 El logout no revoca el JWT en el servidor. Como el sistema utiliza access tokens stateless de corta duración y no implementa refresh tokens, el token previamente emitido seguirá siendo criptográficamente válido hasta expirar. No existen blacklist, Redis, tabla de revocación ni endpoint ficticio de logout.
 
+## Gestión de usuarios de HU-007
+
+La API tenant-aware de usuarios se encuentra bajo `/api/v1/users`. `USER_READ` permite listar, buscar, filtrar, ordenar y consultar usuarios y las opciones de rol y sede. `USER_MANAGE` permite registrar, editar, activar y desactivar, siempre en combinación con el permiso de lectura. El rol `ADMINISTRADOR` recibe ambos permisos de forma idempotente; los roles continúan perteneciendo a cada tenant y los permisos forman un catálogo global.
+
+El alta requiere nombres, correo, contraseña inicial, un rol del tenant y una sede del tenant. El correo se normaliza igual que en el login, es único dentro de la clínica y la contraseña se transforma inmediatamente con BCrypt. Las respuestas nunca incluyen el hash ni exponen entidades de persistencia. La edición no permite cambiar contraseñas y las transiciones de estado son explícitas e idempotentes; no existe borrado físico.
+
+Cada creación, edición y cambio de estado genera auditoría append-only dentro de la misma transacción. Los cambios de rol y sede se registran también de forma explícita y los datos auditados excluyen contraseñas, hashes y tokens. V4 añade `updated_at` y `version` a `users`, junto con índices de búsqueda y los permisos `USER_READ` y `USER_MANAGE`.
+
+La desactivación impide nuevos inicios de sesión, pero no revoca access tokens ya emitidos: seguirán siendo válidos hasta su expiración corta. HU-007 no incorpora refresh tokens, blacklist, Redis ni revocación server-side.
+
 ## Entorno local con Docker Compose
 
 La configuración levanta tres servicios:
@@ -199,7 +209,7 @@ Para revisar la ejecución de Flyway:
 docker compose logs backend
 ```
 
-Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql`, `V2__create_tenancy_and_audit.sql` y `V3__create_identity_and_authentication_events.sql` ya fueron validadas y deben tratarse como inmutables; cualquier cambio posterior debe realizarse mediante una nueva migración versionada.
+Flyway 11.7.2 valida y aplica las migraciones en PostgreSQL 18, aunque muestra una advertencia porque esa versión de PostgreSQL aún no figura entre las oficialmente comprobadas. `V1__verify_flyway.sql`, `V2__create_tenancy_and_audit.sql` y `V3__create_identity_and_authentication_events.sql` ya fueron validadas y deben tratarse como inmutables. V4 corresponde a HU-007 y quedará inmutable después de su aplicación validada; cualquier cambio posterior debe realizarse mediante una nueva migración versionada.
 
 El repositorio no contiene credenciales reales. Los valores de `.env.example` son ficticios y cualquier secreto local debe mantenerse únicamente en archivos ignorados por Git.
 

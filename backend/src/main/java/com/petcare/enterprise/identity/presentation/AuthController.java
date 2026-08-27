@@ -1,9 +1,9 @@
 package com.petcare.enterprise.identity.presentation;
 
 import com.petcare.enterprise.audit.application.CorrelationIdProvider;
+import com.petcare.enterprise.identity.application.AuthenticatedSessionProvider;
 import com.petcare.enterprise.identity.application.LoginCommand;
 import com.petcare.enterprise.identity.application.LoginUseCase;
-import com.petcare.enterprise.tenancy.application.TenantContext;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,15 +18,15 @@ class AuthController {
 
     private final LoginUseCase loginUseCase;
     private final CorrelationIdProvider correlationIdProvider;
-    private final TenantContext tenantContext;
+    private final AuthenticatedSessionProvider sessionProvider;
 
     AuthController(
             LoginUseCase loginUseCase,
             CorrelationIdProvider correlationIdProvider,
-            TenantContext tenantContext) {
+            AuthenticatedSessionProvider sessionProvider) {
         this.loginUseCase = loginUseCase;
         this.correlationIdProvider = correlationIdProvider;
-        this.tenantContext = tenantContext;
+        this.sessionProvider = sessionProvider;
     }
 
     @PostMapping("/login")
@@ -40,6 +40,6 @@ class AuthController {
 
     @GetMapping("/session")
     SessionResponse session() {
-        return SessionResponse.from(tenantContext.requireTenant());
+        return SessionResponse.from(sessionProvider.requireSession());
     }
 }

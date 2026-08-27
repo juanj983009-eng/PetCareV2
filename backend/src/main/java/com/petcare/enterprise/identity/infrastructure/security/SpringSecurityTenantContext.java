@@ -1,5 +1,6 @@
 package com.petcare.enterprise.identity.infrastructure.security;
 
+import com.petcare.enterprise.identity.application.AuthenticatedSessionProvider;
 import com.petcare.enterprise.tenancy.application.AuthenticatedIdentity;
 import com.petcare.enterprise.tenancy.application.AuthenticatedTenant;
 import com.petcare.enterprise.tenancy.application.TenantAccessDeniedException;
@@ -12,7 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SpringSecurityTenantContext implements TenantContext {
+final class SpringSecurityTenantContext implements TenantContext, AuthenticatedSessionProvider {
 
     @Override
     public Optional<AuthenticatedIdentity> currentIdentity() {
@@ -45,6 +46,25 @@ final class SpringSecurityTenantContext implements TenantContext {
             throw new TenantAccessDeniedException();
         }
         return new AuthenticatedTenant(principal.tenantId(), principal.userId(), principal.branchId());
+    }
+
+    @Override
+    public AuthenticatedSession requireSession() {
+        Authentication authentication = currentAuthentication();
+        if (!isAuthenticated(authentication)) {
+            throw new TenantAuthenticationRequiredException();
+        }
+        if (!(authentication.getPrincipal() instanceof PetCarePrincipal principal)
+                || principal.tenantId() == null) {
+            throw new TenantAccessDeniedException();
+        }
+        return new AuthenticatedSession(
+                principal.userId(),
+                principal.tenantId(),
+                principal.branchId(),
+                principal.authorities().stream()
+                        .map(authority -> authority.getAuthority())
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet()));
     }
 
     private static Authentication currentAuthentication() {
