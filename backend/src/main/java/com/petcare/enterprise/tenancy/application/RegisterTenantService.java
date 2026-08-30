@@ -18,16 +18,19 @@ public class RegisterTenantService implements RegisterTenantUseCase {
     private final TenantRepository tenantRepository;
     private final BranchRepository branchRepository;
     private final AuditLogWriter auditLogWriter;
+    private final SystemRoleProvisioner systemRoleProvisioner;
     private final Clock clock;
 
     public RegisterTenantService(
             TenantRepository tenantRepository,
             BranchRepository branchRepository,
             AuditLogWriter auditLogWriter,
+            SystemRoleProvisioner systemRoleProvisioner,
             Clock clock) {
         this.tenantRepository = tenantRepository;
         this.branchRepository = branchRepository;
         this.auditLogWriter = auditLogWriter;
+        this.systemRoleProvisioner = systemRoleProvisioner;
         this.clock = clock;
     }
 
@@ -60,6 +63,7 @@ public class RegisterTenantService implements RegisterTenantUseCase {
                 now);
 
         tenantRepository.save(tenant);
+        systemRoleProvisioner.ensureForTenant(tenant.id());
         branchRepository.saveForPlatformRegistration(branch);
         auditLogWriter.append(new AuditRecord(
                 UUID.randomUUID(),

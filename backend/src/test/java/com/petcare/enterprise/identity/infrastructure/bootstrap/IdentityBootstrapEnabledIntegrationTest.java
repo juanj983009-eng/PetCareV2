@@ -56,7 +56,7 @@ class IdentityBootstrapEnabledIntegrationTest extends PostgreSqlIntegrationTest 
                 JOIN permissions p ON p.id = rp.permission_id
                 ORDER BY p.code
                 """, String.class))
-                .containsExactly("DASHBOARD_VIEW", "USER_MANAGE", "USER_READ");
+                .containsExactly("DASHBOARD_VIEW", "ROLE_MANAGE", "ROLE_READ", "USER_MANAGE", "USER_READ");
         assertThat(count("user_branches", "primary_branch = true")).isOne();
     }
 

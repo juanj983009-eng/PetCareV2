@@ -105,6 +105,9 @@
                   <button id="users-nav-button" class="btn btn-outline-primary" type="button" hidden>
                     Gestionar usuarios
                   </button>
+                  <button id="roles-nav-button" class="btn btn-outline-primary" type="button" hidden>
+                    Roles y permisos
+                  </button>
                   <button id="logout-button" class="btn btn-outline-danger" type="button">
                     Cerrar sesión
                   </button>
@@ -213,6 +216,30 @@
                   </nav>
                 </div>
               </section>
+
+              <section id="roles-view" aria-labelledby="roles-title" hidden>
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+                  <div>
+                    <button id="roles-back-button" class="btn btn-link px-0 mb-2" type="button">← Volver al dashboard</button>
+                    <h2 id="roles-title" class="h3 mb-1" tabindex="-1">Roles y permisos</h2>
+                    <p class="text-secondary mb-0">Configura las autoridades de los roles de esta clínica.</p>
+                  </div>
+                  <button id="assign-user-roles-button" class="btn btn-primary align-self-lg-end" type="button" hidden>
+                    Asignar roles a usuario
+                  </button>
+                </div>
+                <div id="roles-notice" class="alert alert-success" role="status" tabindex="-1" hidden></div>
+                <div id="roles-loading" class="text-center py-5" role="status" hidden>
+                  <div class="spinner-border text-primary" aria-hidden="true"></div><p class="mt-2 mb-0">Cargando roles…</p>
+                </div>
+                <div id="roles-empty" class="text-center border rounded-3 py-5 px-3" role="status" hidden>
+                  <h3 class="h5">No hay roles disponibles</h3><p class="text-secondary mb-0">Intenta nuevamente más tarde.</p>
+                </div>
+                <div id="roles-error" class="alert alert-danger" role="alert" hidden>
+                  <p id="roles-error-message" class="mb-0"></p><button id="retry-roles" class="btn btn-outline-danger mt-3" type="button">Reintentar</button>
+                </div>
+                <div id="roles-content" hidden><div id="roles-list" class="row g-3"></div></div>
+              </section>
             </div>
           </div>
         </div>
@@ -285,6 +312,25 @@
         </div>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="role-permissions-dialog" class="petcare-dialog" aria-labelledby="role-permissions-title">
+    <div class="card border-0"><div class="card-body p-4">
+      <h2 id="role-permissions-title" class="h4 mb-3">Permisos del rol</h2>
+      <input id="role-permissions-id" type="hidden"><div id="role-permissions-error" class="alert alert-danger" role="alert" hidden></div>
+      <div id="role-permissions-list" class="mb-4" aria-label="Permisos disponibles"></div>
+      <div class="d-flex flex-column-reverse flex-sm-row justify-content-end gap-2"><button id="cancel-role-permissions" class="btn btn-outline-secondary" type="button">Cancelar</button><button id="save-role-permissions" class="btn btn-primary" type="button">Guardar permisos</button></div>
+    </div></div>
+  </dialog>
+
+  <dialog id="user-roles-dialog" class="petcare-dialog" aria-labelledby="user-roles-title">
+    <div class="card border-0"><div class="card-body p-4">
+      <h2 id="user-roles-title" class="h4 mb-3">Asignar roles a usuario</h2>
+      <div id="user-roles-error" class="alert alert-danger" role="alert" hidden></div>
+      <label for="user-roles-user" class="form-label">Usuario</label><select id="user-roles-user" class="form-select mb-3"></select>
+      <div id="user-roles-list" class="mb-4" aria-label="Roles disponibles"></div>
+      <div class="d-flex flex-column-reverse flex-sm-row justify-content-end gap-2"><button id="cancel-user-roles" class="btn btn-outline-secondary" type="button">Cancelar</button><button id="save-user-roles" class="btn btn-primary" type="button">Guardar roles</button></div>
+    </div></div>
   </dialog>
 
   <script type="module" src="/assets/js/auth.js"></script>

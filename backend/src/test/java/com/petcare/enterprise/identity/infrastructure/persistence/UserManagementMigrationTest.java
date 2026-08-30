@@ -37,7 +37,7 @@ class UserManagementMigrationTest extends PostgreSqlIntegrationTest {
                             'ADMINISTRADOR', 'Existing administrator', true, now())
                     """);
         }
-        flyway(null).migrate();
+        flyway("4").migrate();
     }
 
     @Test

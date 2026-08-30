@@ -2,6 +2,7 @@ package com.petcare.enterprise.identity.presentation;
 
 import com.petcare.enterprise.identity.application.InvalidCredentialsException;
 import com.petcare.enterprise.identity.application.UserManagementException;
+import com.petcare.enterprise.identity.application.RoleManagementException;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorCode;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponse;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponseFactory;
@@ -48,7 +49,7 @@ class IdentityExceptionHandler {
                             exception.field(),
                             ApiFieldErrorCode.INVALID_VALUE,
                             "El correo ya está registrado en la clínica.")));
-            case CONCURRENT_CONFLICT, BLOCKED_TRANSITION -> errorFactory.response(
+            case CONCURRENT_CONFLICT, BLOCKED_TRANSITION, LAST_ADMINISTRATOR -> errorFactory.response(
                     HttpStatus.CONFLICT,
                     ApiErrorCode.USER_CONFLICT,
                     "El usuario cambió o no admite la operación solicitada.");
@@ -60,6 +61,21 @@ class IdentityExceptionHandler {
                             exception.field(),
                             ApiFieldErrorCode.INVALID_VALUE,
                             "El ordenamiento solicitado no es válido.")));
+        };
+    }
+
+    @ExceptionHandler(RoleManagementException.class)
+    ResponseEntity<ApiErrorResponse> roleManagement(RoleManagementException exception) {
+        return switch (exception.kind()) {
+            case ROLE_NOT_FOUND, USER_NOT_FOUND -> errorFactory.response(
+                    HttpStatus.NOT_FOUND, ApiErrorCode.RESOURCE_NOT_FOUND,
+                    "El recurso solicitado no está disponible.");
+            case PERMISSION_NOT_FOUND -> errorFactory.response(
+                    HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_FAILED,
+                    "Revisa los campos indicados.");
+            case PROTECTED_ADMINISTRATOR, CONCURRENT_CONFLICT -> errorFactory.response(
+                    HttpStatus.CONFLICT, ApiErrorCode.ROLE_CONFLICT,
+                    "La operación dejaría sin un administrador activo o alteraría una configuración protegida.");
         };
     }
 }

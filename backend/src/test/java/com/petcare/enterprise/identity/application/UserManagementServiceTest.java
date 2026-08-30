@@ -49,6 +49,7 @@ class UserManagementServiceTest {
     @Mock private UserManagementRepository repository;
     @Mock private BranchRepository branches;
     @Mock private PasswordHasher passwordHasher;
+    @Mock private RoleManagementRepository roleManagement;
     @Mock private AuditMetadataProvider metadataProvider;
     @Mock private AuditLogWriter auditLogWriter;
 
@@ -61,6 +62,7 @@ class UserManagementServiceTest {
                 repository,
                 branches,
                 passwordHasher,
+                roleManagement,
                 metadataProvider,
                 auditLogWriter,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -154,6 +156,7 @@ class UserManagementServiceTest {
     @Test
     void stateChangesAreExplicitAndIdempotentWhileBlockedIsUntouched() {
         ManagedUser active = managed(USER, "user@example.test", UserStatus.ACTIVO, 2, role(), branchOption());
+        when(roleManagement.hasActiveAdministrator(TENANT, USER)).thenReturn(true);
         when(repository.findByTenantIdAndId(TENANT, USER)).thenReturn(Optional.of(active));
         assertThat(service.activate(USER, 2)).isSameAs(active);
         verify(repository, never()).updateStatus(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any());

@@ -39,6 +39,10 @@ public final class UserManagementException extends RuntimeException {
         return new UserManagementException(Kind.INVALID_SORT, "sort");
     }
 
+    public static UserManagementException lastAdministrator() {
+        return new UserManagementException(Kind.LAST_ADMINISTRATOR, "roleId");
+    }
+
     public Kind kind() {
         return kind;
     }
@@ -54,6 +58,7 @@ public final class UserManagementException extends RuntimeException {
         EMAIL_CONFLICT,
         CONCURRENT_CONFLICT,
         BLOCKED_TRANSITION,
-        INVALID_SORT
+        INVALID_SORT,
+        LAST_ADMINISTRATOR
     }
 }

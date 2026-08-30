@@ -66,6 +66,7 @@ class RegisterTenantServiceTest {
                 tenantRepository,
                 branchRepository,
                 auditLogWriter,
+                tenantId -> { },
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

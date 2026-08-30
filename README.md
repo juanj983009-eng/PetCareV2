@@ -4,11 +4,11 @@ PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El
 
 ## Estado actual
 
-Sprint 0 está técnicamente completo y HU-005, HU-006 y HU-007 están implementadas. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039, HU-005, HU-006 y HU-007: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores, el ciclo local de sesión multi-tenant con JWT y la gestión tenant-aware de usuarios.
+Sprint 0 está técnicamente completo y HU-005 a HU-008 están implementadas. Se encuentran implementadas HU-001, HU-037, HU-002, HU-003, HU-039 y HU-005 a HU-008: el monolito modular compilable, el entorno Docker reproducible, el registro protegido de tenants, la resolución confiable del contexto tenant, el contrato uniforme de errores, el ciclo local de sesión multi-tenant con JWT, la gestión tenant-aware de usuarios y la configuración controlada de roles y permisos.
 
-El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login`, de `GET /api/v1/auth/session` para comprobar una sesión autenticada y de `/api/v1/users` para administrar usuarios dentro del tenant autenticado. Las migraciones inmutables V1, V2 y V3 se complementan con V4, que incorpora concurrencia optimista, búsqueda y permisos para gestionar usuarios.
+El backend dispone del endpoint protegido `POST /api/v1/platform/tenants`, del endpoint público mínimo `POST /api/v1/auth/login`, de `GET /api/v1/auth/session` para comprobar una sesión autenticada, de `/api/v1/users` y de `/api/v1/roles` para administrar identidad dentro del tenant autenticado. Las migraciones inmutables V1–V4 se complementan con V5, que completa los roles de sistema y los permisos de administración RBAC.
 
-El frontend servido por Nginx ofrece el formulario responsive de acceso, validación de la sesión almacenada, cierre de sesión local, tratamiento accesible de expiración, un dashboard inicial y la gestión responsive de usuarios para quienes poseen las autoridades necesarias. El access token se conserva exclusivamente en `sessionStorage` y su uso y rechazo están centralizados en el cliente HTTP. La administración completa de roles y permisos continúa reservada para HU-008.
+El frontend servido por Nginx ofrece el formulario responsive de acceso, validación de la sesión almacenada, cierre de sesión local, tratamiento accesible de expiración, un dashboard inicial y las áreas administrativas responsive de usuarios, roles y permisos para quienes poseen las autoridades necesarias. El access token se conserva exclusivamente en `sessionStorage` y su uso y rechazo están centralizados en el cliente HTTP.
 
 ## Alcance resumido del MVP
 
@@ -165,6 +165,19 @@ El alta requiere nombres, correo, contraseña inicial, un rol del tenant y una s
 Cada creación, edición y cambio de estado genera auditoría append-only dentro de la misma transacción. Los cambios de rol y sede se registran también de forma explícita y los datos auditados excluyen contraseñas, hashes y tokens. V4 añade `updated_at` y `version` a `users`, junto con índices de búsqueda y los permisos `USER_READ` y `USER_MANAGE`.
 
 La desactivación impide nuevos inicios de sesión, pero no revoca access tokens ya emitidos: seguirán siendo válidos hasta su expiración corta. HU-007 no incorpora refresh tokens, blacklist, Redis ni revocación server-side.
+
+## Roles y permisos de HU-008
+
+V5 asegura idempotentemente, para tenants existentes y para cada tenant registrado después de la migración, cuatro roles de sistema tenant-aware: `ADMINISTRADOR`, `VETERINARIO`, `RECEPCIONISTA` y `ALMACEN`. No existen roles globales, plantillas ni CRUD libre de roles. El catálogo de permisos es global y solo se concede mediante esos roles del tenant.
+
+| Rol | Permisos iniciales |
+|---|---|
+| `ADMINISTRADOR` | `DASHBOARD_VIEW`, `USER_READ`, `USER_MANAGE`, `ROLE_READ`, `ROLE_MANAGE` |
+| `VETERINARIO` | `DASHBOARD_VIEW` |
+| `RECEPCIONISTA` | `DASHBOARD_VIEW` |
+| `ALMACEN` | `DASHBOARD_VIEW` |
+
+`ROLE_READ` permite consultar la configuración y `ROLE_MANAGE` actualizar permisos y reemplazar las asignaciones de roles de un usuario. La API no acepta tenant, permisos ni autoridades como fuente de identidad: todo se limita al `TenantContext` autenticado. No hay endpoints de eliminación; el administrador no puede perder las autoridades mínimas de administración ni puede quedar eliminado, desactivado o sin rol cuando es el último administrador activo. Cada cambio de permisos o roles genera auditoría append-only atómica, sin credenciales ni tokens. Las autoridades modificadas se reflejan en el siguiente login o JWT emitido.
 
 ## Entorno local con Docker Compose
 

@@ -38,6 +38,7 @@ public class UserManagementService implements UserManagementUseCase {
     private final UserManagementRepository users;
     private final BranchRepository branches;
     private final PasswordHasher passwordHasher;
+    private final RoleManagementRepository roleManagement;
     private final AuditMetadataProvider auditMetadataProvider;
     private final AuditLogWriter auditLogWriter;
     private final Clock clock;
@@ -47,6 +48,7 @@ public class UserManagementService implements UserManagementUseCase {
             UserManagementRepository users,
             BranchRepository branches,
             PasswordHasher passwordHasher,
+            RoleManagementRepository roleManagement,
             AuditMetadataProvider auditMetadataProvider,
             AuditLogWriter auditLogWriter,
             Clock clock) {
@@ -54,6 +56,7 @@ public class UserManagementService implements UserManagementUseCase {
         this.users = users;
         this.branches = branches;
         this.passwordHasher = passwordHasher;
+        this.roleManagement = roleManagement;
         this.auditMetadataProvider = auditMetadataProvider;
         this.auditLogWriter = auditLogWriter;
         this.clock = clock;
@@ -120,6 +123,12 @@ public class UserManagementService implements UserManagementUseCase {
         UUID tenantId = metadata.tenantId();
         ManagedUser previous = requireUser(tenantId, userId);
         RoleOption role = requireRole(tenantId, command.roleId());
+        if (previous.status() == UserStatus.ACTIVO
+                && isAdministrator(previous.role())
+                && !isAdministrator(role)
+                && !roleManagement.hasActiveAdministrator(tenantId, userId)) {
+            throw UserManagementException.lastAdministrator();
+        }
         Branch branch = requireBranch(tenantId, command.branchId());
         EmailAddress email = new EmailAddress(command.email());
         if (users.existsByTenantIdAndEmail(tenantId, email, userId)) {
@@ -164,6 +173,12 @@ public class UserManagementService implements UserManagementUseCase {
         ManagedUser previous = requireUser(metadata.tenantId(), userId);
         if (previous.status() == UserStatus.BLOQUEADO) {
             throw UserManagementException.blockedTransition();
+        }
+        if (target != UserStatus.ACTIVO
+                && previous.status() == UserStatus.ACTIVO
+                && isAdministrator(previous.role())
+                && !roleManagement.hasActiveAdministrator(metadata.tenantId(), userId)) {
+            throw UserManagementException.lastAdministrator();
         }
         if (previous.status() == target) {
             return previous;
@@ -246,6 +261,10 @@ public class UserManagementService implements UserManagementUseCase {
 
     private static UUID optionId(RoleOption option) {
         return option == null ? null : option.id();
+    }
+
+    private static boolean isAdministrator(RoleOption role) {
+        return role != null && "ADMINISTRADOR".equalsIgnoreCase(role.name());
     }
 
     private static UUID optionId(BranchOption option) {

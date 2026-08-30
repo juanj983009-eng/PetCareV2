@@ -1,6 +1,7 @@
 package com.petcare.enterprise.identity.presentation;
 
 import com.petcare.enterprise.identity.application.UserManagementException;
+import com.petcare.enterprise.identity.application.RoleManagementUseCase;
 import com.petcare.enterprise.identity.application.UserManagementUseCase;
 import com.petcare.enterprise.identity.application.UserManagementUseCase.CreateUser;
 import com.petcare.enterprise.identity.application.UserManagementUseCase.SortDirection;
@@ -32,9 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 class UserController {
 
     private final UserManagementUseCase users;
+    private final RoleManagementUseCase roles;
 
-    UserController(UserManagementUseCase users) {
+    UserController(UserManagementUseCase users, RoleManagementUseCase roles) {
         this.users = users;
+        this.roles = roles;
     }
 
     @GetMapping
@@ -97,6 +100,13 @@ class UserController {
     @PostMapping("/{userId}/deactivate")
     UserResponse deactivate(@PathVariable UUID userId, @Valid @RequestBody UserVersionRequest request) {
         return UserResponse.from(users.deactivate(userId, request.version()));
+    }
+
+    @PutMapping("/{userId}/roles")
+    UserRolesResponse replaceRoles(
+            @PathVariable UUID userId,
+            @Valid @RequestBody ReplaceUserRolesRequest request) {
+        return UserRolesResponse.from(roles.replaceUserRoles(userId, request.roleIds(), request.version()));
     }
 
     private static SortField sortField(String value) {
