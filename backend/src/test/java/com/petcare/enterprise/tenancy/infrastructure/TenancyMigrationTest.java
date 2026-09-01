@@ -42,7 +42,7 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
         assertThat(flyway.info().applied())
                 .filteredOn(info -> info.getVersion() != null)
                 .extracting(info -> info.getVersion().toString())
-                .containsExactly("1", "2", "3", "4", "5", "6");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test

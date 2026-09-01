@@ -1,6 +1,7 @@
 package com.petcare.enterprise.clinical.presentation;
 
 import com.petcare.enterprise.clinical.application.OwnerSearchUseCase;
+import com.petcare.enterprise.clinical.application.OwnerRegistrationUseCase;
 import com.petcare.enterprise.clinical.application.OwnerSearchUseCase.OwnerSearch;
 import com.petcare.enterprise.clinical.application.OwnerSearchUseCase.SortDirection;
 import com.petcare.enterprise.clinical.application.OwnerSearchUseCase.SortField;
@@ -14,13 +15,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.ResponseEntity;
+import java.net.URI;
 
 @RestController
 @Validated
 @RequestMapping("/api/v1/owners")
 class OwnerController {
     private final OwnerSearchUseCase owners;
-    OwnerController(OwnerSearchUseCase owners) { this.owners = owners; }
+    private final OwnerRegistrationUseCase registration;
+    OwnerController(OwnerSearchUseCase owners, OwnerRegistrationUseCase registration) { this.owners = owners; this.registration = registration; }
 
     @GetMapping
     OwnerPageResponse search(@RequestParam @Size(min = 2, max = 100) @Pattern(regexp = "(?s).*\\S.*\\S.*") String query,
@@ -29,6 +35,11 @@ class OwnerController {
             @RequestParam(defaultValue = "name") @Pattern(regexp = "name|document|phone") String sortBy,
             @RequestParam(defaultValue = "asc") @Pattern(regexp = "asc|desc") String direction) {
         return OwnerPageResponse.from(owners.search(new OwnerSearch(page, size, query, sortField(sortBy), sortDirection(direction))));
+    }
+    @PostMapping
+    ResponseEntity<OwnerDetailResponse> create(@jakarta.validation.Valid @RequestBody CreateOwnerRequest request) {
+        var created = registration.register(request.toCommand(), request.confirmPhoneDuplicate());
+        return ResponseEntity.created(URI.create("/api/v1/owners/" + created.id())).body(OwnerDetailResponse.from(created));
     }
     private static SortField sortField(String value) { return switch (String.valueOf(value)) { case "name" -> SortField.NAME; case "document" -> SortField.DOCUMENT; case "phone" -> SortField.PHONE; default -> throw new IllegalArgumentException("Invalid owner sort"); }; }
     private static SortDirection sortDirection(String value) { return switch (String.valueOf(value).toLowerCase(Locale.ROOT)) { case "asc" -> SortDirection.ASC; case "desc" -> SortDirection.DESC; default -> throw new IllegalArgumentException("Invalid owner direction"); }; }

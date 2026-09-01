@@ -36,6 +36,18 @@ class JdbcOwnerSearchRepositoryAdapter implements OwnerSearchRepository {
         int totalPages = totalElements == 0 ? 0 : (int) Math.ceil((double) totalElements / query.size());
         return new OwnerPage(content, query.page(), query.size(), totalElements, totalPages);
     }
+    @Override public boolean documentExists(UUID tenantId, String documentNumber) { return count("document_number", tenantId, documentNumber) > 0; }
+    @Override public boolean phoneExists(UUID tenantId, String phone) { return count("phone", tenantId, phone) > 0; }
+    @Override public com.petcare.enterprise.clinical.application.OwnerRegistrationUseCase.Owner create(UUID tenantId, com.petcare.enterprise.clinical.application.OwnerRegistrationUseCase.NewOwner owner) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO owners (id,tenant_id,first_name,last_name,document_type,document_number,phone,email,address,notifications_accepted,active)
+                VALUES (:id,:tenantId,:firstName,:lastName,:documentType,:documentNumber,:phone,:email,:address,:notificationsAccepted,true)
+                """,
+                new MapSqlParameterSource().addValue("id", id).addValue("tenantId", tenantId).addValue("firstName", owner.firstName()).addValue("lastName", owner.lastName()).addValue("documentType", owner.documentType()).addValue("documentNumber", owner.documentNumber()).addValue("phone", owner.phone()).addValue("email", owner.email()).addValue("address", owner.address()).addValue("notificationsAccepted", owner.notificationsAccepted()));
+        return new com.petcare.enterprise.clinical.application.OwnerRegistrationUseCase.Owner(id, owner.firstName(), owner.lastName(), owner.documentType(), owner.documentNumber(), owner.phone(), owner.email(), owner.address(), owner.notificationsAccepted(), true);
+    }
+    private int count(String column, UUID tenantId, String value) { Integer result = jdbc.queryForObject("SELECT count(*) FROM owners WHERE tenant_id=:tenantId AND " + column + "=:value", Map.of("tenantId", tenantId, "value", value), Integer.class); return result == null ? 0 : result; }
 
     private OwnerSummary map(ResultSet result, int row) throws SQLException {
         return new OwnerSummary(result.getObject("id", UUID.class), result.getString("first_name"), result.getString("last_name"),
