@@ -32,6 +32,8 @@ class SecurityConfiguration {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/platform/tenants").hasAuthority("PLATFORM_TENANT_CREATE")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/owners", "/api/v1/owners/**")
+                            .hasAuthority("OWNER_READ")
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/roles", "/api/v1/roles/**")
                             .hasAuthority("ROLE_READ")
                         .requestMatchers("/api/v1/roles", "/api/v1/roles/**")

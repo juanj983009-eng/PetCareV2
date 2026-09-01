@@ -108,6 +108,9 @@
                   <button id="roles-nav-button" class="btn btn-outline-primary" type="button" hidden>
                     Roles y permisos
                   </button>
+                  <button id="owners-nav-button" class="btn btn-outline-primary" type="button" hidden>
+                    Buscar propietarios
+                  </button>
                   <button id="logout-button" class="btn btn-outline-danger" type="button">
                     Cerrar sesión
                   </button>
@@ -239,6 +242,21 @@
                   <p id="roles-error-message" class="mb-0"></p><button id="retry-roles" class="btn btn-outline-danger mt-3" type="button">Reintentar</button>
                 </div>
                 <div id="roles-content" hidden><div id="roles-list" class="row g-3"></div></div>
+              </section>
+              <section id="owners-view" aria-labelledby="owners-title" hidden>
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+                  <div><button id="owners-back-button" class="btn btn-link px-0 mb-2" type="button">← Volver al dashboard</button><h2 id="owners-title" class="h3 mb-1" tabindex="-1">Buscar propietarios</h2><p class="text-secondary mb-0">Busca por nombre, documento o teléfono.</p></div>
+                </div>
+                <form id="owner-search-form" class="row g-2 mb-4" novalidate>
+                  <div class="col-12 col-md"><label class="visually-hidden" for="owner-search">Buscar propietario</label><input id="owner-search" class="form-control" type="search" minlength="2" maxlength="100" required placeholder="Nombre, documento o teléfono"></div>
+                  <div class="col-6 col-md-2"><select id="owner-sort" class="form-select" aria-label="Ordenar propietarios"><option value="name">Nombre</option><option value="document">Documento</option><option value="phone">Teléfono</option></select></div>
+                  <div class="col-6 col-md-2"><select id="owner-direction" class="form-select" aria-label="Dirección de orden"><option value="asc">Ascendente</option><option value="desc">Descendente</option></select></div>
+                  <div class="col-12 col-md-auto"><button class="btn btn-primary w-100" type="submit">Buscar</button></div>
+                </form>
+                <div id="owners-loading" class="text-center py-5" role="status" hidden><div class="spinner-border text-primary" aria-hidden="true"></div><p class="mt-2 mb-0">Buscando propietarios…</p></div>
+                <div id="owners-empty" class="text-center border rounded-3 py-5 px-3" role="status" hidden><h3 class="h5">No hay coincidencias</h3><p class="text-secondary mb-0">Prueba con otro nombre, documento o teléfono.</p></div>
+                <div id="owners-error" class="alert alert-danger" role="alert" hidden><p id="owners-error-message" class="mb-0"></p><button id="retry-owners" class="btn btn-outline-danger mt-3" type="button">Reintentar</button></div>
+                <div id="owners-content" hidden><div id="owners-cards" class="row g-3 d-md-none"></div><div class="table-responsive d-none d-md-block"><table class="table align-middle"><thead><tr><th>Propietario</th><th>Documento</th><th>Teléfono</th></tr></thead><tbody id="owners-table-body"></tbody></table></div><nav class="d-flex justify-content-between align-items-center gap-2" aria-label="Paginación de propietarios"><button id="owners-previous-page" class="btn btn-outline-secondary" type="button">Anterior</button><p id="owners-page-status" class="mb-0 text-center" role="status"></p><button id="owners-next-page" class="btn btn-outline-secondary" type="button">Siguiente</button></nav></div>
               </section>
             </div>
           </div>

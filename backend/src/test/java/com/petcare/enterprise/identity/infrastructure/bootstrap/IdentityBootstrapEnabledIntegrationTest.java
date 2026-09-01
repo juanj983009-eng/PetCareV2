@@ -47,16 +47,19 @@ class IdentityBootstrapEnabledIntegrationTest extends PostgreSqlIntegrationTest 
         assertThat(second.get("password_hash")).isEqualTo(originalHash);
         assertThat(count("tenants", "slug = 'enabled-bootstrap-fixture'")).isOne();
         assertThat(count("users", "email = 'bootstrap@example.test'")).isOne();
-        assertThat(count("roles", "name = 'ADMINISTRADOR'")).isOne();
+        assertThat(count("roles", "tenant_id = (SELECT id FROM tenants WHERE slug = 'enabled-bootstrap-fixture') AND name = 'ADMINISTRADOR'")).isOne();
         assertThat(count("permissions", "code = 'DASHBOARD_VIEW'")).isOne();
         assertThat(count("user_roles", "true")).isOne();
         assertThat(jdbcTemplate.queryForList("""
                 SELECT p.code
                 FROM role_permissions rp
                 JOIN permissions p ON p.id = rp.permission_id
+                JOIN tenants t ON t.id = rp.tenant_id
+                JOIN roles r ON r.tenant_id = rp.tenant_id AND r.id = rp.role_id
+                WHERE t.slug = 'enabled-bootstrap-fixture' AND r.name = 'ADMINISTRADOR'
                 ORDER BY p.code
                 """, String.class))
-                .containsExactly("DASHBOARD_VIEW", "ROLE_MANAGE", "ROLE_READ", "USER_MANAGE", "USER_READ");
+                .containsExactly("DASHBOARD_VIEW", "OWNER_READ", "ROLE_MANAGE", "ROLE_READ", "USER_MANAGE", "USER_READ");
         assertThat(count("user_branches", "primary_branch = true")).isOne();
     }
 

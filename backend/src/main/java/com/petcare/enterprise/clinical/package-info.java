@@ -1,6 +1,2 @@
-/**
- * Clinical module for owners, patients, clinical records, consultations,
- * diagnoses, vaccines, and prescriptions.
- */
+/** Owner search read model. */
 package com.petcare.enterprise.clinical;
-
