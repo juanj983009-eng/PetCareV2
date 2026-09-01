@@ -37,7 +37,7 @@ class IdentityMigrationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void appliesV1ThroughV7FromEmptySchema() throws SQLException {
+    void appliesV1ThroughV8FromEmptySchema() throws SQLException {
         try (Connection connection = connection();
                 Statement statement = connection.createStatement();
                 ResultSet result = statement.executeQuery("""
@@ -50,7 +50,7 @@ class IdentityMigrationTest extends PostgreSqlIntegrationTest {
             while (result.next()) {
                 versions.add(result.getString(1));
             }
-            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
         }
     }
 
