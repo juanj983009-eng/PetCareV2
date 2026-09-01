@@ -29,6 +29,7 @@ $RECYCLE.BIN/
 .env
 .env.*
 !.env.example
+!.env.demo.example
 *.pem
 *.key
 *.p12
@@ -65,4 +66,3 @@ temp/
 
 # macOS metadata occasionally introduced by collaborators
 .DS_Store
-

@@ -233,3 +233,22 @@ docker compose down
 ```
 
 No uses `docker compose down -v` si deseas conservar los datos locales.
+
+## Demo aislada
+
+La demo usa un proyecto Compose y un volumen independientes: `petcare-demo` y
+`petcare_demo_postgres_data`. Nunca usa `petcareenterprise_postgres_data`.
+
+1. Copia `.env.demo.example` como `.env.demo` y completa localmente los valores
+   secretos. `.env.demo` está ignorado por Git y no debe compartirse.
+2. Levanta la demo: `./scripts/demo-up.ps1`.
+3. Abre `http://localhost:18081` e inicia sesión con el slug, correo y contraseña
+   definidos en tu `.env.demo`.
+4. Muestra las autoridades y navegación; busca propietarios, registra un
+   propietario ficticio y luego su paciente. El registro crea automáticamente la
+   historia clínica y la auditoría asociada.
+5. Cierra sesión y detén la demo conservando sus datos: `./scripts/demo-down.ps1`.
+
+Consulta su estado con `./scripts/demo-status.ps1`. No hay un script de reinicio
+destructivo: elimina manualmente el volumen de demo solo tras verificar su nombre
+exacto y nunca uses comandos destructivos sobre el volumen local principal.
