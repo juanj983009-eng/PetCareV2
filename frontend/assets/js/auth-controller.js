@@ -4,6 +4,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 export function createAuthController({ document, window, client, errors, lifecycle = {} }) {
   const elements = findElements(document);
+  const optional = findOptionalElements(document);
   let authenticatedIdentity = null;
   let status = "INITIALIZING";
   let submitting = false;
@@ -14,6 +15,23 @@ export function createAuthController({ document, window, client, errors, lifecyc
   elements.form.addEventListener("submit", handleLoginSubmit);
   elements.logoutButton.addEventListener("click", logout);
   elements.retryButton.addEventListener("click", handleRetry);
+  const handleMobileNavDismiss = () => closeMobileNav(true);
+  optional.togglePasswordButton?.addEventListener("click", togglePasswordVisibility);
+  optional.mobileNavToggle?.addEventListener("click", toggleMobileNav);
+  optional.mobileNavClose?.addEventListener("click", handleMobileNavDismiss);
+  optional.mobileNavBackdrop?.addEventListener("click", handleMobileNavDismiss);
+  optional.dashboardNavButton?.addEventListener("click", openDashboardHome);
+  for (const [button, view] of [
+    [optional.usersNavButton, optional.usersView],
+    [optional.rolesNavButton, optional.rolesView],
+    [optional.ownersNavButton, optional.ownersView]
+  ]) {
+    button?.addEventListener("click", () => activateModuleNav(button, view));
+  }
+  for (const backBtn of [optional.usersBackButton, optional.rolesBackButton, optional.ownersBackButton]) {
+    backBtn?.addEventListener("click", () => markActiveNav(optional.dashboardNavButton));
+  }
+  document.addEventListener("keydown", handleKeydown);
   window.addEventListener("pageshow", synchronizeAfterNavigation);
   window.addEventListener("popstate", synchronizeAfterNavigation);
 
@@ -70,7 +88,7 @@ export function createAuthController({ document, window, client, errors, lifecyc
         showValidationFailure(normalizeError(error));
       }
     } finally {
-      elements.password.value = "";
+      resetPasswordInput();
       submitting = false;
       setLoginLoading(false);
     }
@@ -116,7 +134,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
     validationPromise = null;
     client.clearAccessToken();
     authenticatedIdentity = null;
-    elements.password.value = "";
+    resetPasswordInput();
+    closeMobileNav();
     errors.clearApiErrors(elements.form, elements.loginErrors);
     elements.form.classList.remove("was-validated");
     showLogin();
@@ -127,15 +146,20 @@ export function createAuthController({ document, window, client, errors, lifecyc
     sessionEpoch += 1;
     validationPromise = null;
     authenticatedIdentity = null;
-    elements.password.value = "";
+    resetPasswordInput();
+    closeMobileNav();
     showLogin(sessionExpiredError(error));
     lifecycle.ended?.();
   }
 
   function synchronizeAfterNavigation(event) {
     if (!client.hasAccessToken()) {
+      if (authenticatedIdentity === null && status === "ANONYMOUS" && !elements.loginView.hidden) {
+        return;
+      }
       authenticatedIdentity = null;
-      elements.password.value = "";
+      resetPasswordInput();
+      closeMobileNav();
       showLogin();
       lifecycle.ended?.();
       return;
@@ -182,6 +206,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
   function showDashboard() {
     status = "AUTHENTICATED";
     showOnly(elements.dashboardView);
+    closeMobileNav();
+    markActiveNav(optional.dashboardNavButton);
     elements.authorityList.replaceChildren();
     const authorities = authenticatedIdentity?.authorities ?? [];
     if (authorities.length === 0) {
@@ -219,11 +245,106 @@ export function createAuthController({ document, window, client, errors, lifecyc
     elements.spinner.hidden = !loading;
   }
 
+  function togglePasswordVisibility() {
+    const visible = elements.password.type === "password";
+    elements.password.type = visible ? "text" : "password";
+    if (optional.togglePasswordButton) {
+      optional.togglePasswordButton.setAttribute("aria-pressed", String(visible));
+      optional.togglePasswordButton.setAttribute("aria-label", visible ? "Ocultar contraseña" : "Mostrar contraseña");
+      optional.togglePasswordButton.textContent = visible ? "Ocultar" : "Mostrar";
+    }
+  }
+
+  function resetPasswordInput() {
+    elements.password.value = "";
+    elements.password.type = "password";
+    if (optional.togglePasswordButton) {
+      optional.togglePasswordButton.setAttribute("aria-pressed", "false");
+      optional.togglePasswordButton.setAttribute("aria-label", "Mostrar contraseña");
+      optional.togglePasswordButton.textContent = "Mostrar";
+    }
+  }
+
+  function toggleMobileNav() {
+    if (!optional.mobileNav) return;
+    const opening = !optional.mobileNav.classList.contains("is-open");
+    optional.mobileNav.classList.toggle("is-open", opening);
+    optional.mobileNavToggle?.setAttribute("aria-expanded", String(opening));
+    if (optional.mobileNavBackdrop) {
+      optional.mobileNavBackdrop.hidden = !opening;
+    }
+    if (opening) {
+      (optional.mobileNavClose ?? optional.dashboardNavButton)?.focus({ preventScroll: true });
+    } else {
+      optional.mobileNavToggle?.focus({ preventScroll: true });
+    }
+  }
+
+  function closeMobileNav(restoreToggleFocus = false) {
+    const wasOpen = Boolean(optional.mobileNav?.classList.contains("is-open"));
+    optional.mobileNav?.classList.remove("is-open");
+    optional.mobileNavToggle?.setAttribute("aria-expanded", "false");
+    if (optional.mobileNavBackdrop) {
+      optional.mobileNavBackdrop.hidden = true;
+    }
+    if (wasOpen && restoreToggleFocus) {
+      optional.mobileNavToggle?.focus({ preventScroll: true });
+    }
+  }
+
+  function openDashboardHome() {
+    if (optional.usersView) optional.usersView.hidden = true;
+    if (optional.rolesView) optional.rolesView.hidden = true;
+    if (optional.ownersView) optional.ownersView.hidden = true;
+    if (optional.dashboardHome) optional.dashboardHome.hidden = false;
+    markActiveNav(optional.dashboardNavButton);
+    closeMobileNav();
+  }
+
+  function activateModuleNav(button, targetView) {
+    for (const view of [optional.usersView, optional.rolesView, optional.ownersView]) {
+      if (view && view !== targetView) {
+        view.hidden = true;
+      }
+    }
+    markActiveNav(button);
+    closeMobileNav();
+  }
+
+  function markActiveNav(activeButton) {
+    for (const button of [
+      optional.dashboardNavButton,
+      optional.usersNavButton,
+      optional.rolesNavButton,
+      optional.ownersNavButton
+    ]) {
+      if (!button) continue;
+      if (button === activeButton) {
+        button.setAttribute("aria-current", "page");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  function handleKeydown(event) {
+    if (event.key === "Escape" && optional.mobileNav?.classList.contains("is-open")) {
+      closeMobileNav();
+      optional.mobileNavToggle?.focus();
+    }
+  }
+
   function destroy() {
     removeSessionRejectedHandler();
     elements.form.removeEventListener("submit", handleLoginSubmit);
     elements.logoutButton.removeEventListener("click", logout);
     elements.retryButton.removeEventListener("click", handleRetry);
+    optional.togglePasswordButton?.removeEventListener("click", togglePasswordVisibility);
+    optional.mobileNavToggle?.removeEventListener("click", toggleMobileNav);
+    optional.mobileNavClose?.removeEventListener("click", handleMobileNavDismiss);
+    optional.mobileNavBackdrop?.removeEventListener("click", handleMobileNavDismiss);
+    optional.dashboardNavButton?.removeEventListener("click", openDashboardHome);
+    document.removeEventListener("keydown", handleKeydown);
     window.removeEventListener("pageshow", synchronizeAfterNavigation);
     window.removeEventListener("popstate", synchronizeAfterNavigation);
   }
@@ -260,6 +381,27 @@ function findElements(document) {
     }
   }
   return elements;
+}
+
+function findOptionalElements(document) {
+  return {
+    togglePasswordButton: document.querySelector("#toggle-password-button"),
+    mobileNavToggle: document.querySelector("#mobile-nav-toggle"),
+    mobileNavClose: document.querySelector("#mobile-nav-close"),
+    mobileNav: document.querySelector("#editorial-offcanvas-nav"),
+    mobileNavBackdrop: document.querySelector("#mobile-nav-backdrop"),
+    dashboardNavButton: document.querySelector("#dashboard-nav-button"),
+    usersNavButton: document.querySelector("#users-nav-button"),
+    rolesNavButton: document.querySelector("#roles-nav-button"),
+    ownersNavButton: document.querySelector("#owners-nav-button"),
+    usersBackButton: document.querySelector("#users-back-button"),
+    rolesBackButton: document.querySelector("#roles-back-button"),
+    ownersBackButton: document.querySelector("#owners-back-button"),
+    dashboardHome: document.querySelector("#dashboard-home"),
+    usersView: document.querySelector("#users-view"),
+    rolesView: document.querySelector("#roles-view"),
+    ownersView: document.querySelector("#owners-view")
+  };
 }
 
 function validLoginResponse(value) {

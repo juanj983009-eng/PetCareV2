@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UI-001 — Pruebas del Sistema Visual Clínica Editorial</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    .passed { color: #196944; }
+    .failed { color: #9B2424; }
+    #fixture { border-top: 1px solid #D7DCD5; margin-top: 2rem; padding-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>UI-001 — Pruebas del Sistema Visual Clínica Editorial</h1>
+    <p id="test-summary" role="status">Ejecutando…</p>
+    <ol id="test-results"></ol>
+
+    <div id="fixture">
+      <section id="login-view" hidden>
+        <div id="login-errors" aria-live="assertive"></div>
+        <form id="login-form" novalidate>
+          <label for="clinicSlug">Clínica</label>
+          <input id="clinicSlug" name="clinicSlug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            aria-describedby="clinicSlugHelp clinicSlugFeedback" required>
+          <div id="clinicSlugHelp">Ayuda clínica</div>
+          <div id="clinicSlugFeedback" class="invalid-feedback">Error clínica</div>
+
+          <label for="email">Correo electrónico</label>
+          <input id="email" name="email" type="email" aria-describedby="emailFeedback" required>
+          <div id="emailFeedback" class="invalid-feedback">Error correo</div>
+
+          <label for="password">Contraseña</label>
+          <input id="password" name="password" type="password" aria-describedby="passwordFeedback" required>
+          <button id="toggle-password-button" type="button" aria-controls="password" aria-pressed="false" aria-label="Mostrar contraseña">Mostrar</button>
+          <div id="passwordFeedback" class="invalid-feedback">Error contraseña</div>
+
+          <button id="login-button" type="submit">
+            <span id="login-button-label">Iniciar sesión</span>
+            <span id="login-spinner" hidden></span>
+          </button>
+        </form>
+      </section>
+
+      <section id="session-validation-view" hidden>
+        <h2 id="session-validation-title" tabindex="-1">Validando tu sesión</h2>
+      </section>
+
+      <section id="session-validation-error-view" hidden>
+        <h2 id="session-validation-error-title">No pudimos validar tu sesión</h2>
+        <p id="session-validation-error-message"></p>
+        <p id="session-validation-correlation" hidden></p>
+        <button id="retry-session-button" type="button">Reintentar validación</button>
+      </section>
+
+      <section id="dashboard-view" hidden>
+        <header>
+          <button id="mobile-nav-toggle" type="button" aria-controls="editorial-offcanvas-nav" aria-expanded="false">Menú</button>
+          <h1 id="dashboard-title" tabindex="-1">Dashboard inicial</h1>
+        </header>
+        <div id="mobile-nav-backdrop" hidden></div>
+        <nav id="editorial-offcanvas-nav" class="pc-shell-nav" aria-label="Navegación principal">
+          <button id="mobile-nav-close" type="button">Cerrar</button>
+          <button id="dashboard-nav-button" type="button" aria-current="page">Resumen de sesión</button>
+          <button id="users-nav-button" type="button" hidden>Gestionar usuarios</button>
+          <button id="roles-nav-button" type="button" hidden>Roles y permisos</button>
+          <button id="owners-nav-button" type="button" hidden>Buscar propietarios</button>
+          <button id="logout-button" type="button">Cerrar sesión</button>
+        </nav>
+
+        <div id="dashboard-home">
+          <div id="authority-list"></div>
+        </div>
+
+        <section id="users-view" hidden>
+          <button id="users-back-button" type="button">Volver</button>
+          <h2 id="users-title" tabindex="-1">Usuarios</h2>
+          <button id="new-user-button" type="button" hidden>Registrar usuario</button>
+          <div id="users-notice" tabindex="-1" hidden></div>
+          <form id="user-filters">
+            <label for="user-search">Buscar</label><input id="user-search" type="search">
+            <label for="user-role-filter">Rol</label><select id="user-role-filter"><option value="">Todos</option></select>
+            <label for="user-status-filter">Estado</label><select id="user-status-filter"><option value="">Todos</option></select>
+            <label for="user-sort">Ordenar</label><select id="user-sort"><option value="firstName">Nombre</option></select>
+            <label for="user-direction">Dirección</label><select id="user-direction"><option value="asc">Ascendente</option></select>
+            <button type="submit">Aplicar</button><button id="clear-user-filters" type="button">Limpiar</button>
+          </form>
+          <div id="users-loading" hidden></div><div id="users-empty" hidden></div>
+          <div id="users-error" hidden><p id="users-error-message"></p><p id="users-error-correlation" hidden></p><button id="retry-users-list" type="button">Reintentar</button></div>
+          <div id="users-content" hidden><table><tbody id="users-table-body"></tbody></table><div id="users-cards"></div></div>
+          <button id="users-previous-page" type="button">Anterior</button><button id="users-next-page" type="button">Siguiente</button><p id="users-page-status"></p>
+        </section>
+
+        <section id="roles-view" hidden>
+          <button id="roles-back-button" type="button">Volver</button>
+          <h2 id="roles-title" tabindex="-1">Roles y permisos</h2>
+          <button id="assign-user-roles-button" type="button" hidden>Asignar</button>
+          <div id="roles-notice" hidden></div><div id="roles-loading" hidden></div><div id="roles-empty" hidden></div>
+          <div id="roles-content" hidden><div id="roles-list"></div></div>
+          <div id="roles-error" hidden><p id="roles-error-message"></p><button id="retry-roles" type="button">Reintentar</button></div>
+        </section>
+
+        <section id="owners-view" hidden>
+          <button id="owners-back-button" type="button">Volver</button>
+          <h2 id="owners-title" tabindex="-1">Buscar propietarios</h2>
+          <button id="new-patient-button" type="button" hidden>Nuevo paciente</button>
+          <button id="new-owner-button" type="button" hidden>Nuevo propietario</button>
+          <form id="owner-search-form" novalidate>
+            <label for="owner-search">Buscar propietario</label>
+            <input id="owner-search" type="search" minlength="2" aria-describedby="owner-search-feedback" required>
+            <div id="owner-search-feedback" class="invalid-feedback">Ingresa al menos 2 caracteres.</div>
+            <label for="owner-sort">Ordenar por</label><select id="owner-sort"><option value="name">Nombre</option></select>
+            <label for="owner-direction">Dirección</label><select id="owner-direction"><option value="asc">Ascendente</option></select>
+            <button type="submit">Buscar</button>
+          </form>
+          <div id="owners-loading" hidden></div><div id="owners-empty" hidden></div><div id="owners-error" hidden><p id="owners-error-message"></p><button id="retry-owners" type="button">Reintentar</button></div>
+          <div id="owners-content" hidden><div id="owners-cards"></div><table><tbody id="owners-table-body"></tbody></table><button id="owners-previous-page" type="button">Anterior</button><p id="owners-page-status"></p><button id="owners-next-page" type="button">Siguiente</button></div>
+        </section>
+      </section>
+
+      <dialog id="user-editor-dialog">
+        <h2 id="user-editor-title"></h2><div id="user-form-errors"></div>
+        <form id="user-form" novalidate>
+          <input id="user-version" type="hidden">
+          <label for="user-first-name">Nombres</label><input id="user-first-name" name="firstName" aria-describedby="user-first-name-feedback" required><div id="user-first-name-feedback" class="invalid-feedback"></div>
+          <label for="user-last-name">Apellidos</label><input id="user-last-name" name="lastName" aria-describedby="user-last-name-feedback" required><div id="user-last-name-feedback" class="invalid-feedback"></div>
+          <label for="user-email">Correo</label><input id="user-email" name="email" type="email" aria-describedby="user-email-feedback" required><div id="user-email-feedback" class="invalid-feedback"></div>
+          <div id="user-password-group"><label for="user-initial-password">Contraseña</label><input id="user-initial-password" name="initialPassword" minlength="12" aria-describedby="user-initial-password-feedback" required><div id="user-initial-password-feedback" class="invalid-feedback"></div></div>
+          <label for="user-role">Rol</label><select id="user-role" name="roleId" aria-describedby="user-role-feedback" required><option value="">Rol</option></select><div id="user-role-feedback" class="invalid-feedback"></div>
+          <label for="user-branch">Sede</label><select id="user-branch" name="branchId" aria-describedby="user-branch-feedback" required><option value="">Sede</option></select><div id="user-branch-feedback" class="invalid-feedback"></div>
+          <button id="cancel-user-button" type="button">Cancelar</button><button id="save-user-button" type="submit">Guardar</button>
+        </form>
+      </dialog>
+      <dialog id="user-status-dialog"><h2 id="user-status-title"></h2><p id="user-status-message"></p><button id="cancel-user-status" type="button">Cancelar</button><button id="confirm-user-status" type="button">Confirmar</button></dialog>
+      <dialog id="role-permissions-dialog"><h2 id="role-permissions-title"></h2><input id="role-permissions-id"><div id="role-permissions-error" hidden></div><div id="role-permissions-list"></div><button id="cancel-role-permissions" type="button">Cancelar</button><button id="save-role-permissions" type="button">Guardar</button></dialog>
+      <dialog id="user-roles-dialog"><label for="user-roles-user">Usuario</label><select id="user-roles-user"></select><div id="user-roles-list"></div><div id="user-roles-error" hidden></div><button id="cancel-user-roles" type="button">Cancelar</button><button id="save-user-roles" type="button">Guardar</button></dialog>
+      <dialog id="owner-editor-dialog"><form id="owner-editor-form" novalidate><div id="owner-form-error" hidden></div><div id="owner-form-validation" hidden></div><label for="owner-first-name">Nombres</label><input id="owner-first-name" aria-describedby="owner-first-name-feedback" required><div id="owner-first-name-feedback"></div><label for="owner-last-name">Apellidos</label><input id="owner-last-name" aria-describedby="owner-last-name-feedback" required><div id="owner-last-name-feedback"></div><label for="owner-document-type">Tipo</label><input id="owner-document-type"><label for="owner-document-number">Número</label><input id="owner-document-number"><label for="owner-phone">Teléfono</label><input id="owner-phone" aria-describedby="owner-phone-feedback" required><div id="owner-phone-feedback"></div><label for="owner-email">Correo</label><input id="owner-email" aria-describedby="owner-email-feedback"><div id="owner-email-feedback"></div><label for="owner-address">Dirección</label><input id="owner-address"><input id="owner-notifications" type="checkbox"><button id="cancel-owner-button" type="button">Cancelar</button><button id="save-owner-button" type="submit">Guardar</button></form></dialog>
+      <div id="patient-notice" hidden></div>
+      <dialog id="patient-editor-dialog"><form id="patient-editor-form" novalidate><div id="patient-form-error" hidden></div><div id="patient-form-validation" hidden></div><input id="patient-owner-query"><button id="patient-owner-search" type="button">Buscar</button><select id="patient-owner-id" required><option value=""></option></select><div class="invalid-feedback"></div><input id="patient-name" required><div class="invalid-feedback"></div><input id="patient-species" required><div class="invalid-feedback"></div><input id="patient-sex" required><div class="invalid-feedback"></div><input id="patient-breed"><input id="patient-birth-date"><input id="patient-color"><input id="patient-microchip"><input id="patient-sterilized" type="checkbox"><button id="cancel-patient-button" type="button">Cancelar</button><button id="save-patient-button" type="submit">Registrar</button></form></dialog>
+    </div>
+  </main>
+  <script type="module" src="./ui-editorial-shell.test.js"></script>
+</body>
+</html>

@@ -13,7 +13,7 @@ test("oculta la administración sin ROLE_READ", async () => {
 
 test("ROLE_READ muestra roles como texto", async () => {
   const { controller, client } = setup(["ROLE_READ"]);
-  click("#roles-nav-button"); await waitFor(() => client.calls.includes("/api/v1/roles"));
+  click("#roles-nav-button"); await waitFor(() => client.calls.some((call) => call.input === "/api/v1/roles"));
   assert(!document.querySelector("#roles-content").hidden);
   assert(document.querySelector("#roles-list").textContent.includes("ADMINISTRADOR"));
   controller.sessionEnded();
@@ -39,4 +39,4 @@ function assert(value) { if (!value) throw new Error("Aserción fallida"); }
 function click(selector) { document.querySelector(selector).click(); }
 async function waitFor(predicate) { for (let i = 0; i < 50; i += 1) { if (predicate()) return; await new Promise((resolve) => setTimeout(resolve, 0)); } throw new Error("Tiempo agotado"); }
 async function run() { let passed = 0; for (const item of tests) { try { await item.body(); passed += 1; } catch (error) { const row = document.createElement("li"); row.textContent = `FALLO — ${item.name}: ${error.message}`; document.querySelector("#test-results").append(row); } } const summary = document.querySelector("#test-summary"); summary.textContent = `${passed}/${tests.length} pruebas aprobadas`; document.documentElement.dataset.testStatus = passed === tests.length ? "passed" : "failed"; }
-run();
+await run();

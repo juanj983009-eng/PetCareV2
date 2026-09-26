@@ -74,7 +74,7 @@ export function createRolesController({ document, client }) {
       const article = document.createElement("article");
       article.className = "col-12 col-md-6";
       const card = document.createElement("div");
-      card.className = "card h-100 border-0 shadow-sm";
+      card.className = "card h-100 pc-record-card";
       const body = document.createElement("div");
       body.className = "card-body";
       const heading = document.createElement("h3");

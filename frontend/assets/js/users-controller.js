@@ -488,7 +488,7 @@ function textCell(value) {
 function statusBadge(status) {
   const badge = document.createElement("span");
   badge.className = `badge ${status === "ACTIVO" ? "text-bg-success" : status === "INACTIVO" ? "text-bg-secondary" : "text-bg-warning"}`;
-  badge.textContent = status === "ACTIVO" ? "Activo" : status === "INACTIVO" ? "Inactivo" : "Bloqueado";
+  badge.textContent = status === "ACTIVO" ? "● Activo" : status === "INACTIVO" ? "○ Inactivo" : "▲ Bloqueado";
   return badge;
 }
 
