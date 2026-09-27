@@ -50,6 +50,8 @@ class SecurityConfiguration {
                             .hasAuthority("APPOINTMENT_READ")
                         .requestMatchers(HttpMethod.POST, "/api/v1/appointments")
                             .hasAuthority("APPOINTMENT_CREATE")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/appointments/*/status")
+                            .hasAuthority("APPOINTMENT_STATUS_UPDATE")
                         .requestMatchers("/api/v1/appointments", "/api/v1/appointments/**")
                             .hasAuthority("APPOINTMENT_CREATE")
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/roles", "/api/v1/roles/**")

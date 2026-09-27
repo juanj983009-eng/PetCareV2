@@ -6,8 +6,11 @@ import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCas
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,5 +56,13 @@ class AppointmentController {
         AppointmentSummary created = schedule.createAppointment(request.toCommand());
         return ResponseEntity.created(URI.create("/api/v1/appointments/" + created.id()))
                 .body(AppointmentCreatedResponse.from(created));
+    }
+
+    @PatchMapping("/{appointmentId}/status")
+    AppointmentCreatedResponse updateAppointmentStatus(
+            @PathVariable("appointmentId") UUID appointmentId,
+            @Valid @RequestBody UpdateAppointmentStatusRequest request) {
+        AppointmentSummary updated = schedule.updateStatus(request.toCommand(appointmentId));
+        return AppointmentCreatedResponse.from(updated);
     }
 }

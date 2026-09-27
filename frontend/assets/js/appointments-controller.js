@@ -2,6 +2,7 @@ import { ApiRequestError } from "./api-client.js";
 
 const APPOINTMENT_READ = "APPOINTMENT_READ";
 const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
+const APPOINTMENT_STATUS_UPDATE = "APPOINTMENT_STATUS_UPDATE";
 const PATIENT_READ = "PATIENT_READ";
 
 const APPOINTMENT_TYPE_LABELS = Object.freeze({
@@ -61,6 +62,7 @@ export function createAppointmentsController({
   const d = findDialogElements(document);
   let canRead = false;
   let canCreate = false;
+  let canUpdateStatus = false;
   let canReadPatient = false;
   let searching = false;
   let savingAppointment = false;
@@ -68,6 +70,7 @@ export function createAppointmentsController({
   let optionsLoaded = false;
   let page = 0;
   let totalPages = 0;
+  const updatingAppointmentIds = new Set();
   const branchTimeZones = new Map();
   let branchesCatalog = [];
   let veterinariansCatalog = [];
@@ -102,7 +105,9 @@ export function createAppointmentsController({
       const authorities = new Set(identity?.authorities ?? []);
       canRead = authorities.has(APPOINTMENT_READ);
       canCreate = authorities.has(APPOINTMENT_CREATE);
+      canUpdateStatus = authorities.has(APPOINTMENT_STATUS_UPDATE);
       canReadPatient = authorities.has(PATIENT_READ);
+      updatingAppointmentIds.clear();
       optionsLoaded = false;
       branchTimeZones.clear();
       branchesCatalog = [];
@@ -116,6 +121,10 @@ export function createAppointmentsController({
         if (s.notice) {
           s.notice.hidden = true;
         }
+        if (s.statusError) {
+          s.statusError.hidden = true;
+          s.statusError.textContent = "";
+        }
         closeAppointmentsView();
         resetStateToDefaultDate();
       }
@@ -123,7 +132,9 @@ export function createAppointmentsController({
     sessionEnded() {
       canRead = false;
       canCreate = false;
+      canUpdateStatus = false;
       canReadPatient = false;
+      updatingAppointmentIds.clear();
       optionsLoaded = false;
       branchTimeZones.clear();
       branchesCatalog = [];
@@ -136,6 +147,10 @@ export function createAppointmentsController({
         syncCreateButtonState();
         if (s.notice) {
           s.notice.hidden = true;
+        }
+        if (s.statusError) {
+          s.statusError.hidden = true;
+          s.statusError.textContent = "";
         }
         s.view.hidden = true;
         s.home.hidden = false;
@@ -602,6 +617,7 @@ export function createAppointmentsController({
 
     s.rows.replaceChildren();
     s.cards.replaceChildren();
+    renderStatusIndicators(items);
 
     if (items.length === 0) {
       setViewState("empty");
@@ -621,6 +637,64 @@ export function createAppointmentsController({
     }
 
     setViewState("results");
+  }
+
+  function renderStatusIndicators(items) {
+    if (!s?.indicators) return;
+    s.indicators.replaceChildren();
+    let programadas = 0;
+    let confirmadas = 0;
+    let enEspera = 0;
+    for (const item of items) {
+      if (item.status === "PROGRAMADA") programadas += 1;
+      else if (item.status === "CONFIRMADA") confirmadas += 1;
+      else if (item.status === "EN_ESPERA") enEspera += 1;
+    }
+    const chips = [
+      { key: "programadas", label: `Programadas: ${programadas}` },
+      { key: "confirmadas", label: `Confirmadas: ${confirmadas}` },
+      { key: "en-espera", label: `En espera: ${enEspera}` }
+    ];
+    for (const chip of chips) {
+      const span = document.createElement("span");
+      span.className = "badge text-bg-light border text-dark";
+      span.dataset.indicator = chip.key;
+      span.textContent = chip.label;
+      s.indicators.append(span);
+    }
+  }
+
+  function getAvailableStatusActions(status) {
+    if (!canUpdateStatus) return [];
+    if (status === "PROGRAMADA") {
+      return [
+        { label: "Confirmar", targetStatus: "CONFIRMADA", btnClass: "btn btn-outline-primary btn-sm" },
+        { label: "Registrar llegada", targetStatus: "EN_ESPERA", btnClass: "btn btn-primary btn-sm" }
+      ];
+    }
+    if (status === "CONFIRMADA") {
+      return [
+        { label: "Registrar llegada", targetStatus: "EN_ESPERA", btnClass: "btn btn-primary btn-sm" }
+      ];
+    }
+    return [];
+  }
+
+  function createStatusActionButtons(item) {
+    const actions = getAvailableStatusActions(item.status);
+    if (!item.id || actions.length === 0) return [];
+    const isBusy = updatingAppointmentIds.has(item.id);
+    return actions.map((action) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = action.btnClass;
+      btn.dataset.action = "change-appointment-status";
+      btn.dataset.appointmentId = item.id;
+      btn.dataset.targetStatus = action.targetStatus;
+      btn.disabled = isBusy;
+      btn.textContent = action.label;
+      return btn;
+    });
   }
 
   function createTableRow(item) {
@@ -661,7 +735,19 @@ export function createAppointmentsController({
     const tdStatus = document.createElement("td");
     tdStatus.append(createStatusBadge(item.status));
 
-    tr.append(tdTime, tdPatient, tdType, tdVet, tdBranch, tdStatus);
+    const tdActions = document.createElement("td");
+    tdActions.className = "text-end";
+    const statusButtons = createStatusActionButtons(item);
+    if (statusButtons.length > 0) {
+      const btnGroup = document.createElement("div");
+      btnGroup.className = "d-inline-flex flex-wrap justify-content-end gap-1";
+      btnGroup.append(...statusButtons);
+      tdActions.append(btnGroup);
+    } else {
+      tdActions.textContent = "—";
+    }
+
+    tr.append(tdTime, tdPatient, tdType, tdVet, tdBranch, tdStatus, tdActions);
     return tr;
   }
 
@@ -698,16 +784,22 @@ export function createAppointmentsController({
     metaList.append(typeLine, vetLine, branchLine);
     body.append(topRow, patientTitle, metaList);
 
-    if (canReadPatient && item.patientId && typeof onViewPatientProfile === "function") {
+    const statusButtons = createStatusActionButtons(item);
+    const hasProfileButton = canReadPatient && item.patientId && typeof onViewPatientProfile === "function";
+
+    if (hasProfileButton || statusButtons.length > 0) {
       const actionsDiv = document.createElement("div");
-      actionsDiv.className = "mt-2 pt-2 border-top d-flex justify-content-end";
-      const profileBtn = document.createElement("button");
-      profileBtn.type = "button";
-      profileBtn.className = "btn btn-outline-primary btn-sm";
-      profileBtn.dataset.action = "view-appointment-patient";
-      profileBtn.dataset.patientId = item.patientId;
-      profileBtn.textContent = "Ver perfil clínico";
-      actionsDiv.append(profileBtn);
+      actionsDiv.className = "mt-2 pt-2 border-top d-flex flex-wrap justify-content-end gap-2";
+      if (hasProfileButton) {
+        const profileBtn = document.createElement("button");
+        profileBtn.type = "button";
+        profileBtn.className = "btn btn-outline-primary btn-sm";
+        profileBtn.dataset.action = "view-appointment-patient";
+        profileBtn.dataset.patientId = item.patientId;
+        profileBtn.textContent = "Ver perfil clínico";
+        actionsDiv.append(profileBtn);
+      }
+      actionsDiv.append(...statusButtons);
       body.append(actionsDiv);
     }
 
@@ -727,13 +819,90 @@ export function createAppointmentsController({
     return span;
   }
 
-  function handleDelegatedClick(event) {
+  async function handleDelegatedClick(event) {
+    const statusButton = event.target?.closest?.("[data-action='change-appointment-status']");
+    if (statusButton) {
+      await handleStatusChangeClick(statusButton);
+      return;
+    }
+
     const button = event.target?.closest?.("[data-action='view-appointment-patient']");
     if (!button || !canReadPatient || typeof onViewPatientProfile !== "function") return;
     const patientId = button.dataset.patientId;
     if (patientId) {
       s.view.hidden = true;
       onViewPatientProfile(patientId);
+    }
+  }
+
+  async function handleStatusChangeClick(clickedButton) {
+    if (!s || !canUpdateStatus) return;
+    const appointmentId = clickedButton.dataset.appointmentId;
+    const targetStatus = clickedButton.dataset.targetStatus;
+    if (!appointmentId || !targetStatus || updatingAppointmentIds.has(appointmentId)) {
+      return;
+    }
+
+    updatingAppointmentIds.add(appointmentId);
+    if (s.notice) {
+      s.notice.hidden = true;
+    }
+    if (s.statusError) {
+      s.statusError.hidden = true;
+      s.statusError.textContent = "";
+    }
+
+    const relatedButtons = Array.from(
+      s.view.querySelectorAll(`[data-action="change-appointment-status"][data-appointment-id="${appointmentId}"]`)
+    );
+    const originalLabels = new Map();
+    for (const btn of relatedButtons) {
+      originalLabels.set(btn, btn.textContent);
+      btn.disabled = true;
+      if (btn.dataset.targetStatus === targetStatus) {
+        btn.setAttribute("aria-busy", "true");
+        btn.textContent = targetStatus === "CONFIRMADA" ? "Confirmando..." : "Registrando llegada...";
+      }
+    }
+
+    try {
+      await client.requestJson(`/api/v1/appointments/${appointmentId}/status`, {
+        method: "PATCH",
+        body: { status: targetStatus }
+      });
+
+      updatingAppointmentIds.delete(appointmentId);
+
+      if (s.notice) {
+        s.notice.textContent = targetStatus === "CONFIRMADA"
+          ? "Cita confirmada correctamente."
+          : "Llegada registrada: paciente en espera.";
+        s.notice.hidden = false;
+      }
+
+      if (canRead) {
+        await executeSearch(page);
+      }
+    } catch (error) {
+      updatingAppointmentIds.delete(appointmentId);
+      for (const [btn, label] of originalLabels.entries()) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+        btn.textContent = label;
+      }
+      const baseMessage = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible actualizar el estado de la cita.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+      if (s.statusError) {
+        s.statusError.textContent = `${baseMessage}${correlationSuffix}`;
+        s.statusError.hidden = false;
+        s.statusError.focus({ preventScroll: true });
+      }
+    } finally {
+      updatingAppointmentIds.delete(appointmentId);
     }
   }
 
@@ -816,6 +985,7 @@ function findElements(document) {
     title: document.querySelector("#appointments-title"),
     newAppointmentViewButton: document.querySelector("#new-appointment-view-button"),
     notice: document.querySelector("#appointments-notice"),
+    statusError: document.querySelector("#appointments-status-error"),
     searchForm: document.querySelector("#appointment-search-form"),
     dateFilter: document.querySelector("#appointment-date-filter"),
     branchFilter: document.querySelector("#appointment-branch-filter"),
@@ -833,6 +1003,7 @@ function findElements(document) {
     empty: document.querySelector("#appointments-empty"),
     results: document.querySelector("#appointments-results"),
     summary: document.querySelector("#appointments-summary"),
+    indicators: document.querySelector("#appointments-status-indicators"),
     rows: document.querySelector("#appointments-table-body"),
     cards: document.querySelector("#appointments-cards"),
     pagination: document.querySelector("#appointments-pagination"),

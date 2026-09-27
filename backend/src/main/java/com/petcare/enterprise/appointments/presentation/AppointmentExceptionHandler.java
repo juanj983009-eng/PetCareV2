@@ -3,6 +3,7 @@ package com.petcare.enterprise.appointments.presentation;
 import com.petcare.enterprise.appointments.application.AppointmentResourceNotFoundException;
 import com.petcare.enterprise.appointments.application.AppointmentTimeConflictException;
 import com.petcare.enterprise.appointments.application.InvalidAppointmentScheduleQueryException;
+import com.petcare.enterprise.appointments.application.InvalidAppointmentStatusTransitionException;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorCode;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponse;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponseFactory;
@@ -45,6 +46,14 @@ class AppointmentExceptionHandler {
         return errors.response(
                 HttpStatus.CONFLICT,
                 ApiErrorCode.APPOINTMENT_TIME_CONFLICT,
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(InvalidAppointmentStatusTransitionException.class)
+    ResponseEntity<ApiErrorResponse> invalidStatusTransition(InvalidAppointmentStatusTransitionException exception) {
+        return errors.response(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.INVALID_APPOINTMENT_STATUS_TRANSITION,
                 exception.getMessage());
     }
 }

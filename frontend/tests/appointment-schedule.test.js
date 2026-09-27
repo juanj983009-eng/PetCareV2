@@ -372,6 +372,160 @@ test("valida fecha inválida y maneja estados vacío y error con reintento", asy
   controller.sessionEnded();
 });
 
+test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones según estado con permiso", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const vetAna = "22222222-2222-4222-8222-222222222222";
+  const apptProgramada = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const apptConfirmada = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const apptEnEspera = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  let items = [
+    {
+      id: apptProgramada,
+      startsAt: "2026-09-28T14:00:00Z",
+      endsAt: "2026-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "PROGRAMADA",
+      patientId: "33333333-3333-4333-8333-333333333333",
+      patientName: "Luna",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    },
+    {
+      id: apptConfirmada,
+      startsAt: "2026-09-28T15:00:00Z",
+      endsAt: "2026-09-28T15:30:00Z",
+      appointmentType: "CONTROL",
+      status: "CONFIRMADA",
+      patientId: "44444444-4444-4444-8444-444444444444",
+      patientName: "Max",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    },
+    {
+      id: apptEnEspera,
+      startsAt: "2026-09-28T16:00:00Z",
+      endsAt: "2026-09-28T16:30:00Z",
+      appointmentType: "VACUNACION",
+      status: "EN_ESPERA",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Toby",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    }
+  ];
+
+  const patchCalls = [];
+  const searchUrls = [];
+  let failNextPatch = false;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      requestJson: async (url, options = {}) => {
+        if (url === "/api/v1/appointments/options") {
+          return {
+            branches: [{ id: branchA, name: "Sede Miraflores", timeZone: "America/Lima" }],
+            veterinarians: [{ id: vetAna, fullName: "Dra. Ana Salazar", branchIds: [branchA] }]
+          };
+        }
+        if (options.method === "PATCH") {
+          const payload = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+          patchCalls.push({ url, body: payload });
+          await new Promise((r) => setTimeout(r, 35));
+          if (failNextPatch) {
+            failNextPatch = false;
+            throw new ApiRequestError({
+              kind: "HTTP",
+              status: 409,
+              code: "INVALID_APPOINTMENT_STATUS_TRANSITION",
+              message: "No se puede volver a CONFIRMADA desde EN_ESPERA.",
+              correlationId: "corr-status-409"
+            });
+          }
+          const targetId = url.split("/")[4];
+          items = items.map((item) =>
+            item.id === targetId ? { ...item, status: payload.status } : item
+          );
+          return items.find((item) => item.id === targetId);
+        }
+        searchUrls.push(url);
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: items.length,
+          totalPages: 1
+        };
+      }
+    }
+  });
+
+  // 1. Veterinario sin APPOINTMENT_STATUS_UPDATE: no ve botones de cambio de estado
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ"] });
+  await controller.openAppointmentsView();
+
+  const tableButtonsWithoutPerm = document.querySelectorAll('#appointments-table-body [data-action="change-appointment-status"]');
+  assert(tableButtonsWithoutPerm.length === 0, "Sin APPOINTMENT_STATUS_UPDATE no debe renderizar botones de estado");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Programadas: 1"), "Debe mostrar indicador Programadas: 1");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Confirmadas: 1"), "Debe mostrar indicador Confirmadas: 1");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("En espera: 1"), "Debe mostrar indicador En espera: 1");
+
+  // 2. Recepcionista con APPOINTMENT_STATUS_UPDATE: ve acciones según estado
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ", "APPOINTMENT_STATUS_UPDATE"] });
+  await controller.openAppointmentsView();
+  document.querySelector("#appointment-date-filter").value = "2026-09-28";
+  document.querySelector("#appointment-branch-filter").value = branchA;
+  document.querySelector("#appointment-veterinarian-filter").value = vetAna;
+  document.querySelector("#appointment-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 25));
+
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  const rowProgramadaActions = rows[0].querySelectorAll('[data-action="change-appointment-status"]');
+  const rowConfirmadaActions = rows[1].querySelectorAll('[data-action="change-appointment-status"]');
+  const rowEnEsperaActions = rows[2].querySelectorAll('[data-action="change-appointment-status"]');
+
+  assert(rowProgramadaActions.length === 2, "PROGRAMADA debe mostrar 2 acciones (Confirmar y Registrar llegada)");
+  assert(rowConfirmadaActions.length === 1, "CONFIRMADA debe mostrar solo 1 acción (Registrar llegada)");
+  assert(rowConfirmadaActions[0].dataset.targetStatus === "EN_ESPERA", "Acción de CONFIRMADA debe apuntar a EN_ESPERA");
+  assert(rowEnEsperaActions.length === 0, "EN_ESPERA no debe mostrar acciones adicionales en este corte");
+
+  // 3. Confirmar cita PROGRAMADA con doble clic bloqueado y preservando filtros
+  const confirmButton = rows[0].querySelector('[data-target-status="CONFIRMADA"]');
+  confirmButton.click();
+  confirmButton.click();
+  assert(confirmButton.disabled === true, "Debe deshabilitar botón mientras procesa transición");
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert(patchCalls.length === 1, `Doble clic debe enviar solo 1 PATCH (enviados: ${patchCalls.length})`);
+  assert(patchCalls[0].url === `/api/v1/appointments/${apptProgramada}/status`, "Debe invocar PATCH /api/v1/appointments/{id}/status");
+  assert(patchCalls[0].body.status === "CONFIRMADA", "Debe enviar status CONFIRMADA");
+  assert(document.querySelector("#appointments-notice").hidden === false, "Debe mostrar confirmación visual tras actualizar estado");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Programadas: 0"), "Tras confirmar debe actualizar Programadas: 0");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Confirmadas: 2"), "Tras confirmar debe actualizar Confirmadas: 2");
+  const lastSearchUrl = searchUrls[searchUrls.length - 1];
+  assert(lastSearchUrl.includes(`branchId=${branchA}`) && lastSearchUrl.includes(`veterinarianId=${vetAna}`), "Debe preservar filtros activos al refrescar la agenda");
+
+  // 4. Error 409 con correlationId al fallar transición
+  failNextPatch = true;
+  const updatedRows = document.querySelectorAll("#appointments-table-body tr");
+  const checkInBtn = updatedRows[0].querySelector('[data-target-status="EN_ESPERA"]');
+  checkInBtn.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  const statusErrorEl = document.querySelector("#appointments-status-error");
+  assert(statusErrorEl.hidden === false, "Ante 409 debe mostrar alerta de error en agenda");
+  assert(statusErrorEl.textContent.includes("corr-status-409"), "Alerta 409 debe incluir correlationId");
+
+  controller.sessionEnded();
+});
+
 async function run() {
   let passed = 0;
   for (const t of tests) {

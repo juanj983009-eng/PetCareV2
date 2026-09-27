@@ -17,6 +17,13 @@ public interface AppointmentScheduleUseCase {
 
     AppointmentSummary createAppointment(CreateAppointmentCommand command);
 
+    AppointmentSummary updateStatus(UpdateAppointmentStatusCommand command);
+
+    record UpdateAppointmentStatusCommand(
+            UUID appointmentId,
+            String status) {
+    }
+
     record CreateAppointmentCommand(
             UUID patientId,
             UUID branchId,

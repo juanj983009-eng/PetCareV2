@@ -28,6 +28,17 @@ public interface AppointmentScheduleRepository {
 
     AppointmentSummary insertAppointment(NewAppointmentRecord record);
 
+    Optional<AppointmentSummary> findById(UUID tenantId, UUID appointmentId);
+
+    boolean updateStatusConditionally(
+            UUID tenantId,
+            UUID appointmentId,
+            String expectedPreviousStatus,
+            String newStatus,
+            Instant updatedAt);
+
+    void insertStatusHistory(AppointmentStatusHistoryRecord record);
+
     record VeterinarianEligibility(
             UUID id,
             String fullName,
@@ -52,5 +63,16 @@ public interface AppointmentScheduleRepository {
             String notes,
             UUID createdBy,
             Instant createdAt) {
+    }
+
+    record AppointmentStatusHistoryRecord(
+            UUID id,
+            UUID tenantId,
+            UUID appointmentId,
+            String previousStatus,
+            String newStatus,
+            UUID changedBy,
+            Instant changedAt,
+            UUID correlationId) {
     }
 }

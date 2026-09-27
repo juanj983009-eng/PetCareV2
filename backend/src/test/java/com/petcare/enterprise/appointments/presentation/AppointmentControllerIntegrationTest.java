@@ -10,11 +10,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository;
+import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.AppointmentStatusHistoryRecord;
 import com.petcare.enterprise.appointments.domain.AppointmentCreated;
 import com.petcare.enterprise.appointments.infrastructure.events.AppointmentCreatedEventListener;
 import com.petcare.enterprise.audit.application.AuditLogWriter;
@@ -62,18 +65,24 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
     @MockitoSpyBean
     AuditLogWriter auditLogWriter;
 
+    @MockitoSpyBean
+    AppointmentScheduleRepository scheduleRepository;
+
     private final List<UUID> createdTenantIds = new ArrayList<>();
 
     @AfterEach
     void cleanUpTenants() {
-        reset(auditLogWriter, eventListener);
+        reset(auditLogWriter, eventListener, scheduleRepository);
         if (!createdTenantIds.isEmpty()) {
             jdbc.execute("ALTER TABLE audit_entries DISABLE TRIGGER USER");
+            jdbc.execute("ALTER TABLE appointment_status_history DISABLE TRIGGER USER");
             try {
                 for (UUID tenantId : createdTenantIds) {
                     jdbc.update("DELETE FROM audit_entries WHERE tenant_id = ?", tenantId);
+                    jdbc.update("DELETE FROM appointment_status_history WHERE tenant_id = ?", tenantId);
                 }
             } finally {
+                jdbc.execute("ALTER TABLE appointment_status_history ENABLE TRIGGER USER");
                 jdbc.execute("ALTER TABLE audit_entries ENABLE TRIGGER USER");
             }
         }
@@ -915,6 +924,492 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 """, String.class, tenant.tenantId);
 
         assertThat(rolesWithCreate).containsExactly("ADMINISTRADOR", "RECEPCIONISTA");
+    }
+
+    @Test
+    void transitionsValidStatusesIdempotentlyAndPersistsAppendOnlyHistoryAndSafeAudit() throws Exception {
+        TenantFixture tenant = createTenantFixture("status-valid");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Miraflores", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-st@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76001122");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Golden Retriever");
+
+        // Appointment 1: PROGRAMADA -> CONFIRMADA -> CONFIRMADA (idempotent) -> EN_ESPERA -> EN_ESPERA (idempotent)
+        UUID appt1 = insertAppointment(
+                tenant.tenantId,
+                branch,
+                patient,
+                vet,
+                Instant.parse("2026-09-29T14:00:00Z"),
+                Instant.parse("2026-09-29T14:30:00Z"),
+                "CONSULTA_GENERAL",
+                "PROGRAMADA",
+                "Control general",
+                "Notas internas");
+
+        String corrConfirm = "22222222-3333-4444-8555-666666666666";
+        String confirmResp = mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt1)
+                        .header("X-Correlation-ID", corrConfirm)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "status": "CONFIRMADA" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(appt1.toString()))
+                .andExpect(jsonPath("$.status").value("CONFIRMADA"))
+                .andExpect(jsonPath("$.patientId").value(patient.toString()))
+                .andExpect(jsonPath("$.patientName").value("Luna"))
+                .andExpect(jsonPath("$.branchId").value(branch.toString()))
+                .andExpect(jsonPath("$.branchName").value("Sede Miraflores"))
+                .andExpect(jsonPath("$.veterinarianId").value(vet.toString()))
+                .andExpect(jsonPath("$.veterinarianFullName").value("Ana Salazar"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(confirmResp).doesNotContain("tenantId", "createdBy", "reason", "notes", "passwordHash");
+
+        // Repeating CONFIRMADA is idempotent: 200 OK without new history or audit
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt1)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "status": "CONFIRMADA" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMADA"));
+
+        Integer historyCountAfterIdempotentConfirm = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM appointment_status_history WHERE tenant_id = ? AND appointment_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                appt1);
+        assertThat(historyCountAfterIdempotentConfirm).isEqualTo(1);
+
+        Integer auditCountAfterIdempotentConfirm = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'",
+                Integer.class,
+                tenant.tenantId,
+                appt1);
+        assertThat(auditCountAfterIdempotentConfirm).isEqualTo(1);
+
+        // Transition CONFIRMADA -> EN_ESPERA
+        String corrWait = "33333333-4444-4555-8666-777777777777";
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt1)
+                        .header("X-Correlation-ID", corrWait)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "status": "EN_ESPERA" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("EN_ESPERA"));
+
+        // Repeating EN_ESPERA is idempotent: 200 OK without new history or audit
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt1)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "status": "EN_ESPERA" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("EN_ESPERA"));
+
+        Integer historyCountAfterWait = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM appointment_status_history WHERE tenant_id = ? AND appointment_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                appt1);
+        assertThat(historyCountAfterWait).isEqualTo(2);
+
+        List<String> transitionsForAppt1 = jdbc.queryForList("""
+                SELECT previous_status || '->' || new_status || ':' || changed_by::text || ':' || correlation_id::text
+                FROM appointment_status_history
+                WHERE tenant_id = ? AND appointment_id = ?
+                ORDER BY changed_at ASC, id ASC
+                """, String.class, tenant.tenantId, appt1);
+        assertThat(transitionsForAppt1).containsExactly(
+                "PROGRAMADA->CONFIRMADA:" + tenant.userId + ":" + corrConfirm,
+                "CONFIRMADA->EN_ESPERA:" + tenant.userId + ":" + corrWait);
+
+        // Appointment 2: Direct transition PROGRAMADA -> EN_ESPERA
+        UUID appt2 = insertAppointment(
+                tenant.tenantId,
+                branch,
+                patient,
+                vet,
+                Instant.parse("2026-09-29T15:00:00Z"),
+                Instant.parse("2026-09-29T15:30:00Z"),
+                "VACUNACION",
+                "PROGRAMADA",
+                "Vacuna anual",
+                null);
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "status": "EN_ESPERA" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("EN_ESPERA"));
+
+        String appt2Transition = jdbc.queryForObject("""
+                SELECT previous_status || '->' || new_status
+                FROM appointment_status_history
+                WHERE tenant_id = ? AND appointment_id = ?
+                """, String.class, tenant.tenantId, appt2);
+        assertThat(appt2Transition).isEqualTo("PROGRAMADA->EN_ESPERA");
+
+        // Verify safe audit data structure
+        String auditNewData = jdbc.queryForObject("""
+                SELECT new_data::text
+                FROM audit_entries
+                WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'
+                """, String.class, tenant.tenantId, appt2);
+        assertThat(auditNewData)
+                .contains("\"previousStatus\": \"PROGRAMADA\"")
+                .contains("\"newStatus\": \"EN_ESPERA\"")
+                .doesNotContain("reason", "notes", "passwordHash");
+    }
+
+    @Test
+    void rejectsInvalidStatusTransitionsOutOfScopeTargetsAndInvalidBodies() throws Exception {
+        TenantFixture tenant = createTenantFixture("status-invalid");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-inv@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76002233");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        UUID apptProgramada = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T14:00:00Z"), Instant.parse("2026-09-29T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        UUID apptEnEspera = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T15:00:00Z"), Instant.parse("2026-09-29T15:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", null, null);
+
+        UUID apptCancelada = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T16:00:00Z"), Instant.parse("2026-09-29T16:30:00Z"),
+                "CONSULTA_GENERAL", "CANCELADA", null, null);
+
+        UUID apptFinalizada = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T17:00:00Z"), Instant.parse("2026-09-29T17:30:00Z"),
+                "CONSULTA_GENERAL", "FINALIZADA", null, null);
+
+        // 409 for EN_ESPERA -> CONFIRMADA
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptEnEspera)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+
+        // 409 for out-of-scope or disallowed targets on PROGRAMADA
+        for (String disallowedTarget : List.of("PROGRAMADA", "EN_ATENCION", "FINALIZADA", "CANCELADA", "NO_ASISTIO", "OTRO_ESTADO")) {
+            mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptProgramada)
+                            .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{ \"status\": \"" + disallowedTarget + "\" }"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+        }
+
+        // 409 for CANCELADA -> CONFIRMADA and FINALIZADA -> EN_ESPERA
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptCancelada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptFinalizada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"EN_ESPERA\" }"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+
+        // 400 for blank status
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptProgramada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"   \" }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 400 when client attempts to inject tenantId, previousStatus, changedBy, or changedAt
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptProgramada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "CONFIRMADA",
+                                  "tenantId": "%s",
+                                  "previousStatus": "PROGRAMADA",
+                                  "changedBy": "%s",
+                                  "changedAt": "2026-09-29T14:00:00Z"
+                                }
+                                """.formatted(tenant.tenantId, tenant.userId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+    }
+
+    @Test
+    void enforcesRbacAndTenantIsolationForStatusTransitionsAndV13SystemRoles() throws Exception {
+        TenantFixture tenantA = createTenantFixture("status-tenant-a");
+        TenantFixture tenantB = createTenantFixture("status-tenant-b");
+
+        UUID branchA = insertBranch(tenantA.tenantId, "Sede A", "America/Lima", true);
+        UUID vetA = insertUserWithRole(tenantA.tenantId, "Ana", "Salazar", "ana-ta@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, vetA, branchA);
+        UUID ownerA = insertOwner(tenantA.tenantId, "Lucia", "Paredes", "DNI", "76003344");
+        UUID patientA = insertPatient(tenantA.tenantId, ownerA, "Luna", "PERRO", "Mestizo");
+        UUID apptA = insertAppointment(
+                tenantA.tenantId, branchA, patientA, vetA,
+                Instant.parse("2026-09-29T14:00:00Z"), Instant.parse("2026-09-29T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        // 401 without authentication
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 403 for user with APPOINTMENT_READ / APPOINTMENT_CREATE but without APPOINTMENT_STATUS_UPDATE
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptA)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_READ", "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // Uniform 404 for non-existent UUID and for foreign tenant's appointment (Tenant B accessing Tenant A's appt)
+        UUID missingId = UUID.randomUUID();
+        String missingResp = mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", missingId)
+                        .with(authentication(auth(tenantB, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String foreignResp = mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptA)
+                        .with(authentication(auth(tenantB, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(foreignResp.replaceAll("\"correlationId\":\"[^\"]+\"", ""))
+                .isEqualTo(missingResp.replaceAll("\"correlationId\":\"[^\"]+\"", ""));
+
+        // Verify V13 system roles assign APPOINTMENT_STATUS_UPDATE only to ADMINISTRADOR and RECEPCIONISTA
+        jdbc.query("SELECT ensure_tenant_system_roles(?)", rs -> null, tenantA.tenantId);
+        List<String> rolesWithStatusUpdate = jdbc.queryForList("""
+                SELECT r.name
+                FROM roles r
+                JOIN role_permissions rp
+                  ON rp.tenant_id = r.tenant_id
+                 AND rp.role_id = r.id
+                JOIN permissions p
+                  ON p.id = rp.permission_id
+                WHERE r.tenant_id = ?
+                  AND p.code = 'APPOINTMENT_STATUS_UPDATE'
+                ORDER BY r.name ASC
+                """, String.class, tenantA.tenantId);
+        assertThat(rolesWithStatusUpdate).containsExactly("ADMINISTRADOR", "RECEPCIONISTA");
+    }
+
+    @Test
+    void rollsBackStatusChangeWhenHistoryOrAuditFailsAndEnforcesAppendOnlyHistoryTrigger() throws Exception {
+        TenantFixture tenant = createTenantFixture("status-rollback");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-srb@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76004455");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        UUID appt = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T14:00:00Z"), Instant.parse("2026-09-29T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        // 1. Fail when history insertion fails -> appointment stays PROGRAMADA and no audit is saved
+        doThrow(new IllegalStateException("Fallo simulado en historial de estados"))
+                .when(scheduleRepository)
+                .insertStatusHistory(any(AppointmentStatusHistoryRecord.class));
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, appt))
+                .isEqualTo("PROGRAMADA");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'", Integer.class, appt))
+                .isZero();
+
+        reset(scheduleRepository);
+
+        // 2. Fail when audit write fails -> appointment stays PROGRAMADA and history is rolled back
+        doThrow(new IllegalStateException("Fallo simulado en auditoría de estado"))
+                .when(auditLogWriter)
+                .append(any(AuditRecord.class));
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, appt))
+                .isEqualTo("PROGRAMADA");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt))
+                .isZero();
+
+        reset(auditLogWriter);
+
+        // 3. Succeeds and verifies append-only trigger on appointment_status_history
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appt)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"CONFIRMADA\" }"))
+                .andExpect(status().isOk());
+
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE appointment_status_history SET new_status = 'EN_ESPERA' WHERE appointment_id = ?", appt))
+                .hasMessageContaining("append-only");
+        assertThatThrownBy(() -> jdbc.update(
+                "DELETE FROM appointment_status_history WHERE appointment_id = ?", appt))
+                .hasMessageContaining("append-only");
+        assertThatThrownBy(() -> jdbc.execute("TRUNCATE appointment_status_history"))
+                .hasMessageContaining("append-only");
+    }
+
+    @Test
+    void handlesConcurrentStatusTransitionsConsistentlyWithoutLostUpdatesOrDuplicates() throws Exception {
+        TenantFixture tenant = createTenantFixture("status-conc");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-cc@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76005566");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        // Case 1: Two concurrent identical transitions PROGRAMADA -> CONFIRMADA
+        UUID apptSame = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                Instant.parse("2026-09-29T14:00:00Z"), Instant.parse("2026-09-29T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        CountDownLatch ready1 = new CountDownLatch(2);
+        CountDownLatch start1 = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Callable<Integer> taskA = () -> {
+                ready1.countDown();
+                start1.await(5, TimeUnit.SECONDS);
+                return mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptSame)
+                                .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{ \"status\": \"CONFIRMADA\" }"))
+                        .andReturn().getResponse().getStatus();
+            };
+            Callable<Integer> taskB = () -> {
+                ready1.countDown();
+                start1.await(5, TimeUnit.SECONDS);
+                return mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptSame)
+                                .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{ \"status\": \"CONFIRMADA\" }"))
+                        .andReturn().getResponse().getStatus();
+            };
+
+            Future<Integer> fA = pool.submit(taskA);
+            Future<Integer> fB = pool.submit(taskB);
+            assertThat(ready1.await(5, TimeUnit.SECONDS)).isTrue();
+            start1.countDown();
+
+            assertThat(fA.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(fB.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+
+            assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, apptSame))
+                    .isEqualTo("CONFIRMADA");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptSame))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'", Integer.class, apptSame))
+                    .isEqualTo(1);
+
+            // Case 2: Two concurrent transitions (one CONFIRMADA, one EN_ESPERA) on PROGRAMADA
+            UUID apptChain = insertAppointment(
+                    tenant.tenantId, branch, patient, vet,
+                    Instant.parse("2026-09-29T15:00:00Z"), Instant.parse("2026-09-29T15:30:00Z"),
+                    "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+            CountDownLatch ready2 = new CountDownLatch(2);
+            CountDownLatch start2 = new CountDownLatch(1);
+            Callable<Integer> taskConfirm = () -> {
+                ready2.countDown();
+                start2.await(5, TimeUnit.SECONDS);
+                return mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptChain)
+                                .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{ \"status\": \"CONFIRMADA\" }"))
+                        .andReturn().getResponse().getStatus();
+            };
+            Callable<Integer> taskWait = () -> {
+                ready2.countDown();
+                start2.await(5, TimeUnit.SECONDS);
+                return mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptChain)
+                                .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{ \"status\": \"EN_ESPERA\" }"))
+                        .andReturn().getResponse().getStatus();
+            };
+
+            Future<Integer> fConfirm = pool.submit(taskConfirm);
+            Future<Integer> fWait = pool.submit(taskWait);
+            assertThat(ready2.await(5, TimeUnit.SECONDS)).isTrue();
+            start2.countDown();
+
+            int statusConfirm = fConfirm.get(10, TimeUnit.SECONDS);
+            int statusWait = fWait.get(10, TimeUnit.SECONDS);
+
+            assertThat(statusWait).isEqualTo(200);
+            assertThat(statusConfirm).isIn(200, 409);
+            assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, apptChain))
+                    .isEqualTo("EN_ESPERA");
+
+            int historyRows = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?",
+                    Integer.class,
+                    apptChain);
+            int auditRows = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'",
+                    Integer.class,
+                    apptChain);
+            assertThat(historyRows).isEqualTo(auditRows);
+            assertThat(historyRows).isEqualTo(statusConfirm == 200 ? 2 : 1);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     private String appointmentPayload(UUID branchId, UUID patientId, UUID veterinarianId, String startTime, String endTime) {

@@ -1,5 +1,6 @@
 package com.petcare.enterprise.appointments.application;
 
+import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.AppointmentStatusHistoryRecord;
 import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.NewAppointmentRecord;
 import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.VeterinarianEligibility;
 import com.petcare.enterprise.appointments.domain.AppointmentCreated;
@@ -255,6 +256,123 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
                 metadata.correlationId()));
 
         return created;
+    }
+
+    @Override
+    @Transactional
+    public AppointmentSummary updateStatus(UpdateAppointmentStatusCommand command) {
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+
+        if (command == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "status",
+                    "Los datos del cambio de estado son obligatorios.");
+        }
+        if (command.appointmentId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "appointmentId",
+                    "El identificador de la cita es obligatorio.");
+        }
+        if (command.status() == null || command.status().isBlank()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "status",
+                    "El estado de destino es obligatorio.");
+        }
+
+        String normalizedTarget = command.status().trim().toUpperCase(Locale.ROOT);
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            AppointmentSummary current = repository.findById(tenantId, command.appointmentId())
+                    .orElseThrow(AppointmentResourceNotFoundException::new);
+
+            AppointmentStatus targetStatus = parseAllowedTargetStatus(current.status(), normalizedTarget);
+            AppointmentStatus currentStatus = AppointmentStatus.valueOf(current.status());
+
+            if (currentStatus == targetStatus) {
+                return current;
+            }
+
+            if (!isAllowedTransition(currentStatus, targetStatus)) {
+                throw new InvalidAppointmentStatusTransitionException(currentStatus.name(), targetStatus.name());
+            }
+
+            Instant now = clock.instant();
+            boolean updated = repository.updateStatusConditionally(
+                    tenantId,
+                    command.appointmentId(),
+                    currentStatus.name(),
+                    targetStatus.name(),
+                    now);
+
+            if (updated) {
+                AppointmentSummary updatedSummary = new AppointmentSummary(
+                        current.id(),
+                        current.startsAt(),
+                        current.endsAt(),
+                        current.appointmentType(),
+                        targetStatus.name(),
+                        current.patientId(),
+                        current.patientName(),
+                        current.branchId(),
+                        current.branchName(),
+                        current.veterinarianId(),
+                        current.veterinarianFullName());
+
+                repository.insertStatusHistory(new AppointmentStatusHistoryRecord(
+                        UUID.randomUUID(),
+                        tenantId,
+                        updatedSummary.id(),
+                        currentStatus.name(),
+                        targetStatus.name(),
+                        metadata.actorUserId(),
+                        now,
+                        metadata.correlationId()));
+
+                auditWriter.append(new AuditRecord(
+                        UUID.randomUUID(),
+                        tenantId,
+                        metadata.actorUserId(),
+                        updatedSummary.branchId(),
+                        "APPOINTMENT",
+                        updatedSummary.id(),
+                        "APPOINTMENT_STATUS_CHANGED",
+                        now,
+                        null,
+                        metadata.correlationId(),
+                        Map.of("status", currentStatus.name()),
+                        Map.of(
+                                "appointmentId", updatedSummary.id().toString(),
+                                "branchId", updatedSummary.branchId().toString(),
+                                "previousStatus", currentStatus.name(),
+                                "newStatus", targetStatus.name())));
+
+                return updatedSummary;
+            }
+        }
+
+        throw new InvalidAppointmentStatusTransitionException();
+    }
+
+    private static AppointmentStatus parseAllowedTargetStatus(String currentStatus, String normalizedTarget) {
+        if ("CONFIRMADA".equals(normalizedTarget)) {
+            return AppointmentStatus.CONFIRMADA;
+        }
+        if ("EN_ESPERA".equals(normalizedTarget)) {
+            return AppointmentStatus.EN_ESPERA;
+        }
+        throw new InvalidAppointmentStatusTransitionException(currentStatus, normalizedTarget);
+    }
+
+    private static boolean isAllowedTransition(AppointmentStatus currentStatus, AppointmentStatus targetStatus) {
+        if (currentStatus == AppointmentStatus.PROGRAMADA) {
+            return targetStatus == AppointmentStatus.CONFIRMADA
+                    || targetStatus == AppointmentStatus.EN_ESPERA;
+        }
+        if (currentStatus == AppointmentStatus.CONFIRMADA) {
+            return targetStatus == AppointmentStatus.EN_ESPERA;
+        }
+        return false;
     }
 
     private static Instant resolveInstantInBranchZone(

@@ -358,6 +358,97 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 record.veterinarianFullName());
     }
 
+    @Override
+    public Optional<AppointmentSummary> findById(UUID tenantId, UUID appointmentId) {
+        String sql = """
+                SELECT
+                    a.id,
+                    a.starts_at,
+                    a.ends_at,
+                    a.appointment_type,
+                    a.status,
+                    p.id AS patient_id,
+                    p.name AS patient_name,
+                    b.id AS branch_id,
+                    b.name AS branch_name,
+                    v.id AS veterinarian_id,
+                    btrim(v.first_name || ' ' || v.last_name) AS veterinarian_full_name
+                FROM appointments a
+                JOIN patients p
+                  ON p.tenant_id = a.tenant_id AND p.id = a.patient_id
+                JOIN branches b
+                  ON b.tenant_id = a.tenant_id AND b.id = a.branch_id
+                JOIN users v
+                  ON v.tenant_id = a.tenant_id AND v.id = a.veterinarian_id
+                WHERE a.tenant_id = :tenantId
+                  AND a.id = :appointmentId
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("appointmentId", appointmentId, Types.OTHER);
+        List<AppointmentSummary> results = jdbc.query(sql, params, this::mapAppointment);
+        return results.stream().findFirst();
+    }
+
+    @Override
+    public boolean updateStatusConditionally(
+            UUID tenantId,
+            UUID appointmentId,
+            String expectedPreviousStatus,
+            String newStatus,
+            Instant updatedAt) {
+        String sql = """
+                UPDATE appointments
+                SET status = :newStatus,
+                    updated_at = :updatedAt
+                WHERE tenant_id = :tenantId
+                  AND id = :appointmentId
+                  AND status = :expectedPreviousStatus
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("appointmentId", appointmentId, Types.OTHER)
+                .addValue("expectedPreviousStatus", expectedPreviousStatus, Types.VARCHAR)
+                .addValue("newStatus", newStatus, Types.VARCHAR)
+                .addValue("updatedAt", OffsetDateTime.ofInstant(updatedAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
+        return jdbc.update(sql, params) == 1;
+    }
+
+    @Override
+    public void insertStatusHistory(AppointmentStatusHistoryRecord record) {
+        String sql = """
+                INSERT INTO appointment_status_history (
+                    id,
+                    tenant_id,
+                    appointment_id,
+                    previous_status,
+                    new_status,
+                    changed_by,
+                    changed_at,
+                    correlation_id
+                ) VALUES (
+                    :id,
+                    :tenantId,
+                    :appointmentId,
+                    :previousStatus,
+                    :newStatus,
+                    :changedBy,
+                    :changedAt,
+                    :correlationId
+                )
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("id", record.id(), Types.OTHER)
+                .addValue("tenantId", record.tenantId(), Types.OTHER)
+                .addValue("appointmentId", record.appointmentId(), Types.OTHER)
+                .addValue("previousStatus", record.previousStatus(), Types.VARCHAR)
+                .addValue("newStatus", record.newStatus(), Types.VARCHAR)
+                .addValue("changedBy", record.changedBy(), Types.OTHER)
+                .addValue("changedAt", OffsetDateTime.ofInstant(record.changedAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("correlationId", record.correlationId(), Types.OTHER);
+        jdbc.update(sql, params);
+    }
+
     private AppointmentSummary mapAppointment(ResultSet rs, int rowNum) throws SQLException {
         return new AppointmentSummary(
                 rs.getObject("id", UUID.class),
