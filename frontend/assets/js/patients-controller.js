@@ -2,6 +2,7 @@ import { ApiRequestError } from "./api-client.js";
 
 const PATIENT_CREATE = "PATIENT_CREATE";
 const PATIENT_READ = "PATIENT_READ";
+const PATIENT_UPDATE = "PATIENT_UPDATE";
 
 const SPECIES_LABELS = Object.freeze({
   CANINO: "Canino",
@@ -29,17 +30,23 @@ export function createPatientsController({ document, client }) {
   const p = profileElements(document);
   let canCreate = false;
   let canRead = false;
+  let canUpdate = false;
   let loading = false;
   let searching = false;
   let loadingProfile = false;
   let page = 0;
   let totalPages = 0;
   let activeProfileId = null;
+  let currentProfile = null;
+  let editingPatientId = null;
 
   e.open.addEventListener("click", openCreateDialog);
-  e.cancel.addEventListener("click", () => e.dialog.close());
+  e.cancel.addEventListener("click", () => {
+    editingPatientId = null;
+    e.dialog.close();
+  });
   e.ownerSearch.addEventListener("click", findOwners);
-  e.form.addEventListener("submit", create);
+  e.form.addEventListener("submit", save);
 
   if (s) {
     s.navButton.addEventListener("click", openSearchView);
@@ -54,6 +61,7 @@ export function createPatientsController({ document, client }) {
 
   if (p) {
     p.backButton.addEventListener("click", backToSearchResults);
+    p.editButton?.addEventListener("click", openEditPatientDialog);
     p.retryButton.addEventListener("click", () => {
       if (activeProfileId) {
         openPatientProfile(activeProfileId);
@@ -66,6 +74,9 @@ export function createPatientsController({ document, client }) {
       const authorities = new Set(identity?.authorities ?? []);
       canCreate = authorities.has(PATIENT_CREATE);
       canRead = authorities.has(PATIENT_READ);
+      canUpdate = authorities.has(PATIENT_UPDATE);
+      currentProfile = null;
+      editingPatientId = null;
       e.open.hidden = !canCreate;
       if (s) {
         s.navButton.hidden = !canRead;
@@ -77,6 +88,12 @@ export function createPatientsController({ document, client }) {
       }
       if (p) {
         p.view.hidden = true;
+        if (p.editButton) {
+          p.editButton.hidden = true;
+        }
+        if (p.notice) {
+          p.notice.hidden = true;
+        }
         p.newConsultationButton.hidden = true;
         p.newConsultationButton.disabled = true;
         p.newAppointmentButton.hidden = true;
@@ -87,13 +104,22 @@ export function createPatientsController({ document, client }) {
     sessionEnded() {
       canCreate = false;
       canRead = false;
+      canUpdate = false;
       activeProfileId = null;
+      currentProfile = null;
+      editingPatientId = null;
       e.open.hidden = true;
       if (e.dialog.open) {
         e.dialog.close();
       }
       if (p) {
         p.view.hidden = true;
+        if (p.editButton) {
+          p.editButton.hidden = true;
+        }
+        if (p.notice) {
+          p.notice.hidden = true;
+        }
       }
       if (s) {
         s.navButton.hidden = true;
@@ -245,16 +271,23 @@ export function createPatientsController({ document, client }) {
     }
   }
 
-  async function openPatientProfile(patientId) {
+  async function openPatientProfile(patientId, options = {}) {
     if (!p || !patientId || loadingProfile) {
       return;
     }
     activeProfileId = String(patientId);
+    currentProfile = null;
     if (s) {
       s.home.hidden = true;
       s.view.hidden = true;
     }
     p.view.hidden = false;
+    if (p.editButton) {
+      p.editButton.hidden = true;
+    }
+    if (p.notice && !options.keepNotice) {
+      p.notice.hidden = true;
+    }
 
     if (!canRead) {
       setProfileState("forbidden");
@@ -270,7 +303,11 @@ export function createPatientsController({ document, client }) {
       const profile = validPatientProfile(
         await client.requestJson(`/api/v1/patients/${encodeURIComponent(activeProfileId)}`)
       );
+      currentProfile = profile;
       renderPatientProfile(profile);
+      if (p.editButton) {
+        p.editButton.hidden = !canUpdate;
+      }
       setProfileState("content");
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 403) {
@@ -490,13 +527,56 @@ export function createPatientsController({ document, client }) {
 
   function openCreateDialog() {
     if (!canCreate) return;
+    editingPatientId = null;
+    if (e.title) {
+      e.title.textContent = "Registrar paciente";
+    }
+    e.save.textContent = "Registrar paciente";
     e.form.reset();
     e.form.classList.remove("was-validated");
     e.error.hidden = true;
     e.validation.hidden = true;
+    for (const input of e.form.querySelectorAll("input,select")) {
+      input.removeAttribute("aria-invalid");
+    }
     e.ownerOptions.replaceChildren(new Option("Busca un propietario", ""));
     e.dialog.showModal();
     e.ownerQuery.focus();
+  }
+
+  function openEditPatientDialog() {
+    if (!canUpdate || !currentProfile) return;
+    editingPatientId = currentProfile.id;
+    if (e.title) {
+      e.title.textContent = "Editar paciente";
+    }
+    e.save.textContent = "Guardar cambios";
+    e.form.reset();
+    e.form.classList.remove("was-validated");
+    e.error.hidden = true;
+    e.validation.hidden = true;
+    for (const input of e.form.querySelectorAll("input,select")) {
+      input.removeAttribute("aria-invalid");
+    }
+
+    const ownerId = currentProfile.owner?.id ?? "";
+    const ownerLabel = ownerId
+      ? `${currentProfile.owner.fullName}${currentProfile.owner.phone ? ` · ${currentProfile.owner.phone}` : ""}`
+      : "Propietario actual";
+    e.ownerOptions.replaceChildren(new Option(ownerLabel, ownerId, true, true));
+    e.ownerOptions.value = ownerId;
+
+    e.name.value = currentProfile.name ?? "";
+    e.species.value = currentProfile.species ?? "";
+    e.breed.value = currentProfile.breed ?? "";
+    e.sex.value = currentProfile.sex ?? "NO_ESPECIFICADO";
+    e.birthDate.value = currentProfile.birthDate ?? "";
+    e.color.value = currentProfile.color ?? "";
+    e.microchip.value = currentProfile.microchip ?? "";
+    e.sterilized.checked = Boolean(currentProfile.sterilized);
+
+    e.dialog.showModal();
+    e.name.focus();
   }
 
   async function findOwners() {
@@ -509,10 +589,15 @@ export function createPatientsController({ document, client }) {
     e.ownerSearch.disabled = true;
     try {
       const result = await client.requestJson(`/api/v1/owners?${new URLSearchParams({ query, page: "0", size: "20", sortBy: "name", direction: "asc" })}`);
-      e.ownerOptions.replaceChildren(
+      const options = [
         new Option("Selecciona un propietario", ""),
         ...result.content.map((owner) => new Option(`${owner.firstName} ${owner.lastName} · ${owner.phone}`, owner.id))
-      );
+      ];
+      if (editingPatientId && currentProfile?.owner?.id && !result.content.some((owner) => owner.id === currentProfile.owner.id)) {
+        const currentOwnerLabel = `${currentProfile.owner.fullName}${currentProfile.owner.phone ? ` · ${currentProfile.owner.phone}` : ""} (actual)`;
+        options.splice(1, 0, new Option(currentOwnerLabel, currentProfile.owner.id));
+      }
+      e.ownerOptions.replaceChildren(...options);
       e.error.hidden = true;
     } catch (error) {
       e.error.textContent = error instanceof ApiRequestError ? error.message : "No fue posible buscar propietarios.";
@@ -522,9 +607,10 @@ export function createPatientsController({ document, client }) {
     }
   }
 
-  async function create(event) {
+  async function save(event) {
     event.preventDefault();
-    if (loading || !canCreate) return;
+    const isEditing = Boolean(editingPatientId);
+    if (loading || (isEditing ? !canUpdate : !canCreate)) return;
     e.form.classList.add("was-validated");
     const invalid = [...e.form.querySelectorAll("input,select")].filter((input) => !input.checkValidity());
     for (const input of e.form.querySelectorAll("input,select")) {
@@ -532,7 +618,9 @@ export function createPatientsController({ document, client }) {
       else input.removeAttribute("aria-invalid");
     }
     if (invalid.length) {
-      e.validation.textContent = "Corrige los campos indicados antes de registrar el paciente.";
+      e.validation.textContent = isEditing
+        ? "Corrige los campos indicados antes de guardar los cambios del paciente."
+        : "Corrige los campos indicados antes de registrar el paciente.";
       e.validation.hidden = false;
       invalid[0].focus();
       return;
@@ -541,8 +629,11 @@ export function createPatientsController({ document, client }) {
     e.save.disabled = true;
     e.error.hidden = true;
     try {
-      const created = await client.requestJson("/api/v1/patients", {
-        method: "POST",
+      const targetUrl = isEditing
+        ? `/api/v1/patients/${encodeURIComponent(editingPatientId)}`
+        : "/api/v1/patients";
+      const savedPatient = await client.requestJson(targetUrl, {
+        method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ownerId: e.ownerOptions.value,
@@ -556,16 +647,32 @@ export function createPatientsController({ document, client }) {
           sterilized: e.sterilized.checked
         })
       });
+      const updatedId = editingPatientId;
+      editingPatientId = null;
       e.dialog.close();
-      e.notice.hidden = false;
-      e.notice.focus();
-      if (s && canRead && !s.view.hidden && created?.name) {
-        s.queryInput.value = created.name;
-        totalPages = 0;
-        await executeSearch(0);
+      if (isEditing && p && updatedId) {
+        await openPatientProfile(updatedId, { keepNotice: true });
+        if (p.notice) {
+          p.notice.textContent = "Datos del paciente actualizados correctamente.";
+          p.notice.hidden = false;
+          p.notice.focus({ preventScroll: true });
+        }
+        if (s && canRead && s.rows.childElementCount > 0) {
+          await executeSearch(page);
+        }
+      } else {
+        e.notice.hidden = false;
+        e.notice.focus();
+        if (s && canRead && !s.view.hidden && savedPatient?.name) {
+          s.queryInput.value = savedPatient.name;
+          totalPages = 0;
+          await executeSearch(0);
+        }
       }
     } catch (error) {
-      e.error.textContent = error instanceof ApiRequestError ? error.message : "No fue posible registrar el paciente.";
+      e.error.textContent = error instanceof ApiRequestError
+        ? error.message
+        : (isEditing ? "No fue posible actualizar el paciente." : "No fue posible registrar el paciente.");
       e.error.hidden = false;
     } finally {
       loading = false;
@@ -636,6 +743,7 @@ function elements(document) {
   for (const [k, v] of Object.entries(e)) {
     if (!v) throw new Error(`Falta ${k}`);
   }
+  e.title = document.querySelector("#patient-editor-title");
   return e;
 }
 
@@ -740,6 +848,8 @@ function profileElements(document) {
       throw new Error(`Falta elemento de perfil de paciente: ${key}`);
     }
   }
+  resolved.editButton = document.querySelector("#patient-profile-edit-button");
+  resolved.notice = document.querySelector("#patient-profile-notice");
   return resolved;
 }
 

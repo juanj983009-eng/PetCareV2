@@ -9,6 +9,15 @@ public interface OwnerSearchUseCase {
     record OwnerSearch(int page, int size, String query, SortField sortBy, SortDirection direction) { }
     enum SortField { NAME, DOCUMENT, PHONE }
     enum SortDirection { ASC, DESC }
-    record OwnerSummary(UUID id, String firstName, String lastName, String documentType, String documentNumber, String phone) { }
+    record OwnerSummary(
+            UUID id,
+            String firstName,
+            String lastName,
+            String documentType,
+            String documentNumber,
+            String phone,
+            String email,
+            String address,
+            boolean notificationsAccepted) { }
     record OwnerPage(List<OwnerSummary> content, int page, int size, long totalElements, int totalPages) { }
 }

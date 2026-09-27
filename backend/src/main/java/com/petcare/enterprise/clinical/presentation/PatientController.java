@@ -19,6 +19,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -70,6 +71,12 @@ class PatientController {
         var patient = patients.register(request.toCommand());
         return ResponseEntity.created(URI.create("/api/v1/patients/" + patient.id()))
                 .body(PatientResponse.from(patient));
+    }
+
+    @PutMapping("/{patientId}")
+    PatientResponse update(@PathVariable UUID patientId, @Valid @RequestBody UpdatePatientRequest request) {
+        var updated = patients.update(patientId, request.toCommand());
+        return PatientResponse.from(updated);
     }
 
     private static String normalizeOptional(String value) {

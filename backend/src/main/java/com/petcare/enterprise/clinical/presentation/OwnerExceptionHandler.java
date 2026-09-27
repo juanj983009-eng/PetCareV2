@@ -12,12 +12,26 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 class OwnerExceptionHandler {
     private final ApiErrorResponseFactory errors;
-    OwnerExceptionHandler(ApiErrorResponseFactory errors) { this.errors = errors; }
+
+    OwnerExceptionHandler(ApiErrorResponseFactory errors) {
+        this.errors = errors;
+    }
+
     @ExceptionHandler(OwnerRegistrationException.class)
     ResponseEntity<ApiErrorResponse> registration(OwnerRegistrationException exception) {
         return switch (exception.kind()) {
-            case DOCUMENT_CONFLICT -> errors.response(HttpStatus.CONFLICT, ApiErrorCode.CONFLICT, "Ya existe un propietario con ese documento en la clínica.");
-            case PHONE_CONFIRMATION_REQUIRED -> errors.response(HttpStatus.CONFLICT, ApiErrorCode.CONFLICT, "Existe un propietario con ese teléfono. Confirma para continuar.");
+            case DOCUMENT_CONFLICT -> errors.response(
+                    HttpStatus.CONFLICT,
+                    ApiErrorCode.CONFLICT,
+                    "Ya existe un propietario con ese documento en la clínica.");
+            case PHONE_CONFIRMATION_REQUIRED -> errors.response(
+                    HttpStatus.CONFLICT,
+                    ApiErrorCode.CONFLICT,
+                    "Existe un propietario con ese teléfono. Confirma para continuar.");
+            case OWNER_NOT_FOUND -> errors.response(
+                    HttpStatus.NOT_FOUND,
+                    ApiErrorCode.RESOURCE_NOT_FOUND,
+                    "No se encontró el propietario solicitado.");
         };
     }
 }

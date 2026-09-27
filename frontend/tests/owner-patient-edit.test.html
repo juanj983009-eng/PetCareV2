@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>PetCare — Owner & Patient Edit Tests (HU-014)</title>
+</head>
+<body>
+  <main>
+    <div id="dashboard-home">
+      <button id="new-owner-button" type="button" hidden>Registrar propietario</button>
+      <button id="new-patient-button" type="button" hidden>Registrar paciente</button>
+      <button id="owners-nav-button" type="button" hidden>Propietarios</button>
+      <button id="patients-nav-button" type="button" hidden>Pacientes</button>
+      <div id="patient-notice" tabindex="-1" hidden>Paciente registrado</div>
+    </div>
+
+    <section id="owners-view" hidden>
+      <h2 id="owners-title" tabindex="-1">Padrón de propietarios</h2>
+      <div class="d-flex">
+        <button id="owners-new-owner-button" type="button" hidden>Registrar propietario</button>
+        <button id="owners-back-button" type="button">Volver al panel</button>
+      </div>
+      <div id="owner-notice" role="status" tabindex="-1" hidden></div>
+      <form id="owner-search-form" novalidate>
+        <input id="owner-search" type="search">
+        <select id="owner-document-type-filter">
+          <option value="">Todos</option>
+          <option value="DNI">DNI</option>
+        </select>
+        <select id="owner-status-filter">
+          <option value="">Todos</option>
+          <option value="ACTIVO">Activo</option>
+        </select>
+        <select id="owner-sort">
+          <option value="name">Apellido y nombre</option>
+        </select>
+        <select id="owner-direction">
+          <option value="asc">Ascendente</option>
+        </select>
+        <button id="owner-search-submit" type="submit">Buscar</button>
+        <button id="clear-owner-filters" type="button">Limpiar</button>
+      </form>
+      <div id="owners-initial">Estado inicial</div>
+      <div id="owners-validation" hidden></div>
+      <div id="owners-forbidden" tabindex="-1" hidden></div>
+      <div id="owners-loading" hidden></div>
+      <div id="owners-empty" hidden></div>
+      <div id="owners-error" hidden>
+        <p id="owners-error-message"></p>
+        <button id="retry-owners" type="button">Reintentar</button>
+      </div>
+      <div id="owners-content" hidden>
+        <table>
+          <tbody id="owners-table-body"></tbody>
+        </table>
+        <div id="owners-cards"></div>
+      </div>
+      <nav id="owners-pagination" hidden>
+        <span id="owners-page-status"></span>
+        <button id="owners-previous-page" type="button">Anterior</button>
+        <button id="owners-next-page" type="button">Siguiente</button>
+      </nav>
+    </section>
+
+    <section id="patients-view" hidden>
+      <h2 id="patients-title" tabindex="-1">Padrón de pacientes</h2>
+      <button id="patients-new-patient-button" type="button" hidden>Registrar paciente</button>
+      <button id="patients-back-button" type="button">Volver al panel</button>
+      <form id="patient-search-form" novalidate>
+        <input id="patient-search-query" type="search">
+        <select id="patient-species-filter"><option value="">Todas</option></select>
+        <select id="patient-status-filter"><option value="">Todos</option></select>
+        <select id="patient-sort"><option value="name">Nombre</option></select>
+        <select id="patient-direction"><option value="asc">Ascendente</option></select>
+        <button id="patient-search-submit" type="submit">Buscar</button>
+        <button id="clear-patient-filters" type="button">Limpiar</button>
+      </form>
+      <div id="patients-initial">Estado inicial</div>
+      <div id="patients-validation" hidden></div>
+      <div id="patients-forbidden" tabindex="-1" hidden></div>
+      <div id="patients-loading" hidden></div>
+      <div id="patients-empty" hidden></div>
+      <div id="patients-error" hidden>
+        <p id="patients-error-message"></p>
+        <button id="retry-patients" type="button">Reintentar</button>
+      </div>
+      <div id="patients-content" hidden>
+        <table>
+          <tbody id="patients-table-body"></tbody>
+        </table>
+        <div id="patients-cards"></div>
+      </div>
+      <nav id="patients-pagination" hidden>
+        <span id="patients-page-status"></span>
+        <button id="patients-previous-page" type="button">Anterior</button>
+        <button id="patients-next-page" type="button">Siguiente</button>
+      </nav>
+    </section>
+
+    <section id="patient-profile-view" hidden>
+      <h2 id="patient-profile-title" tabindex="-1">Paciente</h2>
+      <span id="patient-profile-status-badge">Activo</span>
+      <p id="patient-profile-subtitle"></p>
+      <button id="patient-profile-edit-button" type="button" hidden>Editar paciente</button>
+      <button id="patient-profile-back-button" type="button">Volver a resultados</button>
+      <button id="patient-profile-new-consultation-button" type="button" hidden disabled>Nueva consulta</button>
+      <button id="patient-profile-new-appointment-button" type="button" hidden disabled>Nueva cita</button>
+      <div id="patient-profile-notice" role="status" tabindex="-1" hidden></div>
+      <div id="patient-profile-loading" hidden></div>
+      <div id="patient-profile-forbidden" tabindex="-1" hidden></div>
+      <div id="patient-profile-not-found" tabindex="-1" hidden></div>
+      <div id="patient-profile-error" tabindex="-1" hidden>
+        <p id="patient-profile-error-message"></p>
+        <p id="patient-profile-error-correlation" hidden></p>
+        <button id="retry-patient-profile" type="button">Reintentar</button>
+      </div>
+      <div id="patient-profile-content" hidden>
+        <div id="patient-profile-medical-alerts-banner" hidden>
+          <div id="patient-profile-allergies-row" hidden>
+            <span id="patient-profile-allergies-value"></span>
+          </div>
+          <div id="patient-profile-alerts-row" hidden>
+            <span id="patient-profile-alerts-value"></span>
+          </div>
+        </div>
+        <div id="patient-profile-no-alerts" hidden></div>
+        <dd id="patient-profile-name"></dd>
+        <dd id="patient-profile-species"></dd>
+        <dd id="patient-profile-breed"></dd>
+        <dd id="patient-profile-sex"></dd>
+        <dd id="patient-profile-birth-date"></dd>
+        <dd id="patient-profile-color"></dd>
+        <dd id="patient-profile-microchip"></dd>
+        <dd id="patient-profile-sterilized"></dd>
+        <dd id="patient-profile-owner-name"></dd>
+        <dd id="patient-profile-owner-document"></dd>
+        <dd id="patient-profile-owner-phone"></dd>
+        <dd id="patient-profile-owner-email"></dd>
+        <span id="patient-profile-record-meta"></span>
+        <div id="patient-profile-record-history"></div>
+        <div id="patient-profile-consultations-empty"></div>
+        <div id="patient-profile-appointments-empty"></div>
+        <div id="patient-profile-vaccines-empty"></div>
+        <div id="patient-profile-prescriptions-empty"></div>
+      </div>
+    </section>
+
+    <dialog id="owner-editor-dialog">
+      <form id="owner-editor-form" novalidate>
+        <h2 id="owner-editor-title">Registrar propietario</h2>
+        <div id="owner-form-error" hidden></div>
+        <div id="owner-form-validation" hidden></div>
+        <div id="owner-phone-warning" hidden>
+          <button id="confirm-duplicate-phone-button" type="button">Confirmar y guardar</button>
+        </div>
+        <input id="owner-first-name" required>
+        <div class="invalid-feedback">Ingresa los nombres.</div>
+        <input id="owner-last-name" required>
+        <div class="invalid-feedback">Ingresa los apellidos.</div>
+        <select id="owner-document-type" required>
+          <option value="DNI">DNI</option>
+          <option value="CE">CE</option>
+          <option value="PASAPORTE">Pasaporte</option>
+          <option value="RUC">RUC</option>
+        </select>
+        <input id="owner-document-number" required>
+        <div class="invalid-feedback">Ingresa el documento.</div>
+        <input id="owner-phone" required>
+        <div class="invalid-feedback">Ingresa el teléfono.</div>
+        <input id="owner-email" type="email">
+        <div class="invalid-feedback">Ingresa un correo válido.</div>
+        <input id="owner-address">
+        <input id="owner-notifications" type="checkbox" checked>
+        <button id="cancel-owner-button" type="button">Cancelar</button>
+        <button id="save-owner-button" type="submit">Guardar propietario</button>
+      </form>
+    </dialog>
+
+    <dialog id="patient-editor-dialog">
+      <form id="patient-editor-form" novalidate>
+        <h2 id="patient-editor-title">Registrar paciente</h2>
+        <div id="patient-form-error" hidden></div>
+        <div id="patient-form-validation" hidden></div>
+        <input id="patient-owner-query">
+        <button id="patient-owner-search" type="button">Buscar</button>
+        <select id="patient-owner-id" required>
+          <option value="">Selecciona un propietario</option>
+        </select>
+        <div class="invalid-feedback">Selecciona el propietario.</div>
+        <input id="patient-name" required>
+        <div class="invalid-feedback">Ingresa el nombre.</div>
+        <select id="patient-species" required>
+          <option value="CANINO">Canino</option>
+          <option value="FELINO">Felino</option>
+          <option value="AVE">Ave</option>
+          <option value="EXOTICO">Exótico</option>
+          <option value="OTRO">Otro</option>
+        </select>
+        <div class="invalid-feedback">Selecciona la especie.</div>
+        <input id="patient-breed">
+        <select id="patient-sex" required>
+          <option value="NO_ESPECIFICADO">No especificado</option>
+          <option value="MACHO">Macho</option>
+          <option value="HEMBRA">Hembra</option>
+        </select>
+        <div class="invalid-feedback">Selecciona el sexo.</div>
+        <input id="patient-birth-date" type="date">
+        <input id="patient-color">
+        <input id="patient-microchip">
+        <input id="patient-sterilized" type="checkbox">
+        <button id="cancel-patient-button" type="button">Cancelar</button>
+        <button id="save-patient-button" type="submit">Registrar paciente</button>
+      </form>
+    </dialog>
+  </main>
+
+  <pre id="test-results"></pre>
+  <script type="module" src="./owner-patient-edit.test.js"></script>
+</body>
+</html>

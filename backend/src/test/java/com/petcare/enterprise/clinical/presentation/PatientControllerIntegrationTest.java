@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -382,6 +383,142 @@ class PatientControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("No se encontró el paciente solicitado."));
+    }
+
+    @Test
+    void updatesPatientWithinTenantWithValidationOwnerReassignmentMicrochipConflictAndSafeAudit() throws Exception {
+        Fixture tenantA = fixture("patient-upd-a");
+        Fixture tenantB = fixture("patient-upd-b");
+        jdbc.queryForObject("SELECT ensure_tenant_system_roles(?)", Object.class, tenantA.tenant);
+
+        // V10 RBAC verification for PATIENT_UPDATE
+        for (String roleWithPerm : List.of("ADMINISTRADOR", "RECEPCIONISTA", "VETERINARIO")) {
+            Integer count = jdbc.queryForObject("""
+                    SELECT count(*) FROM role_permissions rp
+                    JOIN roles r ON r.tenant_id = rp.tenant_id AND r.id = rp.role_id
+                    JOIN permissions p ON p.id = rp.permission_id
+                    WHERE rp.tenant_id = ? AND r.name = ? AND p.code = 'PATIENT_UPDATE'
+                    """, Integer.class, tenantA.tenant, roleWithPerm);
+            assertThat(count).as("Role %s should have PATIENT_UPDATE", roleWithPerm).isOne();
+        }
+        Integer almacenCount = jdbc.queryForObject("""
+                SELECT count(*) FROM role_permissions rp
+                JOIN roles r ON r.tenant_id = rp.tenant_id AND r.id = rp.role_id
+                JOIN permissions p ON p.id = rp.permission_id
+                WHERE rp.tenant_id = ? AND r.name = 'ALMACEN' AND p.code = 'PATIENT_UPDATE'
+                """, Integer.class, tenantA.tenant);
+        assertThat(almacenCount).as("ALMACEN should NOT have PATIENT_UPDATE").isZero();
+
+        UUID ownerA1 = insertOwner(tenantA.tenant, "Valeria", "Quispe", "DNI", "44881234", "999111222");
+        UUID ownerA2Active = insertOwner(tenantA.tenant, "Carlos", "Rojas", "DNI", "70112233", "988777666");
+        UUID ownerA3Inactive = owner(tenantA, false);
+        UUID ownerB1 = insertOwner(tenantB.tenant, "Elena", "Norte", "DNI", "99887766", "977666555");
+
+        UUID patientA1 = insertPatientWithSensitiveRecord(
+                tenantA.tenant, ownerA1, "Luna", "CANINO", "Mestizo", "HEMBRA", "CHIPA100", "ACTIVO");
+        UUID patientA2 = insertPatientWithSensitiveRecord(
+                tenantA.tenant, ownerA1, "Milo", "FELINO", "Siamés", "MACHO", "CHIPA200", "ACTIVO");
+        UUID patientB1 = insertPatientWithSensitiveRecord(
+                tenantB.tenant, ownerB1, "Max", "CANINO", "Pastor", "MACHO", "CHIPB300", "ACTIVO");
+
+        String validUpdateBody = """
+                {
+                  "ownerId": "%s",
+                  "name": "Luna Editada",
+                  "species": "CANINO",
+                  "breed": "Mestizo Mediano",
+                  "sex": "HEMBRA",
+                  "birthDate": "2022-08-15",
+                  "color": "Blanco y negro",
+                  "microchip": "chip-a-105",
+                  "sterilized": true
+                }
+                """.formatted(ownerA2Active);
+
+        // 401 without token & 403 without PATIENT_UPDATE
+        mvc.perform(put("/api/v1/patients/{patientId}", patientA1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validUpdateBody))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/v1/patients/{patientId}", patientA1)
+                        .with(authentication(auth(tenantA, "PATIENT_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validUpdateBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 404 uniform for non-existent patient UUID and Tenant B patient
+        mvc.perform(put("/api/v1/patients/{patientId}", UUID.fromString("00000000-0000-4000-8000-000000000999"))
+                        .with(authentication(auth(tenantA, "PATIENT_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validUpdateBody))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("No se encontró el paciente solicitado."));
+
+        mvc.perform(put("/api/v1/patients/{patientId}", patientB1)
+                        .with(authentication(auth(tenantA, "PATIENT_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validUpdateBody))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("No se encontró el paciente solicitado."));
+
+        // 404 when reassigning to inactive owner in Tenant A or active owner in Tenant B
+        for (UUID invalidOwnerId : List.of(ownerA3Inactive, ownerB1, UUID.fromString("00000000-0000-4000-8000-000000000888"))) {
+            String badOwnerBody = validUpdateBody.replace(ownerA2Active.toString(), invalidOwnerId.toString());
+            mvc.perform(put("/api/v1/patients/{patientId}", patientA1)
+                            .with(authentication(auth(tenantA, "PATIENT_UPDATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(badOwnerBody))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                    .andExpect(jsonPath("$.message").value("No se encontró el propietario solicitado."));
+        }
+
+        // 409 conflict when microchip collides with patientA2 in the same tenant
+        String microchipConflictBody = validUpdateBody.replace("chip-a-105", "CHIP-A-200");
+        mvc.perform(put("/api/v1/patients/{patientId}", patientA1)
+                        .with(authentication(auth(tenantA, "PATIENT_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(microchipConflictBody))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        // 200 OK update with reassignment to active ownerA2Active and normalized microchip
+        UUID correlationId = UUID.randomUUID();
+        mvc.perform(put("/api/v1/patients/{patientId}", patientA1)
+                        .with(authentication(auth(tenantA, "PATIENT_UPDATE")))
+                        .header("X-Correlation-ID", correlationId.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validUpdateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(patientA1.toString()))
+                .andExpect(jsonPath("$.ownerId").value(ownerA2Active.toString()))
+                .andExpect(jsonPath("$.name").value("Luna Editada"))
+                .andExpect(jsonPath("$.breed").value("Mestizo Mediano"))
+                .andExpect(jsonPath("$.birthDate").value("2022-08-15"))
+                .andExpect(jsonPath("$.microchip").value("CHIPA105"))
+                .andExpect(jsonPath("$.sterilized").value(true));
+
+        // Verify medical_records was NOT altered by patient update
+        String allergiesAfter = jdbc.queryForObject(
+                "SELECT allergies FROM medical_records WHERE tenant_id = ? AND patient_id = ?",
+                String.class, tenantA.tenant, patientA1);
+        assertThat(allergiesAfter).isEqualTo("ALERGIAS_SECRETAS");
+
+        // Verify atomic PATIENT_UPDATED audit entry without sensitive PII or medical record content
+        String auditJson = jdbc.queryForObject("""
+                SELECT new_data::text FROM audit_entries
+                WHERE tenant_id = ? AND entity_type = 'PATIENT' AND entity_id = ? AND action = 'PATIENT_UPDATED' AND correlation_id = ?
+                """, String.class, tenantA.tenant, patientA1, correlationId);
+        assertThat(auditJson)
+                .contains("changedFields")
+                .contains("ownerReassigned")
+                .contains("Luna Editada")
+                .doesNotContain("CHIPA105")
+                .doesNotContain("2022-08-15")
+                .doesNotContain("ALERGIAS_SECRETAS");
     }
 
     private Fixture fixture(String slug) {

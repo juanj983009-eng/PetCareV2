@@ -375,6 +375,9 @@
                   </div>
                 </form>
 
+                <div id="owner-notice" class="alert alert-success mb-3" role="status" tabindex="-1" hidden>
+                  Datos del propietario actualizados correctamente.
+                </div>
                 <div id="owners-loading" class="text-center py-5" role="status" hidden>
                   <div class="spinner-border text-primary" aria-hidden="true"></div>
                   <p class="mt-2 mb-0">Buscando propietarios…</p>
@@ -393,7 +396,7 @@
                     <table class="table table-hover align-middle">
                       <caption class="visually-hidden">Propietarios encontrados</caption>
                       <thead>
-                        <tr><th>Propietario</th><th>Documento</th><th>Teléfono</th></tr>
+                        <tr><th>Propietario</th><th>Documento</th><th>Teléfono</th><th class="text-end">Acciones</th></tr>
                       </thead>
                       <tbody id="owners-table-body"></tbody>
                     </table>
@@ -545,10 +548,15 @@
                     <p id="patient-profile-subtitle" class="text-secondary mb-0">Ficha de identificación, propietario e historia clínica base.</p>
                   </div>
                   <div class="d-flex flex-wrap gap-2">
+                    <button id="patient-profile-edit-button" class="btn btn-primary" type="button" hidden>Editar paciente</button>
                     <button id="patient-profile-new-consultation-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva consulta</button>
                     <button id="patient-profile-new-appointment-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva cita</button>
                     <button id="patient-profile-back-button" class="btn btn-outline-secondary" type="button">Volver a resultados</button>
                   </div>
+                </div>
+
+                <div id="patient-profile-notice" class="alert alert-success mb-3" role="status" tabindex="-1" hidden>
+                  Datos del paciente actualizados correctamente.
                 </div>
 
                 <div id="patient-profile-loading" class="text-center py-5" role="status" aria-live="polite" hidden>

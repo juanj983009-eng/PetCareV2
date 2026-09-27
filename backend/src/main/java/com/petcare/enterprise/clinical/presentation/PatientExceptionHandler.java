@@ -19,12 +19,24 @@ class PatientExceptionHandler {
     }
 
     @ExceptionHandler(PatientRegistrationException.class)
-    ResponseEntity<ApiErrorResponse> ownerUnavailable(PatientRegistrationException ignored) {
-        return errors.response(HttpStatus.NOT_FOUND, ApiErrorCode.RESOURCE_NOT_FOUND, "No se encontró el propietario solicitado.");
+    ResponseEntity<ApiErrorResponse> registration(PatientRegistrationException exception) {
+        return switch (exception.kind()) {
+            case OWNER_UNAVAILABLE -> errors.response(
+                    HttpStatus.NOT_FOUND,
+                    ApiErrorCode.RESOURCE_NOT_FOUND,
+                    "No se encontró el propietario solicitado.");
+            case MICROCHIP_CONFLICT -> errors.response(
+                    HttpStatus.CONFLICT,
+                    ApiErrorCode.CONFLICT,
+                    "Ya existe un paciente con ese microchip en la clínica.");
+        };
     }
 
     @ExceptionHandler(PatientNotFoundException.class)
     ResponseEntity<ApiErrorResponse> patientNotFound(PatientNotFoundException ignored) {
-        return errors.response(HttpStatus.NOT_FOUND, ApiErrorCode.RESOURCE_NOT_FOUND, "No se encontró el paciente solicitado.");
+        return errors.response(
+                HttpStatus.NOT_FOUND,
+                ApiErrorCode.RESOURCE_NOT_FOUND,
+                "No se encontró el paciente solicitado.");
     }
 }
