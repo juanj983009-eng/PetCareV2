@@ -188,6 +188,9 @@
                   <button id="patients-nav-button" class="btn btn-outline-primary" type="button" hidden>
                     Buscar pacientes
                   </button>
+                  <button id="appointments-nav-button" class="btn btn-outline-primary" type="button" hidden>
+                    Agenda de citas
+                  </button>
                   <button id="logout-button" class="btn btn-outline-danger ms-lg-auto" type="button">
                     Cerrar sesión
                   </button>
@@ -706,6 +709,112 @@
                           </p>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Subvista: Agenda de citas (HU-015) -->
+              <section id="appointments-view" aria-labelledby="appointments-title" hidden>
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                  <div>
+                    <button id="appointments-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
+                    <h2 id="appointments-title" class="h2 mb-1" tabindex="-1">Agenda de citas</h2>
+                    <p class="text-secondary mb-0">Consulta cronológica de citas programadas por fecha, sede y profesional veterinario.</p>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 align-self-lg-end">
+                    <button id="new-appointment-view-button" class="btn btn-outline-secondary btn-sm" type="button" disabled hidden aria-disabled="true">
+                      Nueva cita (HU-016)
+                    </button>
+                  </div>
+                </div>
+
+                <form id="appointment-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search" novalidate>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label for="appointment-date-filter" class="form-label">Fecha</label>
+                    <input id="appointment-date-filter" class="form-control" type="date" required
+                      aria-describedby="appointment-date-feedback">
+                    <div id="appointment-date-feedback" class="invalid-feedback">Selecciona una fecha válida en formato YYYY-MM-DD.</div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label for="appointment-branch-filter" class="form-label">Sucursal</label>
+                    <select id="appointment-branch-filter" class="form-select">
+                      <option value="">Todas las sucursales</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label for="appointment-veterinarian-filter" class="form-label">Veterinario</label>
+                    <select id="appointment-veterinarian-filter" class="form-select">
+                      <option value="">Todos los veterinarios</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-3">
+                    <label for="appointment-direction-filter" class="form-label">Orden horario</label>
+                    <select id="appointment-direction-filter" class="form-select">
+                      <option value="asc">Ascendente (primero las más tempranas)</option>
+                      <option value="desc">Descendente (primero las más tardías)</option>
+                    </select>
+                  </div>
+                  <div class="col-12 d-flex flex-wrap justify-content-end gap-2 pt-2">
+                    <button id="appointment-search-submit" class="btn btn-primary" type="submit">Consultar agenda</button>
+                    <button id="appointment-search-clear" class="btn btn-outline-secondary" type="button">Hoy / Limpiar</button>
+                  </div>
+                </form>
+
+                <div id="appointments-validation" class="alert alert-warning" role="alert" hidden></div>
+
+                <div id="appointments-forbidden" class="alert alert-warning" role="alert" tabindex="-1" hidden>
+                  No cuentas con el permiso <code>APPOINTMENT_READ</code> para consultar la agenda de la clínica.
+                </div>
+
+                <div id="appointments-error" class="alert alert-danger" role="alert" tabindex="-1" hidden>
+                  <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+                    <span id="appointments-error-message">No fue posible consultar la agenda de citas.</span>
+                    <button id="appointments-retry-button" class="btn btn-outline-danger btn-sm" type="button">Reintentar</button>
+                  </div>
+                </div>
+
+                <div id="appointments-initial-state" class="pc-empty-state py-4 px-3" role="status">
+                  <p class="fw-semibold mb-1">Selecciona una fecha para consultar la agenda</p>
+                  <p class="text-secondary small mb-0">Puedes filtrar por sucursal activa y por veterinario del tenant actual.</p>
+                </div>
+
+                <div id="appointments-loading" class="pc-empty-state py-4 px-3" role="status" aria-live="polite" hidden>
+                  <div class="spinner-border spinner-border-sm text-primary me-2" aria-hidden="true"></div>
+                  <span>Consultando agenda de citas...</span>
+                </div>
+
+                <div id="appointments-empty" class="pc-empty-state py-4 px-3" role="status" hidden>
+                  <p class="fw-semibold mb-1">No hay citas registradas para los criterios seleccionados</p>
+                  <p class="text-secondary small mb-0">Prueba seleccionando otra fecha, sucursal o profesional veterinario.</p>
+                </div>
+
+                <div id="appointments-results" hidden>
+                  <p id="appointments-summary" class="text-secondary small mb-3" role="status" aria-live="polite"></p>
+
+                  <div class="table-responsive d-none d-md-block">
+                    <table class="table table-hover align-middle mb-3" aria-label="Agenda cronológica de citas">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">Horario</th>
+                          <th scope="col">Paciente</th>
+                          <th scope="col">Tipo de cita</th>
+                          <th scope="col">Veterinario</th>
+                          <th scope="col">Sucursal</th>
+                          <th scope="col">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody id="appointments-table-body"></tbody>
+                    </table>
+                  </div>
+
+                  <div id="appointments-cards" class="d-md-none d-grid gap-3 mb-3" aria-label="Agenda de citas en tarjetas"></div>
+
+                  <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 pt-2 border-top">
+                    <span id="appointments-pagination" class="text-secondary small"></span>
+                    <div class="d-flex gap-2">
+                      <button id="appointments-previous-page" class="btn btn-outline-secondary btn-sm" type="button">Anterior</button>
+                      <button id="appointments-next-page" class="btn btn-outline-secondary btn-sm" type="button">Siguiente</button>
                     </div>
                   </div>
                 </div>

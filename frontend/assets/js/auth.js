@@ -5,6 +5,7 @@ import { createUsersController } from "./users-controller.js";
 import { createRolesController } from "./roles-controller.js";
 import { createOwnersController } from "./owners-controller.js";
 import { createPatientsController } from "./patients-controller.js";
+import { createAppointmentsController } from "./appointments-controller.js";
 
 const usersController = createUsersController({
   document,
@@ -14,6 +15,11 @@ const usersController = createUsersController({
 const rolesController = createRolesController({ document, client: apiClient });
 const ownersController = createOwnersController({ document, client: apiClient });
 const patientsController = createPatientsController({ document, client: apiClient });
+const appointmentsController = createAppointmentsController({
+  document,
+  client: apiClient,
+  onViewPatientProfile: (patientId) => patientsController.openPatientProfile(patientId)
+});
 
 const authController = createAuthController({
   document,
@@ -21,8 +27,20 @@ const authController = createAuthController({
   client: apiClient,
   errors: { applyApiError, clearApiErrors },
   lifecycle: {
-    authenticated: (identity) => { usersController.sessionReady(identity); rolesController.sessionReady(identity); ownersController.sessionReady(identity); patientsController.sessionReady(identity); },
-    ended: () => { usersController.sessionEnded(); rolesController.sessionEnded(); ownersController.sessionEnded(); patientsController.sessionEnded(); }
+    authenticated: (identity) => {
+      usersController.sessionReady(identity);
+      rolesController.sessionReady(identity);
+      ownersController.sessionReady(identity);
+      patientsController.sessionReady(identity);
+      appointmentsController.sessionReady(identity);
+    },
+    ended: () => {
+      usersController.sessionEnded();
+      rolesController.sessionEnded();
+      ownersController.sessionEnded();
+      patientsController.sessionEnded();
+      appointmentsController.sessionEnded();
+    }
   }
 });
 

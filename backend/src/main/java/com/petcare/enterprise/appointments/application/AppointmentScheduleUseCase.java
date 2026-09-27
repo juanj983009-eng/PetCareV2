@@ -1,0 +1,69 @@
+package com.petcare.enterprise.appointments.application;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+public interface AppointmentScheduleUseCase {
+
+    AppointmentPage listSchedule(AppointmentScheduleQuery query);
+
+    AppointmentFilterOptions listOptions();
+
+    record AppointmentScheduleQuery(
+            String date,
+            String branchId,
+            String veterinarianId,
+            int page,
+            int size,
+            String direction) {
+    }
+
+    record NormalizedAppointmentQuery(
+            LocalDate date,
+            UUID branchId,
+            UUID veterinarianId,
+            int page,
+            int size,
+            boolean ascending) {
+    }
+
+    record AppointmentPage(
+            List<AppointmentSummary> content,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages) {
+    }
+
+    record AppointmentSummary(
+            UUID id,
+            Instant startsAt,
+            Instant endsAt,
+            String appointmentType,
+            String status,
+            UUID patientId,
+            String patientName,
+            UUID branchId,
+            String branchName,
+            UUID veterinarianId,
+            String veterinarianFullName) {
+    }
+
+    record AppointmentFilterOptions(
+            List<BranchOption> branches,
+            List<VeterinarianOption> veterinarians) {
+    }
+
+    record BranchOption(
+            UUID id,
+            String name,
+            String timeZone) {
+    }
+
+    record VeterinarianOption(
+            UUID id,
+            String fullName) {
+    }
+}

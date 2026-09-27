@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HU-015 — Pruebas de consulta de agenda</title>
+    <link rel="stylesheet" href="../assets/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/css/app.css">
+  </head>
+  <body>
+    <main class="container py-4">
+      <h1 class="h4 mb-2">HU-015 — Pruebas de consulta de agenda</h1>
+      <p id="test-summary" class="text-secondary">Ejecutando…</p>
+      <ol id="test-results" class="mb-4"></ol>
+
+      <nav aria-label="Navegación de prueba">
+        <button id="appointments-nav-button" type="button" hidden>Agenda de citas</button>
+      </nav>
+
+      <div id="dashboard-home">Dashboard Home</div>
+
+      <section id="appointments-view" aria-labelledby="appointments-title" hidden>
+        <button id="appointments-back-button" type="button">← Volver al dashboard</button>
+        <h2 id="appointments-title" tabindex="-1">Agenda de citas</h2>
+        <button id="new-appointment-view-button" type="button" disabled hidden aria-disabled="true">
+          Nueva cita (HU-016)
+        </button>
+
+        <form id="appointment-search-form" role="search" novalidate>
+          <label for="appointment-date-filter">Fecha</label>
+          <input id="appointment-date-filter" type="date" required>
+          <label for="appointment-branch-filter">Sucursal</label>
+          <select id="appointment-branch-filter">
+            <option value="">Todas las sucursales</option>
+          </select>
+          <label for="appointment-veterinarian-filter">Veterinario</label>
+          <select id="appointment-veterinarian-filter">
+            <option value="">Todos los veterinarios</option>
+          </select>
+          <label for="appointment-direction-filter">Orden horario</label>
+          <select id="appointment-direction-filter">
+            <option value="asc">Ascendente</option>
+            <option value="desc">Descendente</option>
+          </select>
+          <button id="appointment-search-submit" type="submit">Consultar agenda</button>
+          <button id="appointment-search-clear" type="button">Hoy / Limpiar</button>
+        </form>
+
+        <div id="appointments-validation" role="alert" hidden></div>
+        <div id="appointments-forbidden" role="alert" tabindex="-1" hidden>Sin permiso APPOINTMENT_READ</div>
+        <div id="appointments-error" role="alert" tabindex="-1" hidden>
+          <span id="appointments-error-message">Error</span>
+          <button id="appointments-retry-button" type="button">Reintentar</button>
+        </div>
+        <div id="appointments-initial-state" role="status">Selecciona una fecha</div>
+        <div id="appointments-loading" role="status" aria-live="polite" hidden>Consultando…</div>
+        <div id="appointments-empty" role="status" hidden>No hay citas registradas</div>
+
+        <div id="appointments-results" hidden>
+          <p id="appointments-summary" role="status"></p>
+          <table>
+            <tbody id="appointments-table-body"></tbody>
+          </table>
+          <div id="appointments-cards"></div>
+          <div>
+            <span id="appointments-pagination"></span>
+            <button id="appointments-previous-page" type="button">Anterior</button>
+            <button id="appointments-next-page" type="button">Siguiente</button>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./appointment-schedule.test.js"></script>
+  </body>
+</html>

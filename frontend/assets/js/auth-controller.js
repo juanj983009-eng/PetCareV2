@@ -25,7 +25,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
     [optional.usersNavButton, optional.usersView],
     [optional.rolesNavButton, optional.rolesView],
     [optional.ownersNavButton, optional.ownersView],
-    [optional.patientsNavButton, optional.patientsView]
+    [optional.patientsNavButton, optional.patientsView],
+    [optional.appointmentsNavButton, optional.appointmentsView]
   ]) {
     button?.addEventListener("click", () => activateModuleNav(button, view));
   }
@@ -33,7 +34,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
     optional.usersBackButton,
     optional.rolesBackButton,
     optional.ownersBackButton,
-    optional.patientsBackButton
+    optional.patientsBackButton,
+    optional.appointmentsBackButton
   ]) {
     backBtn?.addEventListener("click", () => markActiveNav(optional.dashboardNavButton));
   }
@@ -304,6 +306,7 @@ export function createAuthController({ document, window, client, errors, lifecyc
     if (optional.ownersView) optional.ownersView.hidden = true;
     if (optional.patientsView) optional.patientsView.hidden = true;
     if (optional.patientProfileView) optional.patientProfileView.hidden = true;
+    if (optional.appointmentsView) optional.appointmentsView.hidden = true;
     if (optional.dashboardHome) optional.dashboardHome.hidden = false;
     markActiveNav(optional.dashboardNavButton);
     closeMobileNav();
@@ -315,7 +318,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
       optional.rolesView,
       optional.ownersView,
       optional.patientsView,
-      optional.patientProfileView
+      optional.patientProfileView,
+      optional.appointmentsView
     ]) {
       if (view && view !== targetView) {
         view.hidden = true;
@@ -331,7 +335,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
       optional.usersNavButton,
       optional.rolesNavButton,
       optional.ownersNavButton,
-      optional.patientsNavButton
+      optional.patientsNavButton,
+      optional.appointmentsNavButton
     ]) {
       if (!button) continue;
       if (button === activeButton) {
@@ -410,16 +415,19 @@ function findOptionalElements(document) {
     rolesNavButton: document.querySelector("#roles-nav-button"),
     ownersNavButton: document.querySelector("#owners-nav-button"),
     patientsNavButton: document.querySelector("#patients-nav-button"),
+    appointmentsNavButton: document.querySelector("#appointments-nav-button"),
     usersBackButton: document.querySelector("#users-back-button"),
     rolesBackButton: document.querySelector("#roles-back-button"),
     ownersBackButton: document.querySelector("#owners-back-button"),
     patientsBackButton: document.querySelector("#patients-back-button"),
+    appointmentsBackButton: document.querySelector("#appointments-back-button"),
     dashboardHome: document.querySelector("#dashboard-home"),
     usersView: document.querySelector("#users-view"),
     rolesView: document.querySelector("#roles-view"),
     ownersView: document.querySelector("#owners-view"),
     patientsView: document.querySelector("#patients-view"),
-    patientProfileView: document.querySelector("#patient-profile-view")
+    patientProfileView: document.querySelector("#patient-profile-view"),
+    appointmentsView: document.querySelector("#appointments-view")
   };
 }
 
