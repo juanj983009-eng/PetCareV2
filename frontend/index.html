@@ -533,6 +533,175 @@
                   </div>
                 </nav>
               </section>
+
+              <section id="patient-profile-view" class="mt-4" aria-labelledby="patient-profile-title" hidden>
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                  <div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                      <p class="pc-kicker mb-0">Expediente clínico del paciente</p>
+                      <span id="patient-profile-status-badge" class="badge text-bg-light border">Estado</span>
+                    </div>
+                    <h2 id="patient-profile-title" class="h4 mb-1" tabindex="-1">Perfil del paciente</h2>
+                    <p id="patient-profile-subtitle" class="text-secondary mb-0">Ficha de identificación, propietario e historia clínica base.</p>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    <button id="patient-profile-new-consultation-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva consulta</button>
+                    <button id="patient-profile-new-appointment-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva cita</button>
+                    <button id="patient-profile-back-button" class="btn btn-outline-secondary" type="button">Volver a resultados</button>
+                  </div>
+                </div>
+
+                <div id="patient-profile-loading" class="text-center py-5" role="status" aria-live="polite" hidden>
+                  <div class="spinner-border text-primary" aria-hidden="true"></div>
+                  <p class="mt-2 mb-0">Consultando expediente del paciente…</p>
+                </div>
+
+                <div id="patient-profile-forbidden" class="alert alert-warning" role="alert" tabindex="-1" hidden>
+                  <strong>▲ Permiso insuficiente:</strong> Tu rol actual no cuenta con la autoridad <code>PATIENT_READ</code> para consultar el perfil del paciente.
+                </div>
+
+                <div id="patient-profile-not-found" class="alert alert-warning" role="alert" tabindex="-1" hidden>
+                  <strong>▲ Paciente no disponible:</strong> No se encontró el paciente solicitado o no pertenece a la clínica autenticada.
+                </div>
+
+                <div id="patient-profile-error" class="alert alert-danger" role="alert" tabindex="-1" hidden>
+                  <p class="fw-semibold mb-1">● No fue posible consultar el perfil del paciente</p>
+                  <p id="patient-profile-error-message" class="mb-0"></p>
+                  <p id="patient-profile-error-correlation" class="pc-correlation-id mt-2 mb-0" hidden></p>
+                  <button id="retry-patient-profile" class="btn btn-outline-danger mt-3" type="button">Reintentar consulta</button>
+                </div>
+
+                <div id="patient-profile-content" hidden>
+                  <div id="patient-profile-medical-alerts-banner" class="alert alert-danger mb-4" role="alert" hidden>
+                    <h3 class="h6 fw-bold mb-2">● Alertas médicas y alergias registradas</h3>
+                    <div id="patient-profile-allergies-row" class="mb-1" hidden>
+                      <span class="fw-semibold">Alergias:</span> <span id="patient-profile-allergies-value"></span>
+                    </div>
+                    <div id="patient-profile-alerts-row" class="mb-0" hidden>
+                      <span class="fw-semibold">Alertas médicas:</span> <span id="patient-profile-alerts-value"></span>
+                    </div>
+                  </div>
+
+                  <div id="patient-profile-no-alerts" class="pc-empty-state py-2 px-3 mb-4 small text-secondary" role="status">
+                    Sin alergias ni alertas médicas críticas registradas en la historia clínica base.
+                  </div>
+
+                  <div class="row g-3 mb-4">
+                    <div class="col-12 col-lg-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Ficha de identificación</h3>
+                        </div>
+                        <div class="card-body">
+                          <dl id="patient-profile-identification" class="row mb-0 gy-2 small">
+                            <dt class="col-5 text-secondary">Nombre</dt>
+                            <dd id="patient-profile-name" class="col-7 fw-semibold mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Especie</dt>
+                            <dd id="patient-profile-species" class="col-7 mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Raza</dt>
+                            <dd id="patient-profile-breed" class="col-7 mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Sexo</dt>
+                            <dd id="patient-profile-sex" class="col-7 mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Nacimiento</dt>
+                            <dd id="patient-profile-birth-date" class="col-7 pc-data-mono mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Color</dt>
+                            <dd id="patient-profile-color" class="col-7 mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Microchip</dt>
+                            <dd id="patient-profile-microchip" class="col-7 pc-data-mono mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Esterilizado</dt>
+                            <dd id="patient-profile-sterilized" class="col-7 mb-0">-</dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Datos del propietario</h3>
+                        </div>
+                        <div class="card-body">
+                          <dl id="patient-profile-owner" class="row mb-0 gy-2 small">
+                            <dt class="col-5 text-secondary">Nombre completo</dt>
+                            <dd id="patient-profile-owner-name" class="col-7 fw-semibold mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Documento</dt>
+                            <dd id="patient-profile-owner-document" class="col-7 pc-data-mono mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Teléfono</dt>
+                            <dd id="patient-profile-owner-phone" class="col-7 pc-data-mono mb-0">-</dd>
+                            <dt class="col-5 text-secondary">Correo electrónico</dt>
+                            <dd id="patient-profile-owner-email" class="col-7 mb-0">-</dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card border mb-4">
+                    <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <h3 class="h6 mb-0 fw-semibold">Historia clínica base</h3>
+                      <span id="patient-profile-record-meta" class="small text-secondary pc-data-mono"></span>
+                    </div>
+                    <div class="card-body small">
+                      <p class="text-secondary fw-semibold mb-1">Antecedentes generales</p>
+                      <p id="patient-profile-record-history" class="mb-0">Sin antecedentes clínicos registrados.</p>
+                    </div>
+                  </div>
+
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Consultas clínicas</h3>
+                        </div>
+                        <div class="card-body">
+                          <p id="patient-profile-consultations-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
+                            Sin consultas registradas (módulo de atención clínica pendiente en Sprint 2 — HU-019).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Citas programadas e históricas</h3>
+                        </div>
+                        <div class="card-body">
+                          <p id="patient-profile-appointments-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
+                            Sin citas registradas (módulo de agenda y citas pendiente en Sprint 2 — HU-015 / HU-016).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Vacunas</h3>
+                        </div>
+                        <div class="card-body">
+                          <p id="patient-profile-vaccines-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
+                            Sin registros de vacunación en el expediente actual.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                      <div class="card border h-100">
+                        <div class="pc-folio-header">
+                          <h3 class="h6 mb-0 fw-semibold">Prescripciones y recetas</h3>
+                        </div>
+                        <div class="card-body">
+                          <p id="patient-profile-prescriptions-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
+                            Sin prescripciones emitidas (módulo de recetas pendiente en Sprint 2 — HU-021).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
         </div>

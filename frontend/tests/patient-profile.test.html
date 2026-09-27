@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HU-013 — Pruebas del perfil clínico del paciente</title>
+    <link rel="stylesheet" href="../assets/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/css/app.css">
+  </head>
+  <body>
+    <main class="container py-4">
+      <h1 class="h4 mb-2">HU-013 — Pruebas del perfil clínico del paciente</h1>
+      <p id="test-summary" class="text-secondary">Ejecutando…</p>
+      <ol id="test-results" class="mb-4"></ol>
+
+      <nav aria-label="Navegación de prueba">
+        <button id="patients-nav-button" type="button" hidden>Pacientes</button>
+      </nav>
+
+      <div id="dashboard-home">
+        <button id="new-patient-button" type="button" hidden>Nuevo paciente</button>
+        <div id="patient-notice" tabindex="-1" hidden>Paciente registrado correctamente.</div>
+      </div>
+
+      <section id="patients-view" aria-labelledby="patients-title" hidden>
+        <h2 id="patients-title" tabindex="-1">Padrón de pacientes</h2>
+        <button id="patients-new-patient-button" type="button" hidden>Nuevo paciente</button>
+        <button id="patients-back-button" type="button">Volver al inicio</button>
+
+        <form id="patient-search-form" novalidate>
+          <label for="patient-search-query">Buscar paciente o propietario</label>
+          <input id="patient-search-query" type="search" maxlength="120" aria-describedby="patient-search-query-help">
+          <div id="patient-search-query-help">Mínimo 2 caracteres</div>
+
+          <label for="patient-species-filter">Especie</label>
+          <select id="patient-species-filter">
+            <option value="">Todas las especies</option>
+            <option value="CANINO">Canino</option>
+            <option value="FELINO">Felino</option>
+            <option value="AVE">Ave</option>
+            <option value="EXOTICO">Exótico</option>
+            <option value="OTRO">Otro</option>
+          </select>
+
+          <label for="patient-status-filter">Estado</label>
+          <select id="patient-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="ACTIVO">Activo</option>
+            <option value="INACTIVO">Inactivo</option>
+            <option value="FALLECIDO">Fallecido</option>
+          </select>
+
+          <label for="patient-sort">Ordenar por</label>
+          <select id="patient-sort">
+            <option value="name" selected>Nombre del paciente</option>
+            <option value="species">Especie</option>
+            <option value="ownerName">Propietario</option>
+            <option value="createdAt">Registro reciente</option>
+          </select>
+
+          <label for="patient-direction">Dirección</label>
+          <select id="patient-direction">
+            <option value="asc" selected>Ascendente</option>
+            <option value="desc">Descendente</option>
+          </select>
+
+          <button id="patient-search-submit" type="submit">Buscar</button>
+          <button id="clear-patient-filters" type="button">Limpiar filtros</button>
+        </form>
+
+        <div id="patients-initial" role="status">Estado inicial de búsqueda.</div>
+        <div id="patients-validation" role="alert" tabindex="-1" hidden></div>
+        <div id="patients-forbidden" role="alert" tabindex="-1" hidden>No tienes permisos (PATIENT_READ).</div>
+        <div id="patients-loading" role="status" aria-live="polite" hidden>Consultando…</div>
+        <div id="patients-empty" role="status" hidden>No se encontraron pacientes.</div>
+        <div id="patients-error" role="alert" hidden>
+          <span id="patients-error-message">Error</span>
+          <button id="retry-patients" type="button">Reintentar</button>
+        </div>
+
+        <div id="patients-content" hidden>
+          <table>
+            <tbody id="patients-table-body"></tbody>
+          </table>
+          <div id="patients-cards"></div>
+          <div id="patients-pagination">
+            <span id="patients-page-status" aria-live="polite"></span>
+            <button id="patients-previous-page" type="button">Anterior</button>
+            <button id="patients-next-page" type="button">Siguiente</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="patient-profile-view" aria-labelledby="patient-profile-title" hidden>
+        <div class="d-flex justify-content-between align-items-start gap-3">
+          <div>
+            <span class="pc-eyebrow">Perfil clínico</span>
+            <div class="d-flex align-items-center gap-2">
+              <h2 id="patient-profile-title" tabindex="-1">Perfil clínico del paciente</h2>
+              <span id="patient-profile-status-badge" class="badge text-bg-secondary" hidden></span>
+            </div>
+            <p id="patient-profile-subtitle"></p>
+          </div>
+          <div>
+            <button id="patient-profile-new-consultation-button" type="button" hidden disabled aria-disabled="true">
+              Nueva consulta
+            </button>
+            <button id="patient-profile-new-appointment-button" type="button" hidden disabled aria-disabled="true">
+              Agendar cita
+            </button>
+            <button id="patient-profile-back-button" type="button">
+              Volver a resultados
+            </button>
+          </div>
+        </div>
+
+        <div id="patient-profile-loading" role="status" aria-live="polite" hidden>Cargando perfil clínico…</div>
+        <div id="patient-profile-forbidden" role="alert" tabindex="-1" hidden>No tienes permisos (PATIENT_READ).</div>
+        <div id="patient-profile-not-found" role="alert" tabindex="-1" hidden>
+          <span id="patient-profile-not-found-message">No se encontró el paciente solicitado.</span>
+        </div>
+        <div id="patient-profile-error" role="alert" tabindex="-1" hidden>
+          <span id="patient-profile-error-message">Error al consultar perfil.</span>
+          <p id="patient-profile-error-correlation" hidden></p>
+          <button id="retry-patient-profile" type="button">Reintentar</button>
+        </div>
+
+        <div id="patient-profile-content" hidden>
+          <div id="patient-profile-medical-alerts-banner" role="alert" hidden>
+            <div id="patient-profile-allergies-row" hidden>
+              <span>Alergias:</span> <span id="patient-profile-allergies-value"></span>
+            </div>
+            <div id="patient-profile-alerts-row" hidden>
+              <span>Alertas médicas:</span> <span id="patient-profile-alerts-value"></span>
+            </div>
+          </div>
+
+          <div id="patient-profile-no-alerts" role="status" hidden>
+            Sin alergias ni alertas médicas registradas en la historia clínica inicial.
+          </div>
+
+          <dl id="patient-profile-identification">
+            <dt>Nombre</dt><dd id="patient-profile-name">-</dd>
+            <dt>Especie</dt><dd id="patient-profile-species">-</dd>
+            <dt>Raza</dt><dd id="patient-profile-breed">-</dd>
+            <dt>Sexo</dt><dd id="patient-profile-sex">-</dd>
+            <dt>Nacimiento</dt><dd id="patient-profile-birth-date">-</dd>
+            <dt>Color</dt><dd id="patient-profile-color">-</dd>
+            <dt>Microchip</dt><dd id="patient-profile-microchip">-</dd>
+            <dt>Esterilizado</dt><dd id="patient-profile-sterilized">-</dd>
+          </dl>
+
+          <dl id="patient-profile-owner">
+            <dt>Nombre completo</dt><dd id="patient-profile-owner-name">-</dd>
+            <dt>Documento</dt><dd id="patient-profile-owner-document">-</dd>
+            <dt>Teléfono</dt><dd id="patient-profile-owner-phone">-</dd>
+            <dt>Correo electrónico</dt><dd id="patient-profile-owner-email">-</dd>
+          </dl>
+
+          <span id="patient-profile-record-meta"></span>
+          <p id="patient-profile-record-history"></p>
+
+          <p id="patient-profile-consultations-empty">
+            Sin consultas registradas (módulo de atención clínica pendiente en Sprint 2 — HU-019).
+          </p>
+          <p id="patient-profile-appointments-empty">
+            Sin citas registradas (módulo de agenda y citas pendiente en Sprint 2 — HU-015 / HU-016).
+          </p>
+          <p id="patient-profile-vaccines-empty">
+            Sin vacunas registradas (registro de inmunizaciones pendiente en Sprint 2).
+          </p>
+          <p id="patient-profile-prescriptions-empty">
+            Sin prescripciones registradas (módulo de recetas clínicas pendiente en Sprint 2 — HU-021).
+          </p>
+        </div>
+      </section>
+
+      <dialog id="patient-editor-dialog">
+        <form id="patient-editor-form">
+          <select id="patient-owner-id" required><option value=""></option></select>
+          <input id="patient-name" required>
+          <input id="patient-species" required>
+          <input id="patient-sex" required>
+          <input id="patient-owner-query">
+          <button id="patient-owner-search" type="button">Buscar</button>
+          <input id="patient-breed">
+          <input id="patient-birth-date">
+          <input id="patient-color">
+          <input id="patient-microchip">
+          <input id="patient-sterilized" type="checkbox">
+          <button id="save-patient-button" type="submit">Registrar</button>
+          <button id="cancel-patient-button" type="button">Cancelar</button>
+          <div id="patient-form-error" hidden></div>
+          <div id="patient-form-validation" role="alert" hidden></div>
+        </form>
+      </dialog>
+    </main>
+    <script type="module" src="./patient-profile.test.js"></script>
+  </body>
+</html>

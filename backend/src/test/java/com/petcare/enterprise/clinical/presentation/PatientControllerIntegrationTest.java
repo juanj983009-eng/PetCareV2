@@ -294,6 +294,96 @@ class PatientControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void getsPatientProfileWithOwnerAndMedicalRecordWithinAuthenticatedTenant() throws Exception {
+        Fixture tenantA = fixture("profile-patients-a");
+        Fixture tenantB = fixture("profile-patients-b");
+
+        UUID ownerA = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO owners(id, tenant_id, first_name, last_name, document_type, document_number, phone, email, address, active)
+                VALUES (?, ?, 'Valeria', 'Quispe', 'DNI', '44881234', '987654321', 'valeria@example.test', 'Av. Larco 450', true)
+                """, ownerA, tenantA.tenant);
+
+        UUID patientA = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO patients(id, tenant_id, owner_id, name, species, breed, sex, birth_date, color, microchip, sterilized, status)
+                VALUES (?, ?, ?, 'Luna', 'CANINO', 'Mestizo', 'HEMBRA', '2023-04-10', 'Negro', 'CHIPSF1001', true, 'ACTIVO')
+                """, patientA, tenantA.tenant, ownerA);
+
+        UUID recordA = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO medical_records(id, tenant_id, patient_id, allergies, medical_alerts, history)
+                VALUES (?, ?, ?, 'Alergia a penicilina', 'Paciente braquicéfalo — monitoreo respiratorio', 'Control anual preventivo')
+                """, recordA, tenantA.tenant, patientA);
+
+        String profileJson = mvc.perform(get("/api/v1/patients/{patientId}", patientA)
+                        .param("tenantId", tenantB.tenant.toString())
+                        .with(authentication(auth(tenantA, "PATIENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(patientA.toString()))
+                .andExpect(jsonPath("$.name").value("Luna"))
+                .andExpect(jsonPath("$.species").value("CANINO"))
+                .andExpect(jsonPath("$.breed").value("Mestizo"))
+                .andExpect(jsonPath("$.sex").value("HEMBRA"))
+                .andExpect(jsonPath("$.birthDate").value("2023-04-10"))
+                .andExpect(jsonPath("$.color").value("Negro"))
+                .andExpect(jsonPath("$.microchip").value("CHIPSF1001"))
+                .andExpect(jsonPath("$.sterilized").value(true))
+                .andExpect(jsonPath("$.status").value("ACTIVO"))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.owner.id").value(ownerA.toString()))
+                .andExpect(jsonPath("$.owner.fullName").value("Valeria Quispe"))
+                .andExpect(jsonPath("$.owner.documentType").value("DNI"))
+                .andExpect(jsonPath("$.owner.documentNumber").value("44881234"))
+                .andExpect(jsonPath("$.owner.phone").value("987654321"))
+                .andExpect(jsonPath("$.owner.email").value("valeria@example.test"))
+                .andExpect(jsonPath("$.medicalRecord.id").value(recordA.toString()))
+                .andExpect(jsonPath("$.medicalRecord.allergies").value("Alergia a penicilina"))
+                .andExpect(jsonPath("$.medicalRecord.medicalAlerts").value("Paciente braquicéfalo — monitoreo respiratorio"))
+                .andExpect(jsonPath("$.medicalRecord.history").value("Control anual preventivo"))
+                .andExpect(jsonPath("$.medicalRecord.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.tenantId").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(profileJson).doesNotContain("tenantId", "notificationsAccepted", "address");
+    }
+
+    @Test
+    void enforcesProfileAuthenticationAuthorizationNotFoundAndTenantIsolation() throws Exception {
+        Fixture tenantA = fixture("profile-iso-a");
+        Fixture tenantB = fixture("profile-iso-b");
+
+        UUID ownerB = insertOwner(tenantB.tenant, "Carlos", "Ajeno", "DNI", "70998811", "900111222");
+        UUID patientB = insertPatientWithSensitiveRecord(
+                tenantB.tenant, ownerB, "Thor Ajeno", "CANINO", "Labrador", "MACHO", "CHIP-B-999", "ACTIVO");
+
+        // 401 without JWT
+        mvc.perform(get("/api/v1/patients/{patientId}", patientB))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 403 without PATIENT_READ (e.g. ALMACEN with only DASHBOARD_VIEW)
+        mvc.perform(get("/api/v1/patients/{patientId}", patientB)
+                        .with(authentication(auth(tenantB, "DASHBOARD_VIEW"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 404 for non-existent UUID
+        mvc.perform(get("/api/v1/patients/{patientId}", UUID.randomUUID())
+                        .with(authentication(auth(tenantA, "PATIENT_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("No se encontró el paciente solicitado."));
+
+        // 404 for existing patient belonging to Tenant B when requested by Tenant A (uniform, no existence leak)
+        mvc.perform(get("/api/v1/patients/{patientId}", patientB)
+                        .with(authentication(auth(tenantA, "PATIENT_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("No se encontró el paciente solicitado."));
+    }
+
     private Fixture fixture(String slug) {
         UUID t = UUID.randomUUID(), br = UUID.randomUUID(), u = UUID.randomUUID();
         jdbc.update("INSERT INTO tenants(id,name,slug,plan,status,created_at) VALUES(?,?,?,'STARTER','ACTIVO',now())",

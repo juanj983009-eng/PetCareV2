@@ -303,6 +303,7 @@ export function createAuthController({ document, window, client, errors, lifecyc
     if (optional.rolesView) optional.rolesView.hidden = true;
     if (optional.ownersView) optional.ownersView.hidden = true;
     if (optional.patientsView) optional.patientsView.hidden = true;
+    if (optional.patientProfileView) optional.patientProfileView.hidden = true;
     if (optional.dashboardHome) optional.dashboardHome.hidden = false;
     markActiveNav(optional.dashboardNavButton);
     closeMobileNav();
@@ -313,7 +314,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
       optional.usersView,
       optional.rolesView,
       optional.ownersView,
-      optional.patientsView
+      optional.patientsView,
+      optional.patientProfileView
     ]) {
       if (view && view !== targetView) {
         view.hidden = true;
@@ -416,7 +418,8 @@ function findOptionalElements(document) {
     usersView: document.querySelector("#users-view"),
     rolesView: document.querySelector("#roles-view"),
     ownersView: document.querySelector("#owners-view"),
-    patientsView: document.querySelector("#patients-view")
+    patientsView: document.querySelector("#patients-view"),
+    patientProfileView: document.querySelector("#patient-profile-view")
   };
 }
 

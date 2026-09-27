@@ -1,5 +1,6 @@
 package com.petcare.enterprise.clinical.presentation;
 
+import com.petcare.enterprise.clinical.application.PatientProfileUseCase;
 import com.petcare.enterprise.clinical.application.PatientRegistrationUseCase;
 import com.petcare.enterprise.clinical.application.PatientSearchUseCase;
 import com.petcare.enterprise.clinical.application.PatientSearchUseCase.PatientSearch;
@@ -12,9 +13,11 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.util.Locale;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,10 +30,15 @@ import org.springframework.web.bind.annotation.RestController;
 class PatientController {
     private final PatientRegistrationUseCase patients;
     private final PatientSearchUseCase searchUseCase;
+    private final PatientProfileUseCase profileUseCase;
 
-    PatientController(PatientRegistrationUseCase patients, PatientSearchUseCase searchUseCase) {
+    PatientController(
+            PatientRegistrationUseCase patients,
+            PatientSearchUseCase searchUseCase,
+            PatientProfileUseCase profileUseCase) {
         this.patients = patients;
         this.searchUseCase = searchUseCase;
+        this.profileUseCase = profileUseCase;
     }
 
     @GetMapping
@@ -50,6 +58,11 @@ class PatientController {
                 normalizeStatus(status),
                 sortField(sortBy),
                 sortDirection(direction))));
+    }
+
+    @GetMapping("/{patientId}")
+    PatientProfileResponse getById(@PathVariable UUID patientId) {
+        return PatientProfileResponse.from(profileUseCase.getById(patientId));
     }
 
     @PostMapping

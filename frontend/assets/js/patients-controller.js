@@ -26,12 +26,15 @@ const STATUS_META = Object.freeze({
 export function createPatientsController({ document, client }) {
   const e = elements(document);
   const s = searchElements(document);
+  const p = profileElements(document);
   let canCreate = false;
   let canRead = false;
   let loading = false;
   let searching = false;
+  let loadingProfile = false;
   let page = 0;
   let totalPages = 0;
+  let activeProfileId = null;
 
   e.open.addEventListener("click", openCreateDialog);
   e.cancel.addEventListener("click", () => e.dialog.close());
@@ -49,6 +52,15 @@ export function createPatientsController({ document, client }) {
     s.nextButton.addEventListener("click", () => executeSearch(page + 1));
   }
 
+  if (p) {
+    p.backButton.addEventListener("click", backToSearchResults);
+    p.retryButton.addEventListener("click", () => {
+      if (activeProfileId) {
+        openPatientProfile(activeProfileId);
+      }
+    });
+  }
+
   return Object.freeze({
     sessionReady(identity) {
       const authorities = new Set(identity?.authorities ?? []);
@@ -63,13 +75,25 @@ export function createPatientsController({ document, client }) {
         closeSearchView();
         resetSearchState();
       }
+      if (p) {
+        p.view.hidden = true;
+        p.newConsultationButton.hidden = true;
+        p.newConsultationButton.disabled = true;
+        p.newAppointmentButton.hidden = true;
+        p.newAppointmentButton.disabled = true;
+        activeProfileId = null;
+      }
     },
     sessionEnded() {
       canCreate = false;
       canRead = false;
+      activeProfileId = null;
       e.open.hidden = true;
       if (e.dialog.open) {
         e.dialog.close();
+      }
+      if (p) {
+        p.view.hidden = true;
       }
       if (s) {
         s.navButton.hidden = true;
@@ -81,11 +105,15 @@ export function createPatientsController({ document, client }) {
         resetSearchState();
       }
     },
-    openSearchView
+    openSearchView,
+    openPatientProfile
   });
 
   function openSearchView() {
     if (!s) return;
+    if (p) {
+      p.view.hidden = true;
+    }
     s.home.hidden = true;
     s.view.hidden = false;
     if (!canRead) {
@@ -102,8 +130,22 @@ export function createPatientsController({ document, client }) {
 
   function closeSearchView() {
     if (!s) return;
+    if (p) {
+      p.view.hidden = true;
+    }
     s.view.hidden = true;
     s.home.hidden = false;
+  }
+
+  function backToSearchResults() {
+    if (!p || !s) return;
+    p.view.hidden = true;
+    s.home.hidden = true;
+    s.view.hidden = false;
+    const trigger = activeProfileId
+      ? s.view.querySelector(`[data-action="view-patient-profile"][data-patient-id="${CSS.escape(activeProfileId)}"]`)
+      : null;
+    (trigger ?? s.title).focus({ preventScroll: true });
   }
 
   function resetSearchState() {
@@ -203,6 +245,118 @@ export function createPatientsController({ document, client }) {
     }
   }
 
+  async function openPatientProfile(patientId) {
+    if (!p || !patientId || loadingProfile) {
+      return;
+    }
+    activeProfileId = String(patientId);
+    if (s) {
+      s.home.hidden = true;
+      s.view.hidden = true;
+    }
+    p.view.hidden = false;
+
+    if (!canRead) {
+      setProfileState("forbidden");
+      p.forbidden.focus({ preventScroll: true });
+      return;
+    }
+
+    loadingProfile = true;
+    setProfileState("loading");
+    p.title.focus({ preventScroll: true });
+
+    try {
+      const profile = validPatientProfile(
+        await client.requestJson(`/api/v1/patients/${encodeURIComponent(activeProfileId)}`)
+      );
+      renderPatientProfile(profile);
+      setProfileState("content");
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 403) {
+        setProfileState("forbidden");
+        p.forbidden.focus({ preventScroll: true });
+      } else if (error instanceof ApiRequestError && error.status === 404) {
+        setProfileState("not-found");
+        p.notFound.focus({ preventScroll: true });
+      } else {
+        p.errorMessage.textContent = error instanceof ApiRequestError
+          ? error.message
+          : "No fue posible consultar el expediente clínico del paciente.";
+        p.errorCorrelation.textContent = error instanceof ApiRequestError && error.correlationId
+          ? `Código de seguimiento: ${error.correlationId}`
+          : "";
+        p.errorCorrelation.hidden = !(error instanceof ApiRequestError && error.correlationId);
+        setProfileState("error");
+        p.error.focus({ preventScroll: true });
+      }
+    } finally {
+      loadingProfile = false;
+    }
+  }
+
+  function renderPatientProfile(profile) {
+    if (!p) return;
+    const speciesKey = String(profile.species ?? "").toUpperCase();
+    const speciesLabel = SPECIES_LABELS[speciesKey] ?? profile.species ?? "No especificada";
+    const breedText = profile.breed?.trim() || "Sin raza registrada";
+    const sexLabel = SEX_LABELS[profile.sex] ?? profile.sex ?? "No especificado";
+    const birthDateText = profile.birthDate?.trim() || "No registrada";
+    const colorText = profile.color?.trim() || "No registrado";
+    const microchipText = profile.microchip?.trim() || "No registrado";
+    const sterilizedText = profile.sterilized === true
+      ? "Sí"
+      : profile.sterilized === false
+        ? "No"
+        : "No especificado";
+    const statusInfo = STATUS_META[profile.status] ?? {
+      label: profile.status || "Desconocido",
+      badgeClass: "badge text-bg-light border"
+    };
+
+    p.title.textContent = profile.name;
+    p.subtitle.textContent = `${speciesLabel} · ${breedText} · ${sexLabel}`;
+    p.statusBadge.className = statusInfo.badgeClass;
+    p.statusBadge.textContent = statusInfo.label;
+
+    p.name.textContent = profile.name;
+    p.species.textContent = speciesLabel;
+    p.breed.textContent = breedText;
+    p.sex.textContent = sexLabel;
+    p.birthDate.textContent = birthDateText;
+    p.color.textContent = colorText;
+    p.microchip.textContent = microchipText;
+    p.sterilized.textContent = sterilizedText;
+
+    const ownerName = profile.owner?.fullName?.trim() || "Sin propietario";
+    const ownerDoc = [profile.owner?.documentType, profile.owner?.documentNumber].filter(Boolean).join(" ") || "Sin documento";
+    const ownerPhone = profile.owner?.phone?.trim() || "No registrado";
+    const ownerEmail = profile.owner?.email?.trim() || "No registrado";
+
+    p.ownerName.textContent = ownerName;
+    p.ownerDocument.textContent = ownerDoc;
+    p.ownerPhone.textContent = ownerPhone;
+    p.ownerEmail.textContent = ownerEmail;
+
+    const allergies = profile.medicalRecord?.allergies?.trim() || "";
+    const medicalAlerts = profile.medicalRecord?.medicalAlerts?.trim() || "";
+    const hasCriticalAlerts = allergies.length > 0 || medicalAlerts.length > 0;
+
+    p.alertsBanner.hidden = !hasCriticalAlerts;
+    p.noAlerts.hidden = hasCriticalAlerts;
+    p.allergiesRow.hidden = allergies.length === 0;
+    p.allergiesValue.textContent = allergies;
+    p.alertsRow.hidden = medicalAlerts.length === 0;
+    p.alertsValue.textContent = medicalAlerts;
+
+    const recordId = profile.medicalRecord?.id ?? null;
+    const recordDate = formatIsoDate(profile.medicalRecord?.createdAt);
+    p.recordMeta.textContent = recordId
+      ? `Folio: ${recordId}${recordDate ? ` · Apertura: ${recordDate}` : ""}`
+      : "Historia clínica base vinculada";
+    p.recordHistory.textContent = profile.medicalRecord?.history?.trim() || "Sin antecedentes clínicos registrados.";
+  }
+
   function renderPatients(patients) {
     s.rows.replaceChildren();
     s.cards.replaceChildren();
@@ -261,7 +415,7 @@ export function createPatientsController({ document, client }) {
 
       const actionCell = document.createElement("td");
       actionCell.className = "text-end";
-      actionCell.append(createProfileSlot(document, patientId));
+      actionCell.append(createProfileSlot(document, patientId, patient.name, canRead, openPatientProfile));
 
       row.append(nameCell, speciesCell, ownerCell, microchipCell, statusCell, actionCell);
       s.rows.append(row);
@@ -295,7 +449,7 @@ export function createPatientsController({ document, client }) {
 
       const cardFooter = document.createElement("div");
       cardFooter.className = "d-flex justify-content-end pt-1 border-top";
-      cardFooter.append(createProfileSlot(document, patientId));
+      cardFooter.append(createProfileSlot(document, patientId, patient.name, canRead, openPatientProfile));
 
       cardBody.append(headerRow, detailsGrid, cardFooter);
       card.append(cardBody);
@@ -323,6 +477,15 @@ export function createPatientsController({ document, client }) {
     if (s.pagination) {
       s.pagination.hidden = activeState !== "content";
     }
+  }
+
+  function setProfileState(activeState) {
+    if (!p) return;
+    p.loading.hidden = activeState !== "loading";
+    p.forbidden.hidden = activeState !== "forbidden";
+    p.notFound.hidden = activeState !== "not-found";
+    p.error.hidden = activeState !== "error";
+    p.content.hidden = activeState !== "content";
   }
 
   function openCreateDialog() {
@@ -418,14 +581,33 @@ function createStatusBadge(document, statusInfo) {
   return badge;
 }
 
-function createProfileSlot(document, patientId) {
-  const slot = document.createElement("span");
-  slot.className = "badge text-bg-light border text-secondary";
+function createProfileSlot(document, patientId, patientName, canRead, onOpenProfile) {
+  const slot = document.createElement("div");
   slot.dataset.patientProfileSlot = "true";
   slot.dataset.patientId = patientId;
-  slot.setAttribute("aria-disabled", "true");
-  slot.textContent = "Ficha clínica (HU-013)";
+  if (!canRead) {
+    slot.hidden = true;
+    return slot;
+  }
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn-outline-primary btn-sm";
+  button.dataset.action = "view-patient-profile";
+  button.dataset.patientId = patientId;
+  button.setAttribute("aria-label", `Ver perfil de ${patientName}`);
+  button.textContent = "Ver perfil";
+  button.addEventListener("click", () => onOpenProfile(patientId));
+
+  slot.append(button);
   return slot;
+}
+
+function formatIsoDate(isoString) {
+  if (!isoString || typeof isoString !== "string") {
+    return "";
+  }
+  return isoString.slice(0, 10);
 }
 
 function elements(document) {
@@ -504,6 +686,63 @@ function searchElements(document) {
   return resolved;
 }
 
+function profileElements(document) {
+  const view = document.querySelector("#patient-profile-view");
+  if (!view) {
+    return null;
+  }
+  const selectors = {
+    view: "#patient-profile-view",
+    title: "#patient-profile-title",
+    subtitle: "#patient-profile-subtitle",
+    statusBadge: "#patient-profile-status-badge",
+    backButton: "#patient-profile-back-button",
+    newConsultationButton: "#patient-profile-new-consultation-button",
+    newAppointmentButton: "#patient-profile-new-appointment-button",
+    loading: "#patient-profile-loading",
+    forbidden: "#patient-profile-forbidden",
+    notFound: "#patient-profile-not-found",
+    error: "#patient-profile-error",
+    errorMessage: "#patient-profile-error-message",
+    errorCorrelation: "#patient-profile-error-correlation",
+    retryButton: "#retry-patient-profile",
+    content: "#patient-profile-content",
+    alertsBanner: "#patient-profile-medical-alerts-banner",
+    allergiesRow: "#patient-profile-allergies-row",
+    allergiesValue: "#patient-profile-allergies-value",
+    alertsRow: "#patient-profile-alerts-row",
+    alertsValue: "#patient-profile-alerts-value",
+    noAlerts: "#patient-profile-no-alerts",
+    name: "#patient-profile-name",
+    species: "#patient-profile-species",
+    breed: "#patient-profile-breed",
+    sex: "#patient-profile-sex",
+    birthDate: "#patient-profile-birth-date",
+    color: "#patient-profile-color",
+    microchip: "#patient-profile-microchip",
+    sterilized: "#patient-profile-sterilized",
+    ownerName: "#patient-profile-owner-name",
+    ownerDocument: "#patient-profile-owner-document",
+    ownerPhone: "#patient-profile-owner-phone",
+    ownerEmail: "#patient-profile-owner-email",
+    recordMeta: "#patient-profile-record-meta",
+    recordHistory: "#patient-profile-record-history",
+    consultationsEmpty: "#patient-profile-consultations-empty",
+    appointmentsEmpty: "#patient-profile-appointments-empty",
+    vaccinesEmpty: "#patient-profile-vaccines-empty",
+    prescriptionsEmpty: "#patient-profile-prescriptions-empty"
+  };
+  const resolved = Object.fromEntries(
+    Object.entries(selectors).map(([key, selector]) => [key, document.querySelector(selector)])
+  );
+  for (const [key, element] of Object.entries(resolved)) {
+    if (!element) {
+      throw new Error(`Falta elemento de perfil de paciente: ${key}`);
+    }
+  }
+  return resolved;
+}
+
 function validPatientPage(value) {
   if (
     !value
@@ -515,6 +754,23 @@ function validPatientPage(value) {
       kind: "INVALID_RESPONSE",
       code: "INVALID_RESPONSE",
       message: "Respuesta del padrón de pacientes no válida."
+    });
+  }
+  return value;
+}
+
+function validPatientProfile(value) {
+  if (
+    !value
+    || typeof value.id !== "string"
+    || typeof value.name !== "string"
+    || !value.owner
+    || typeof value.owner.fullName !== "string"
+  ) {
+    throw new ApiRequestError({
+      kind: "INVALID_RESPONSE",
+      code: "INVALID_RESPONSE",
+      message: "Respuesta del perfil del paciente no válida."
     });
   }
   return value;
