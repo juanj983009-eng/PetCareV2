@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HU-015 — Pruebas de consulta de agenda</title>
+    <title>HU-015 / HU-016 — Pruebas de agenda y creación de citas</title>
     <link rel="stylesheet" href="../assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="../assets/css/app.css">
   </head>
   <body>
     <main class="container py-4">
-      <h1 class="h4 mb-2">HU-015 — Pruebas de consulta de agenda</h1>
+      <h1 class="h4 mb-2">HU-015 / HU-016 — Pruebas de agenda y creación de citas</h1>
       <p id="test-summary" class="text-secondary">Ejecutando…</p>
       <ol id="test-results" class="mb-4"></ol>
 
@@ -23,8 +23,12 @@
         <button id="appointments-back-button" type="button">← Volver al dashboard</button>
         <h2 id="appointments-title" tabindex="-1">Agenda de citas</h2>
         <button id="new-appointment-view-button" type="button" disabled hidden aria-disabled="true">
-          Nueva cita (HU-016)
+          Nueva cita
         </button>
+
+        <div id="appointments-notice" role="status" tabindex="-1" hidden>
+          Cita programada correctamente.
+        </div>
 
         <form id="appointment-search-form" role="search" novalidate>
           <label for="appointment-date-filter">Fecha</label>
@@ -69,6 +73,71 @@
           </div>
         </div>
       </section>
+
+      <dialog id="appointment-editor-dialog" aria-labelledby="appointment-editor-title">
+        <h2 id="appointment-editor-title">Programar nueva cita</h2>
+        <div id="appointment-form-error" role="alert" tabindex="-1" hidden></div>
+        <div id="appointment-form-validation" role="alert" tabindex="-1" hidden></div>
+        <form id="appointment-editor-form" novalidate>
+          <div id="appointment-patient-search-group">
+            <label for="appointment-patient-query">Buscar paciente</label>
+            <input id="appointment-patient-query">
+            <button id="appointment-patient-search-btn" type="button">Buscar</button>
+          </div>
+          <div>
+            <label for="appointment-patient-id">Paciente</label>
+            <select id="appointment-patient-id" required>
+              <option value="">Busca y selecciona un paciente activo</option>
+            </select>
+          </div>
+          <div>
+            <label for="appointment-branch-id">Sucursal</label>
+            <select id="appointment-branch-id" required>
+              <option value="">Selecciona una sucursal</option>
+            </select>
+            <div id="appointment-branch-timezone">Zona horaria: —</div>
+          </div>
+          <div>
+            <label for="appointment-veterinarian-id">Veterinario asignado</label>
+            <select id="appointment-veterinarian-id" required>
+              <option value="">Selecciona un veterinario</option>
+            </select>
+          </div>
+          <div>
+            <label for="appointment-date">Fecha</label>
+            <input id="appointment-date" type="date" required>
+          </div>
+          <div>
+            <label for="appointment-start-time">Hora de inicio</label>
+            <input id="appointment-start-time" type="time" required>
+          </div>
+          <div>
+            <label for="appointment-end-time">Hora de término</label>
+            <input id="appointment-end-time" type="time" required>
+          </div>
+          <div>
+            <label for="appointment-type">Tipo de cita</label>
+            <select id="appointment-type" required>
+              <option value="CONSULTA_GENERAL">Consulta general</option>
+              <option value="VACUNACION">Vacunación</option>
+              <option value="CONTROL">Control</option>
+              <option value="URGENCIA">Urgencia</option>
+              <option value="CIRUGIA">Cirugía</option>
+              <option value="DESPARASITACION">Desparasitación</option>
+            </select>
+          </div>
+          <div>
+            <label for="appointment-reason">Motivo</label>
+            <input id="appointment-reason" maxlength="240">
+          </div>
+          <div>
+            <label for="appointment-notes">Notas</label>
+            <textarea id="appointment-notes" maxlength="1000"></textarea>
+          </div>
+          <button id="cancel-appointment-button" type="button">Cancelar</button>
+          <button id="save-appointment-button" type="submit">Programar cita</button>
+        </form>
+      </dialog>
     </main>
     <script type="module" src="./appointment-schedule.test.js"></script>
   </body>

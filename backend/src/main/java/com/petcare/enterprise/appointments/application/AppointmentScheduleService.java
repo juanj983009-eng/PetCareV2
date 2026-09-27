@@ -1,11 +1,29 @@
 package com.petcare.enterprise.appointments.application;
 
+import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.NewAppointmentRecord;
+import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.VeterinarianEligibility;
+import com.petcare.enterprise.appointments.domain.AppointmentCreated;
+import com.petcare.enterprise.appointments.domain.AppointmentStatus;
+import com.petcare.enterprise.appointments.domain.AppointmentType;
+import com.petcare.enterprise.audit.application.AuditLogWriter;
+import com.petcare.enterprise.audit.application.AuditMetadata;
+import com.petcare.enterprise.audit.application.AuditMetadataProvider;
+import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.tenancy.application.TenantContext;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,15 +31,29 @@ import org.springframework.transaction.annotation.Transactional;
 public class AppointmentScheduleService implements AppointmentScheduleUseCase {
 
     private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_REASON_LENGTH = 500;
+    private static final int MAX_NOTES_LENGTH = 1000;
 
     private final TenantContext tenantContext;
     private final AppointmentScheduleRepository repository;
+    private final AuditMetadataProvider audit;
+    private final AuditLogWriter auditWriter;
+    private final AppointmentEventPublisher eventPublisher;
+    private final Clock clock;
 
     public AppointmentScheduleService(
             TenantContext tenantContext,
-            AppointmentScheduleRepository repository) {
+            AppointmentScheduleRepository repository,
+            AuditMetadataProvider audit,
+            AuditLogWriter auditWriter,
+            AppointmentEventPublisher eventPublisher,
+            Clock clock) {
         this.tenantContext = Objects.requireNonNull(tenantContext, "tenantContext is required");
         this.repository = Objects.requireNonNull(repository, "repository is required");
+        this.audit = Objects.requireNonNull(audit, "audit is required");
+        this.auditWriter = Objects.requireNonNull(auditWriter, "auditWriter is required");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher is required");
+        this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
     @Override
@@ -35,10 +67,243 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
     @Override
     @Transactional(readOnly = true)
     public AppointmentFilterOptions listOptions() {
+        return listOptions(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AppointmentFilterOptions listOptions(String branchId) {
         UUID tenantId = tenantContext.requireTenant().tenantId();
-        return new AppointmentFilterOptions(
-                repository.findActiveBranches(tenantId),
-                repository.findActiveVeterinarians(tenantId));
+        UUID filterBranchId = parseOptionalUuid(
+                branchId,
+                "branchId",
+                "El identificador de sucursal no es un UUID válido.");
+        List<BranchOption> branches = repository.findActiveBranches(tenantId);
+        List<VeterinarianOption> veterinarians = repository.findActiveVeterinarians(tenantId);
+        if (filterBranchId != null) {
+            veterinarians = veterinarians.stream()
+                    .filter(vet -> vet.branchIds() != null && vet.branchIds().contains(filterBranchId))
+                    .toList();
+        }
+        return new AppointmentFilterOptions(branches, veterinarians);
+    }
+
+    @Override
+    @Transactional
+    public AppointmentSummary createAppointment(CreateAppointmentCommand command) {
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+
+        if (command == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "appointment",
+                    "Los datos de la cita son obligatorios.");
+        }
+        if (command.patientId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "patientId",
+                    "El paciente es obligatorio.");
+        }
+        if (command.branchId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "branchId",
+                    "La sucursal es obligatoria.");
+        }
+        if (command.veterinarianId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El veterinario es obligatorio.");
+        }
+
+        AppointmentType parsedType = AppointmentType.parse(command.appointmentType())
+                .orElseThrow(() -> new InvalidAppointmentScheduleQueryException(
+                        "appointmentType",
+                        "El tipo de cita no pertenece al catálogo permitido."));
+
+        LocalDateTime startsAtLocal = parseLocalDateTime(
+                command.startsAtLocal(),
+                "startsAtLocal",
+                "La fecha y hora de inicio es obligatoria en formato ISO local (YYYY-MM-DDTHH:mm).");
+        LocalDateTime endsAtLocal = parseLocalDateTime(
+                command.endsAtLocal(),
+                "endsAtLocal",
+                "La fecha y hora de fin es obligatoria en formato ISO local (YYYY-MM-DDTHH:mm).");
+
+        if (!endsAtLocal.isAfter(startsAtLocal)) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "endsAtLocal",
+                    "La fecha y hora de fin debe ser posterior a la fecha y hora de inicio.");
+        }
+
+        String normalizedReason = normalizeOptionalText(
+                command.reason(),
+                MAX_REASON_LENGTH,
+                "reason",
+                "El motivo no puede superar los " + MAX_REASON_LENGTH + " caracteres.");
+        String normalizedNotes = normalizeOptionalText(
+                command.notes(),
+                MAX_NOTES_LENGTH,
+                "notes",
+                "Las observaciones no pueden superar los " + MAX_NOTES_LENGTH + " caracteres.");
+
+        BranchOption branch = repository.findActiveBranchById(tenantId, command.branchId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        ZoneId branchZone;
+        try {
+            branchZone = ZoneId.of(branch.timeZone());
+        } catch (Exception exception) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "branchId",
+                    "La zona horaria configurada en la sucursal no es válida.");
+        }
+
+        Instant startsAt = resolveInstantInBranchZone(startsAtLocal, branchZone, "startsAtLocal");
+        Instant endsAt = resolveInstantInBranchZone(endsAtLocal, branchZone, "endsAtLocal");
+
+        if (!endsAt.isAfter(startsAt)) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "endsAtLocal",
+                    "La fecha y hora de fin debe ser posterior a la fecha y hora de inicio.");
+        }
+
+        String patientName = repository.findActivePatientName(tenantId, command.patientId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        VeterinarianEligibility veterinarian = repository.findActiveUserEligibility(
+                        tenantId,
+                        command.veterinarianId(),
+                        command.branchId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        if (!veterinarian.hasVeterinarianRole()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El usuario seleccionado no cuenta con el rol VETERINARIO activo en la clínica.");
+        }
+        if (!veterinarian.assignedToBranch()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El veterinario seleccionado no se encuentra asignado a la sucursal indicada.");
+        }
+
+        if (repository.hasOverlappingActiveAppointment(tenantId, command.veterinarianId(), startsAt, endsAt)) {
+            throw new AppointmentTimeConflictException();
+        }
+
+        Instant now = clock.instant();
+        UUID appointmentId = UUID.randomUUID();
+        String status = AppointmentStatus.PROGRAMADA.name();
+
+        AppointmentSummary created;
+        try {
+            created = repository.insertAppointment(new NewAppointmentRecord(
+                    appointmentId,
+                    tenantId,
+                    branch.id(),
+                    branch.name(),
+                    command.patientId(),
+                    patientName,
+                    veterinarian.id(),
+                    veterinarian.fullName(),
+                    startsAt,
+                    endsAt,
+                    parsedType.name(),
+                    status,
+                    normalizedReason,
+                    normalizedNotes,
+                    metadata.actorUserId(),
+                    now));
+        } catch (DataIntegrityViolationException exception) {
+            throw new AppointmentTimeConflictException();
+        }
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                metadata.actorUserId(),
+                created.branchId(),
+                "APPOINTMENT",
+                created.id(),
+                "APPOINTMENT_CREATED",
+                now,
+                null,
+                metadata.correlationId(),
+                null,
+                Map.of(
+                        "appointmentId", created.id().toString(),
+                        "branchId", created.branchId().toString(),
+                        "patientId", created.patientId().toString(),
+                        "veterinarianId", created.veterinarianId().toString(),
+                        "createdBy", metadata.actorUserId().toString(),
+                        "startsAt", created.startsAt().toString(),
+                        "endsAt", created.endsAt().toString(),
+                        "appointmentType", created.appointmentType(),
+                        "status", created.status())));
+
+        eventPublisher.publish(new AppointmentCreated(
+                tenantId,
+                created.id(),
+                created.branchId(),
+                created.patientId(),
+                created.veterinarianId(),
+                metadata.actorUserId(),
+                created.startsAt(),
+                created.endsAt(),
+                created.appointmentType(),
+                created.status(),
+                metadata.correlationId()));
+
+        return created;
+    }
+
+    private static Instant resolveInstantInBranchZone(
+            LocalDateTime localDateTime,
+            ZoneId zoneId,
+            String fieldName) {
+        List<ZoneOffset> validOffsets = zoneId.getRules().getValidOffsets(localDateTime);
+        if (validOffsets.isEmpty()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    fieldName,
+                    "La hora local indicada no existe en la zona horaria de la sucursal por cambio de horario (DST).");
+        }
+        if (validOffsets.size() > 1) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    fieldName,
+                    "La hora local indicada es ambigua en la zona horaria de la sucursal por cambio de horario (DST).");
+        }
+        return ZonedDateTime.ofStrict(localDateTime, validOffsets.get(0), zoneId).toInstant();
+    }
+
+    private static LocalDateTime parseLocalDateTime(String value, String field, String errorMessage) {
+        if (value == null || value.isBlank()) {
+            throw new InvalidAppointmentScheduleQueryException(field, errorMessage);
+        }
+        String trimmed = value.trim();
+        if (trimmed.endsWith("Z") || trimmed.matches(".*[+-]\\d{2}:?\\d{2}$")) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    field,
+                    "Debe enviarse hora local sin desplazamiento UTC explícito.");
+        }
+        try {
+            return LocalDateTime.parse(trimmed);
+        } catch (DateTimeParseException exception) {
+            throw new InvalidAppointmentScheduleQueryException(field, errorMessage);
+        }
+    }
+
+    private static String normalizeOptionalText(String value, int maxLength, String field, String message) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > maxLength) {
+            throw new InvalidAppointmentScheduleQueryException(field, message);
+        }
+        return trimmed;
     }
 
     private static NormalizedAppointmentQuery normalize(AppointmentScheduleQuery query) {

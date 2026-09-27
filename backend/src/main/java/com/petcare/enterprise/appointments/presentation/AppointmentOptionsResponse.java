@@ -31,12 +31,14 @@ record AppointmentOptionsResponse(
 
     record VeterinarianItemResponse(
             UUID id,
-            String fullName) {
+            String fullName,
+            List<UUID> branchIds) {
 
         static VeterinarianItemResponse from(VeterinarianOption vet) {
             return new VeterinarianItemResponse(
                     vet.id(),
-                    vet.fullName());
+                    vet.fullName(),
+                    vet.branchIds() != null ? vet.branchIds() : List.of());
         }
     }
 }

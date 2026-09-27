@@ -2,8 +2,14 @@ package com.petcare.enterprise.appointments.presentation;
 
 import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCase;
 import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCase.AppointmentScheduleQuery;
+import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCase.AppointmentSummary;
+import jakarta.validation.Valid;
+import java.net.URI;
 import java.util.Objects;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,7 +42,16 @@ class AppointmentController {
     }
 
     @GetMapping("/options")
-    AppointmentOptionsResponse listOptions() {
-        return AppointmentOptionsResponse.from(schedule.listOptions());
+    AppointmentOptionsResponse listOptions(
+            @RequestParam(name = "branchId", required = false) String branchId) {
+        return AppointmentOptionsResponse.from(schedule.listOptions(branchId));
+    }
+
+    @PostMapping
+    ResponseEntity<AppointmentCreatedResponse> createAppointment(
+            @Valid @RequestBody CreateAppointmentRequest request) {
+        AppointmentSummary created = schedule.createAppointment(request.toCommand());
+        return ResponseEntity.created(URI.create("/api/v1/appointments/" + created.id()))
+                .body(AppointmentCreatedResponse.from(created));
     }
 }

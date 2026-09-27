@@ -1,6 +1,7 @@
 import { ApiRequestError } from "./api-client.js";
 
 const APPOINTMENT_READ = "APPOINTMENT_READ";
+const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
 const PATIENT_READ = "PATIENT_READ";
 
 const APPOINTMENT_TYPE_LABELS = Object.freeze({
@@ -50,19 +51,31 @@ const STATUS_META = Object.freeze({
   }
 });
 
-export function createAppointmentsController({ document, client, onViewPatientProfile = null }) {
+export function createAppointmentsController({
+  document,
+  client,
+  onViewPatientProfile = null,
+  onAppointmentCreated = null
+}) {
   const s = findElements(document);
+  const d = findDialogElements(document);
   let canRead = false;
+  let canCreate = false;
   let canReadPatient = false;
   let searching = false;
+  let savingAppointment = false;
+  let searchingPatients = false;
   let optionsLoaded = false;
   let page = 0;
   let totalPages = 0;
   const branchTimeZones = new Map();
+  let branchesCatalog = [];
+  let veterinariansCatalog = [];
 
   if (s) {
     s.navButton.addEventListener("click", openAppointmentsView);
     s.backButton.addEventListener("click", closeAppointmentsView);
+    s.newAppointmentViewButton?.addEventListener("click", () => openCreateAppointmentDialog());
     s.searchForm.addEventListener("submit", submitSearch);
     s.clearButton.addEventListener("click", clearFilters);
     s.retryButton.addEventListener("click", () => executeSearch(page));
@@ -71,18 +84,37 @@ export function createAppointmentsController({ document, client, onViewPatientPr
     s.view.addEventListener("click", handleDelegatedClick);
   }
 
+  if (d) {
+    d.cancelButton.addEventListener("click", () => d.dialog.close());
+    d.branchSelect.addEventListener("change", handleDialogBranchChange);
+    d.patientSearchButton.addEventListener("click", searchPatientsForDialog);
+    d.patientQuery.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchPatientsForDialog();
+      }
+    });
+    d.form.addEventListener("submit", submitCreateAppointment);
+  }
+
   return Object.freeze({
     sessionReady(identity) {
       const authorities = new Set(identity?.authorities ?? []);
       canRead = authorities.has(APPOINTMENT_READ);
+      canCreate = authorities.has(APPOINTMENT_CREATE);
       canReadPatient = authorities.has(PATIENT_READ);
       optionsLoaded = false;
       branchTimeZones.clear();
+      branchesCatalog = [];
+      veterinariansCatalog = [];
+      if (d?.dialog.open) {
+        d.dialog.close();
+      }
       if (s) {
         s.navButton.hidden = !canRead;
-        if (s.newAppointmentViewButton) {
-          s.newAppointmentViewButton.hidden = true;
-          s.newAppointmentViewButton.disabled = true;
+        syncCreateButtonState();
+        if (s.notice) {
+          s.notice.hidden = true;
         }
         closeAppointmentsView();
         resetStateToDefaultDate();
@@ -90,27 +122,44 @@ export function createAppointmentsController({ document, client, onViewPatientPr
     },
     sessionEnded() {
       canRead = false;
+      canCreate = false;
       canReadPatient = false;
       optionsLoaded = false;
       branchTimeZones.clear();
+      branchesCatalog = [];
+      veterinariansCatalog = [];
+      if (d?.dialog.open) {
+        d.dialog.close();
+      }
       if (s) {
         s.navButton.hidden = true;
-        if (s.newAppointmentViewButton) {
-          s.newAppointmentViewButton.hidden = true;
-          s.newAppointmentViewButton.disabled = true;
+        syncCreateButtonState();
+        if (s.notice) {
+          s.notice.hidden = true;
         }
         s.view.hidden = true;
         s.home.hidden = false;
         resetStateToDefaultDate();
       }
     },
-    openAppointmentsView
+    openAppointmentsView,
+    openCreateAppointmentDialog
   });
+
+  function syncCreateButtonState() {
+    if (!s?.newAppointmentViewButton) return;
+    s.newAppointmentViewButton.hidden = !canCreate;
+    s.newAppointmentViewButton.disabled = !canCreate;
+    s.newAppointmentViewButton.setAttribute("aria-disabled", String(!canCreate));
+  }
 
   async function openAppointmentsView() {
     if (!s) return;
     s.home.hidden = true;
     s.view.hidden = false;
+    if (s.notice) {
+      s.notice.hidden = true;
+    }
     if (!canRead) {
       setViewState("forbidden");
       s.forbidden.focus({ preventScroll: true });
@@ -156,6 +205,9 @@ export function createAppointmentsController({ document, client, onViewPatientPr
     s.branchFilter.value = "";
     s.veterinarianFilter.value = "";
     s.directionFilter.value = "asc";
+    if (s.notice) {
+      s.notice.hidden = true;
+    }
     if (canRead) {
       await executeSearch(0);
     } else {
@@ -164,31 +216,305 @@ export function createAppointmentsController({ document, client, onViewPatientPr
   }
 
   async function loadOptions() {
-    if (!s || !canRead) return;
+    if (!s || (!canRead && !canCreate)) return;
     try {
       const response = await client.requestJson("/api/v1/appointments/options");
       branchTimeZones.clear();
+      branchesCatalog = Array.isArray(response?.branches)
+        ? response.branches.filter((b) => b?.id && b?.name)
+        : [];
+      veterinariansCatalog = Array.isArray(response?.veterinarians)
+        ? response.veterinarians.filter((v) => v?.id && v?.fullName)
+        : [];
+
       const branchOptions = [createOption("", "Todas las sucursales")];
-      for (const branch of Array.isArray(response?.branches) ? response.branches : []) {
-        if (branch?.id && branch?.name) {
-          branchTimeZones.set(branch.id, branch.timeZone || "America/Lima");
-          branchOptions.push(createOption(branch.id, branch.name));
-        }
+      for (const branch of branchesCatalog) {
+        branchTimeZones.set(branch.id, branch.timeZone || "America/Lima");
+        branchOptions.push(createOption(branch.id, branch.name));
       }
       s.branchFilter.replaceChildren(...branchOptions);
 
       const vetOptions = [createOption("", "Todos los veterinarios")];
-      for (const vet of Array.isArray(response?.veterinarians) ? response.veterinarians : []) {
-        if (vet?.id && vet?.fullName) {
-          vetOptions.push(createOption(vet.id, vet.fullName));
-        }
+      for (const vet of veterinariansCatalog) {
+        vetOptions.push(createOption(vet.id, vet.fullName));
       }
       s.veterinarianFilter.replaceChildren(...vetOptions);
       optionsLoaded = true;
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 403) {
+      if (error instanceof ApiRequestError && error.status === 403 && !canCreate) {
         setViewState("forbidden");
       }
+    }
+  }
+
+  async function openCreateAppointmentDialog(preselectedPatient = null) {
+    if (!d || !canCreate) return;
+    if (!optionsLoaded) {
+      await loadOptions();
+    }
+    clearDialogMessages();
+    d.form.reset();
+
+    // Populate branches in modal
+    const branchOpts = [createOption("", "Selecciona una sucursal")];
+    for (const branch of branchesCatalog) {
+      branchOpts.push(createOption(branch.id, branch.name));
+    }
+    d.branchSelect.replaceChildren(...branchOpts);
+
+    const defaultBranchId = (s?.branchFilter?.value && branchTimeZones.has(s.branchFilter.value))
+      ? s.branchFilter.value
+      : (branchesCatalog.length === 1 ? branchesCatalog[0].id : "");
+    d.branchSelect.value = defaultBranchId;
+    handleDialogBranchChange();
+
+    if (s?.veterinarianFilter?.value) {
+      const matchingVetOption = Array.from(d.veterinarianSelect.options)
+        .some((opt) => opt.value === s.veterinarianFilter.value);
+      if (matchingVetOption) {
+        d.veterinarianSelect.value = s.veterinarianFilter.value;
+      }
+    }
+
+    // Populate patient selector
+    if (preselectedPatient?.id) {
+      const patientLabel = preselectedPatient.ownerFullName
+        ? `${preselectedPatient.name} — ${preselectedPatient.ownerFullName}`
+        : (preselectedPatient.name || "Paciente seleccionado");
+      d.patientSearchGroup.hidden = true;
+      d.patientSelect.replaceChildren(createOption(preselectedPatient.id, patientLabel));
+      d.patientSelect.value = preselectedPatient.id;
+    } else {
+      d.patientSearchGroup.hidden = false;
+      d.patientQuery.value = "";
+      d.patientSelect.replaceChildren(createOption("", "Busca y selecciona un paciente activo"));
+      d.patientSelect.value = "";
+    }
+
+    d.dateInput.value = (s?.dateFilter?.value && isValidIsoDate(s.dateFilter.value))
+      ? s.dateFilter.value
+      : todayLocalIsoDate();
+    d.startTimeInput.value = "09:00";
+    d.endTimeInput.value = "09:30";
+    d.typeSelect.value = "CONSULTA_GENERAL";
+    d.reasonInput.value = "";
+    d.notesInput.value = "";
+
+    if (!d.dialog.open) {
+      d.dialog.showModal();
+    }
+  }
+
+  function handleDialogBranchChange() {
+    if (!d) return;
+    const selectedBranchId = d.branchSelect.value.trim();
+    const tz = selectedBranchId ? branchTimeZones.get(selectedBranchId) : null;
+    d.branchTimeZone.textContent = `Zona horaria: ${tz || "—"}`;
+
+    const vetOpts = [createOption("", "Selecciona un veterinario")];
+    const eligibleVets = veterinariansCatalog.filter((vet) => {
+      if (!selectedBranchId) return true;
+      if (!Array.isArray(vet.branchIds)) return true;
+      return vet.branchIds.includes(selectedBranchId);
+    });
+    for (const vet of eligibleVets) {
+      vetOpts.push(createOption(vet.id, vet.fullName));
+    }
+    d.veterinarianSelect.replaceChildren(...vetOpts);
+    if (eligibleVets.length === 1) {
+      d.veterinarianSelect.value = eligibleVets[0].id;
+    }
+  }
+
+  async function searchPatientsForDialog() {
+    if (!d || searchingPatients) return;
+    clearDialogMessages();
+    const query = d.patientQuery.value.trim();
+    if (query.length < 2) {
+      d.patientQuery.setAttribute("aria-invalid", "true");
+      d.validationAlert.textContent = "Ingresa al menos 2 caracteres para buscar un paciente activo.";
+      d.validationAlert.hidden = false;
+      d.patientQuery.focus();
+      return;
+    }
+    d.patientQuery.removeAttribute("aria-invalid");
+    searchingPatients = true;
+    d.patientSearchButton.disabled = true;
+
+    try {
+      const params = new URLSearchParams({
+        query,
+        page: "0",
+        size: "20",
+        sortBy: "name",
+        direction: "asc"
+      });
+      const response = await client.requestJson(`/api/v1/patients?${params.toString()}`);
+      const allItems = Array.isArray(response?.content) ? response.content : [];
+      const activePatients = allItems.filter((item) => item?.id && item?.status === "ACTIVO");
+
+      if (activePatients.length === 0) {
+        d.patientSelect.replaceChildren(createOption("", `Sin pacientes activos para "${query}"`));
+        d.patientSelect.value = "";
+        return;
+      }
+
+      const opts = [createOption("", "Selecciona un paciente activo")];
+      for (const item of activePatients) {
+        const ownerPart = item.ownerFullName ? ` — ${item.ownerFullName}` : "";
+        opts.push(createOption(item.id, `${item.name}${ownerPart}`));
+      }
+      d.patientSelect.replaceChildren(...opts);
+      d.patientSelect.value = activePatients[0].id;
+    } catch (error) {
+      d.errorAlert.textContent = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible buscar pacientes en este momento.";
+      d.errorAlert.hidden = false;
+    } finally {
+      searchingPatients = false;
+      d.patientSearchButton.disabled = false;
+    }
+  }
+
+  async function submitCreateAppointment(event) {
+    event.preventDefault();
+    if (!d || savingAppointment || !canCreate) return;
+    clearDialogMessages();
+
+    const patientId = d.patientSelect.value.trim();
+    const branchId = d.branchSelect.value.trim();
+    const veterinarianId = d.veterinarianSelect.value.trim();
+    const dateValue = d.dateInput.value.trim();
+    const startTimeValue = d.startTimeInput.value.trim();
+    const endTimeValue = d.endTimeInput.value.trim();
+    const appointmentType = d.typeSelect.value.trim();
+    const reasonValue = d.reasonInput.value.trim();
+    const notesValue = d.notesInput.value.trim();
+
+    if (!patientId) {
+      markFieldInvalid(d.patientSelect, "Selecciona un paciente activo para programar la cita.");
+      return;
+    }
+    if (!branchId) {
+      markFieldInvalid(d.branchSelect, "Selecciona una sucursal activa.");
+      return;
+    }
+    if (!veterinarianId) {
+      markFieldInvalid(d.veterinarianSelect, "Selecciona un veterinario activo asignado a la sucursal.");
+      return;
+    }
+    if (!isValidIsoDate(dateValue)) {
+      markFieldInvalid(d.dateInput, "Ingresa una fecha válida en formato YYYY-MM-DD.");
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(startTimeValue)) {
+      markFieldInvalid(d.startTimeInput, "Ingresa la hora de inicio en formato HH:mm.");
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(endTimeValue) || endTimeValue <= startTimeValue) {
+      markFieldInvalid(d.endTimeInput, "La hora de término debe ser posterior a la hora de inicio.");
+      return;
+    }
+    if (!appointmentType) {
+      markFieldInvalid(d.typeSelect, "Selecciona un tipo de cita válido.");
+      return;
+    }
+
+    const payload = {
+      patientId,
+      branchId,
+      veterinarianId,
+      startsAtLocal: `${dateValue}T${startTimeValue}`,
+      endsAtLocal: `${dateValue}T${endTimeValue}`,
+      appointmentType
+    };
+    if (reasonValue) {
+      payload.reason = reasonValue;
+    }
+    if (notesValue) {
+      payload.notes = notesValue;
+    }
+
+    savingAppointment = true;
+    d.saveButton.disabled = true;
+    d.cancelButton.disabled = true;
+    const originalButtonText = d.saveButton.textContent;
+    d.saveButton.textContent = "Programando...";
+
+    try {
+      const created = await client.requestJson("/api/v1/appointments", {
+        method: "POST",
+        body: payload
+      });
+      d.dialog.close();
+
+      const confirmationMessage = `Cita programada correctamente para ${created?.patientName || "el paciente"} (${formatAppointmentType(created?.appointmentType)}).`;
+      if (s?.notice) {
+        s.notice.textContent = confirmationMessage;
+        s.notice.hidden = false;
+      }
+      if (typeof onAppointmentCreated === "function") {
+        onAppointmentCreated(created, confirmationMessage);
+      }
+
+      if (s && !s.view.hidden && canRead) {
+        s.dateFilter.value = dateValue;
+        await executeSearch(0);
+      }
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 409) {
+        d.errorAlert.textContent = error.message
+          || "El veterinario seleccionado ya tiene una cita activa que se solapa con ese horario.";
+        d.errorAlert.hidden = false;
+        d.errorAlert.focus({ preventScroll: true });
+      } else if (error instanceof ApiRequestError && error.status === 400) {
+        const fieldMessages = Array.isArray(error.fieldErrors) && error.fieldErrors.length > 0
+          ? error.fieldErrors.map((fe) => fe.message).join(" ")
+          : (error.message || "Revisa los campos del formulario de cita.");
+        d.validationAlert.textContent = fieldMessages;
+        d.validationAlert.hidden = false;
+        d.validationAlert.focus({ preventScroll: true });
+      } else {
+        d.errorAlert.textContent = (error instanceof ApiRequestError && error.message)
+          ? error.message
+          : "No fue posible programar la cita.";
+        d.errorAlert.hidden = false;
+        d.errorAlert.focus({ preventScroll: true });
+      }
+    } finally {
+      savingAppointment = false;
+      d.saveButton.disabled = false;
+      d.cancelButton.disabled = false;
+      d.saveButton.textContent = originalButtonText;
+    }
+  }
+
+  function markFieldInvalid(fieldElement, message) {
+    if (!d) return;
+    fieldElement.setAttribute("aria-invalid", "true");
+    d.validationAlert.textContent = message;
+    d.validationAlert.hidden = false;
+    fieldElement.focus();
+  }
+
+  function clearDialogMessages() {
+    if (!d) return;
+    d.errorAlert.hidden = true;
+    d.errorAlert.textContent = "";
+    d.validationAlert.hidden = true;
+    d.validationAlert.textContent = "";
+    for (const el of [
+      d.patientQuery,
+      d.patientSelect,
+      d.branchSelect,
+      d.veterinarianSelect,
+      d.dateInput,
+      d.startTimeInput,
+      d.endTimeInput,
+      d.typeSelect
+    ]) {
+      el?.removeAttribute("aria-invalid");
     }
   }
 
@@ -489,6 +815,7 @@ function findElements(document) {
     backButton: document.querySelector("#appointments-back-button"),
     title: document.querySelector("#appointments-title"),
     newAppointmentViewButton: document.querySelector("#new-appointment-view-button"),
+    notice: document.querySelector("#appointments-notice"),
     searchForm: document.querySelector("#appointment-search-form"),
     dateFilter: document.querySelector("#appointment-date-filter"),
     branchFilter: document.querySelector("#appointment-branch-filter"),
@@ -511,5 +838,33 @@ function findElements(document) {
     pagination: document.querySelector("#appointments-pagination"),
     previousButton: document.querySelector("#appointments-previous-page"),
     nextButton: document.querySelector("#appointments-next-page")
+  };
+}
+
+function findDialogElements(document) {
+  const dialog = document.querySelector("#appointment-editor-dialog");
+  if (!dialog) {
+    return null;
+  }
+  return {
+    dialog,
+    form: document.querySelector("#appointment-editor-form"),
+    errorAlert: document.querySelector("#appointment-form-error"),
+    validationAlert: document.querySelector("#appointment-form-validation"),
+    patientSearchGroup: document.querySelector("#appointment-patient-search-group"),
+    patientQuery: document.querySelector("#appointment-patient-query"),
+    patientSearchButton: document.querySelector("#appointment-patient-search-btn"),
+    patientSelect: document.querySelector("#appointment-patient-id"),
+    branchSelect: document.querySelector("#appointment-branch-id"),
+    branchTimeZone: document.querySelector("#appointment-branch-timezone"),
+    veterinarianSelect: document.querySelector("#appointment-veterinarian-id"),
+    dateInput: document.querySelector("#appointment-date"),
+    startTimeInput: document.querySelector("#appointment-start-time"),
+    endTimeInput: document.querySelector("#appointment-end-time"),
+    typeSelect: document.querySelector("#appointment-type"),
+    reasonInput: document.querySelector("#appointment-reason"),
+    notesInput: document.querySelector("#appointment-notes"),
+    cancelButton: document.querySelector("#cancel-appointment-button"),
+    saveButton: document.querySelector("#save-appointment-button")
   };
 }

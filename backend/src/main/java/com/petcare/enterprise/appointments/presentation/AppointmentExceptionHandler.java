@@ -1,5 +1,7 @@
 package com.petcare.enterprise.appointments.presentation;
 
+import com.petcare.enterprise.appointments.application.AppointmentResourceNotFoundException;
+import com.petcare.enterprise.appointments.application.AppointmentTimeConflictException;
 import com.petcare.enterprise.appointments.application.InvalidAppointmentScheduleQueryException;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorCode;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponse;
@@ -28,5 +30,21 @@ class AppointmentExceptionHandler {
                 ApiErrorCode.VALIDATION_FAILED,
                 exception.getMessage(),
                 List.of(new ApiFieldError(exception.field(), "INVALID_VALUE", exception.getMessage())));
+    }
+
+    @ExceptionHandler(AppointmentResourceNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> resourceNotFound(AppointmentResourceNotFoundException exception) {
+        return errors.response(
+                HttpStatus.NOT_FOUND,
+                ApiErrorCode.RESOURCE_NOT_FOUND,
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(AppointmentTimeConflictException.class)
+    ResponseEntity<ApiErrorResponse> timeConflict(AppointmentTimeConflictException exception) {
+        return errors.response(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.APPOINTMENT_TIME_CONFLICT,
+                exception.getMessage());
     }
 }

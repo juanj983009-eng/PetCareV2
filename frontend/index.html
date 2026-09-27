@@ -723,10 +723,14 @@
                     <p class="text-secondary mb-0">Consulta cronológica de citas programadas por fecha, sede y profesional veterinario.</p>
                   </div>
                   <div class="d-flex flex-wrap gap-2 align-self-lg-end">
-                    <button id="new-appointment-view-button" class="btn btn-outline-secondary btn-sm" type="button" disabled hidden aria-disabled="true">
-                      Nueva cita (HU-016)
+                    <button id="new-appointment-view-button" class="btn btn-primary btn-sm" type="button" disabled hidden aria-disabled="true">
+                      Nueva cita
                     </button>
                   </div>
+                </div>
+
+                <div id="appointments-notice" class="alert alert-success" role="status" tabindex="-1" hidden>
+                  Cita programada correctamente.
                 </div>
 
                 <form id="appointment-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search" novalidate>
@@ -1007,6 +1011,89 @@
           <div class="col-12 d-flex flex-column-reverse flex-sm-row justify-content-end gap-2 pt-3 border-top">
             <button id="cancel-patient-button" class="btn btn-outline-secondary" type="button">Cancelar</button>
             <button id="save-patient-button" class="btn btn-primary" type="submit">Registrar paciente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: CREACIÓN DE CITA (HU-016) -->
+  <dialog id="appointment-editor-dialog" class="petcare-dialog" aria-labelledby="appointment-editor-title">
+    <div class="card border-0">
+      <div class="pc-folio-header">
+        <h2 id="appointment-editor-title" class="h4 mb-0">Programar nueva cita</h2>
+      </div>
+      <div class="card-body p-4">
+        <div id="appointment-form-error" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
+        <div id="appointment-form-validation" class="alert alert-warning" role="alert" tabindex="-1" hidden></div>
+        <form id="appointment-editor-form" class="row g-3" novalidate>
+          <div id="appointment-patient-search-group" class="col-12">
+            <label class="form-label" for="appointment-patient-query">Buscar paciente</label>
+            <div class="input-group">
+              <input id="appointment-patient-query" class="form-control" minlength="2" placeholder="Nombre del paciente, propietario, documento o microchip">
+              <button id="appointment-patient-search-btn" class="btn btn-outline-secondary" type="button">Buscar</button>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="appointment-patient-id">Paciente</label>
+            <select id="appointment-patient-id" class="form-select" aria-describedby="appointment-patient-feedback" required>
+              <option value="">Busca y selecciona un paciente activo</option>
+            </select>
+            <div id="appointment-patient-feedback" class="invalid-feedback">Selecciona un paciente activo.</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="appointment-branch-id">Sucursal</label>
+            <select id="appointment-branch-id" class="form-select" aria-describedby="appointment-branch-timezone appointment-branch-feedback" required>
+              <option value="">Selecciona una sucursal</option>
+            </select>
+            <div id="appointment-branch-timezone" class="form-text pc-data-mono">Zona horaria: —</div>
+            <div id="appointment-branch-feedback" class="invalid-feedback">Selecciona una sucursal activa.</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="appointment-veterinarian-id">Veterinario asignado</label>
+            <select id="appointment-veterinarian-id" class="form-select" aria-describedby="appointment-veterinarian-feedback" required>
+              <option value="">Selecciona un veterinario</option>
+            </select>
+            <div id="appointment-veterinarian-feedback" class="invalid-feedback">Selecciona un veterinario activo asignado a la sucursal.</div>
+          </div>
+          <div class="col-12 col-sm-4">
+            <label class="form-label" for="appointment-date">Fecha</label>
+            <input id="appointment-date" class="form-control" type="date" required aria-describedby="appointment-date-input-feedback">
+            <div id="appointment-date-input-feedback" class="invalid-feedback">Ingresa una fecha válida.</div>
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label" for="appointment-start-time">Hora de inicio</label>
+            <input id="appointment-start-time" class="form-control pc-data-mono" type="time" required aria-describedby="appointment-start-time-feedback">
+            <div id="appointment-start-time-feedback" class="invalid-feedback">Ingresa la hora de inicio.</div>
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label" for="appointment-end-time">Hora de término</label>
+            <input id="appointment-end-time" class="form-control pc-data-mono" type="time" required aria-describedby="appointment-end-time-feedback">
+            <div id="appointment-end-time-feedback" class="invalid-feedback">La hora de término debe ser posterior al inicio.</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="appointment-type">Tipo de cita</label>
+            <select id="appointment-type" class="form-select" aria-describedby="appointment-type-feedback" required>
+              <option value="CONSULTA_GENERAL">Consulta general</option>
+              <option value="VACUNACION">Vacunación</option>
+              <option value="CONTROL">Control</option>
+              <option value="URGENCIA">Urgencia</option>
+              <option value="CIRUGIA">Cirugía</option>
+              <option value="DESPARASITACION">Desparasitación</option>
+            </select>
+            <div id="appointment-type-feedback" class="invalid-feedback">Selecciona el tipo de cita.</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="appointment-reason">Motivo de consulta <span class="text-secondary fw-normal">(opcional)</span></label>
+            <input id="appointment-reason" class="form-control" maxlength="240" placeholder="Ej. Control anual y refuerzo de vacunas">
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="appointment-notes">Notas de recepción <span class="text-secondary fw-normal">(opcional)</span></label>
+            <textarea id="appointment-notes" class="form-control" rows="2" maxlength="1000" placeholder="Indicaciones previas o comentarios relevantes"></textarea>
+          </div>
+          <div class="col-12 d-flex flex-column-reverse flex-sm-row justify-content-end gap-2 pt-3 border-top">
+            <button id="cancel-appointment-button" class="btn btn-outline-secondary" type="button">Cancelar</button>
+            <button id="save-appointment-button" class="btn btn-primary" type="submit">Programar cita</button>
           </div>
         </form>
       </div>

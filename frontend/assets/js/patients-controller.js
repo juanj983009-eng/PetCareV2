@@ -3,6 +3,7 @@ import { ApiRequestError } from "./api-client.js";
 const PATIENT_CREATE = "PATIENT_CREATE";
 const PATIENT_READ = "PATIENT_READ";
 const PATIENT_UPDATE = "PATIENT_UPDATE";
+const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
 
 const SPECIES_LABELS = Object.freeze({
   CANINO: "Canino",
@@ -24,13 +25,14 @@ const STATUS_META = Object.freeze({
   FALLECIDO: { label: "Fallecido", badgeClass: "badge text-bg-danger-subtle text-danger-emphasis border border-danger-subtle" }
 });
 
-export function createPatientsController({ document, client }) {
+export function createPatientsController({ document, client, onCreateAppointment = null }) {
   const e = elements(document);
   const s = searchElements(document);
   const p = profileElements(document);
   let canCreate = false;
   let canRead = false;
   let canUpdate = false;
+  let canCreateAppointment = false;
   let loading = false;
   let searching = false;
   let loadingProfile = false;
@@ -62,6 +64,15 @@ export function createPatientsController({ document, client }) {
   if (p) {
     p.backButton.addEventListener("click", backToSearchResults);
     p.editButton?.addEventListener("click", openEditPatientDialog);
+    p.newAppointmentButton?.addEventListener("click", () => {
+      if (canCreateAppointment && currentProfile?.id && currentProfile?.status === "ACTIVO" && typeof onCreateAppointment === "function") {
+        onCreateAppointment({
+          id: currentProfile.id,
+          name: currentProfile.name,
+          ownerFullName: currentProfile.owner?.fullName || ""
+        });
+      }
+    });
     p.retryButton.addEventListener("click", () => {
       if (activeProfileId) {
         openPatientProfile(activeProfileId);
@@ -75,6 +86,7 @@ export function createPatientsController({ document, client }) {
       canCreate = authorities.has(PATIENT_CREATE);
       canRead = authorities.has(PATIENT_READ);
       canUpdate = authorities.has(PATIENT_UPDATE);
+      canCreateAppointment = authorities.has(APPOINTMENT_CREATE);
       currentProfile = null;
       editingPatientId = null;
       e.open.hidden = !canCreate;
@@ -98,6 +110,7 @@ export function createPatientsController({ document, client }) {
         p.newConsultationButton.disabled = true;
         p.newAppointmentButton.hidden = true;
         p.newAppointmentButton.disabled = true;
+        p.newAppointmentButton.setAttribute("aria-disabled", "true");
         activeProfileId = null;
       }
     },
@@ -105,6 +118,7 @@ export function createPatientsController({ document, client }) {
       canCreate = false;
       canRead = false;
       canUpdate = false;
+      canCreateAppointment = false;
       activeProfileId = null;
       currentProfile = null;
       editingPatientId = null;
@@ -132,7 +146,13 @@ export function createPatientsController({ document, client }) {
       }
     },
     openSearchView,
-    openPatientProfile
+    openPatientProfile,
+    showProfileNotice(message) {
+      if (p && !p.view.hidden && p.notice) {
+        p.notice.textContent = message;
+        p.notice.hidden = false;
+      }
+    }
   });
 
   function openSearchView() {
@@ -307,6 +327,15 @@ export function createPatientsController({ document, client }) {
       renderPatientProfile(profile);
       if (p.editButton) {
         p.editButton.hidden = !canUpdate;
+      }
+      if (p.newAppointmentButton) {
+        const allowNewAppointment = canCreateAppointment && profile.status === "ACTIVO";
+        p.newAppointmentButton.hidden = !allowNewAppointment;
+        p.newAppointmentButton.disabled = !allowNewAppointment;
+        p.newAppointmentButton.setAttribute("aria-disabled", String(!allowNewAppointment));
+        p.newAppointmentButton.classList.toggle("btn-primary", allowNewAppointment);
+        p.newAppointmentButton.classList.toggle("btn-outline-secondary", !allowNewAppointment);
+        p.newAppointmentButton.textContent = allowNewAppointment ? "Nueva cita" : "Nueva cita (HU-016)";
       }
       setProfileState("content");
     } catch (error) {

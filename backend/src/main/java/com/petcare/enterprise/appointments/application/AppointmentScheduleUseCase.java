@@ -11,6 +11,23 @@ public interface AppointmentScheduleUseCase {
 
     AppointmentFilterOptions listOptions();
 
+    default AppointmentFilterOptions listOptions(String branchId) {
+        return listOptions();
+    }
+
+    AppointmentSummary createAppointment(CreateAppointmentCommand command);
+
+    record CreateAppointmentCommand(
+            UUID patientId,
+            UUID branchId,
+            UUID veterinarianId,
+            String startsAtLocal,
+            String endsAtLocal,
+            String appointmentType,
+            String reason,
+            String notes) {
+    }
+
     record AppointmentScheduleQuery(
             String date,
             String branchId,
@@ -64,6 +81,11 @@ public interface AppointmentScheduleUseCase {
 
     record VeterinarianOption(
             UUID id,
-            String fullName) {
+            String fullName,
+            List<UUID> branchIds) {
+
+        public VeterinarianOption(UUID id, String fullName) {
+            this(id, fullName, List.of());
+        }
     }
 }

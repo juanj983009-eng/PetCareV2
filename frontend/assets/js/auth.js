@@ -14,11 +14,17 @@ const usersController = createUsersController({
 });
 const rolesController = createRolesController({ document, client: apiClient });
 const ownersController = createOwnersController({ document, client: apiClient });
-const patientsController = createPatientsController({ document, client: apiClient });
-const appointmentsController = createAppointmentsController({
+let appointmentsController = null;
+const patientsController = createPatientsController({
   document,
   client: apiClient,
-  onViewPatientProfile: (patientId) => patientsController.openPatientProfile(patientId)
+  onCreateAppointment: (patient) => appointmentsController?.openCreateAppointmentDialog(patient)
+});
+appointmentsController = createAppointmentsController({
+  document,
+  client: apiClient,
+  onViewPatientProfile: (patientId) => patientsController.openPatientProfile(patientId),
+  onAppointmentCreated: (_created, message) => patientsController.showProfileNotice(message)
 });
 
 const authController = createAuthController({

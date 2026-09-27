@@ -10,11 +10,15 @@ import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -114,7 +118,7 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
 
     @Override
     public List<VeterinarianOption> findActiveVeterinarians(UUID tenantId) {
-        String sql = """
+        String vetsSql = """
                 SELECT DISTINCT
                     u.id,
                     btrim(u.first_name || ' ' || u.last_name) AS full_name,
@@ -130,12 +134,228 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                   AND upper(r.name) = 'VETERINARIO'
                 ORDER BY sort_last ASC, sort_first ASC, u.id ASC
                 """;
-        return jdbc.query(
+
+        Map<UUID, String> vetNames = new LinkedHashMap<>();
+        Map<UUID, List<UUID>> vetBranches = new LinkedHashMap<>();
+
+        jdbc.query(vetsSql, Map.of("tenantId", tenantId), rs -> {
+            UUID id = rs.getObject("id", UUID.class);
+            vetNames.put(id, rs.getString("full_name"));
+            vetBranches.put(id, new ArrayList<>());
+        });
+
+        if (vetNames.isEmpty()) {
+            return List.of();
+        }
+
+        String branchesSql = """
+                SELECT ub.user_id, ub.branch_id
+                FROM user_branches ub
+                JOIN branches b
+                  ON b.tenant_id = ub.tenant_id AND b.id = ub.branch_id
+                WHERE ub.tenant_id = :tenantId
+                  AND b.active = true
+                  AND ub.user_id IN (:userIds)
+                ORDER BY lower(b.name) ASC, ub.branch_id ASC
+                """;
+        MapSqlParameterSource branchParams = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("userIds", vetNames.keySet());
+
+        jdbc.query(branchesSql, branchParams, rs -> {
+            UUID userId = rs.getObject("user_id", UUID.class);
+            UUID branchId = rs.getObject("branch_id", UUID.class);
+            List<UUID> assigned = vetBranches.get(userId);
+            if (assigned != null && !assigned.contains(branchId)) {
+                assigned.add(branchId);
+            }
+        });
+
+        return vetNames.entrySet().stream()
+                .map(entry -> new VeterinarianOption(
+                        entry.getKey(),
+                        entry.getValue(),
+                        List.copyOf(vetBranches.getOrDefault(entry.getKey(), List.of()))))
+                .toList();
+    }
+
+    @Override
+    public Optional<BranchOption> findActiveBranchById(UUID tenantId, UUID branchId) {
+        String sql = """
+                SELECT id, name, time_zone
+                FROM branches
+                WHERE tenant_id = :tenantId
+                  AND id = :branchId
+                  AND active = true
+                """;
+        List<BranchOption> results = jdbc.query(
                 sql,
-                Map.of("tenantId", tenantId),
-                (rs, rowNum) -> new VeterinarianOption(
+                Map.of("tenantId", tenantId, "branchId", branchId),
+                (rs, rowNum) -> new BranchOption(
                         rs.getObject("id", UUID.class),
-                        rs.getString("full_name")));
+                        rs.getString("name"),
+                        rs.getString("time_zone")));
+        return results.stream().findFirst();
+    }
+
+    @Override
+    public Optional<String> findActivePatientName(UUID tenantId, UUID patientId) {
+        String sql = """
+                SELECT p.name
+                FROM patients p
+                JOIN owners o
+                  ON o.tenant_id = p.tenant_id
+                 AND o.id = p.owner_id
+                WHERE p.tenant_id = :tenantId
+                  AND p.id = :patientId
+                  AND p.status = 'ACTIVO'
+                  AND o.active = true
+                """;
+        List<String> results = jdbc.query(
+                sql,
+                Map.of("tenantId", tenantId, "patientId", patientId),
+                (rs, rowNum) -> rs.getString("name"));
+        return results.stream().findFirst();
+    }
+
+    @Override
+    public Optional<VeterinarianEligibility> findActiveUserEligibility(
+            UUID tenantId,
+            UUID userId,
+            UUID branchId) {
+        String sql = """
+                SELECT
+                    u.id,
+                    btrim(u.first_name || ' ' || u.last_name) AS full_name,
+                    EXISTS (
+                        SELECT 1
+                        FROM user_roles ur
+                        JOIN roles r
+                          ON r.tenant_id = ur.tenant_id AND r.id = ur.role_id
+                        WHERE ur.tenant_id = u.tenant_id
+                          AND ur.user_id = u.id
+                          AND upper(r.name) = 'VETERINARIO'
+                    ) AS has_veterinarian_role,
+                    EXISTS (
+                        SELECT 1
+                        FROM user_branches ub
+                        JOIN branches b
+                          ON b.tenant_id = ub.tenant_id AND b.id = ub.branch_id
+                        WHERE ub.tenant_id = u.tenant_id
+                          AND ub.user_id = u.id
+                          AND ub.branch_id = :branchId
+                          AND b.active = true
+                    ) AS assigned_to_branch
+                FROM users u
+                WHERE u.tenant_id = :tenantId
+                  AND u.id = :userId
+                  AND u.status = 'ACTIVO'
+                """;
+        List<VeterinarianEligibility> results = jdbc.query(
+                sql,
+                Map.of("tenantId", tenantId, "userId", userId, "branchId", branchId),
+                (rs, rowNum) -> new VeterinarianEligibility(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("full_name"),
+                        rs.getBoolean("has_veterinarian_role"),
+                        rs.getBoolean("assigned_to_branch")));
+        return results.stream().findFirst();
+    }
+
+    @Override
+    public boolean hasOverlappingActiveAppointment(
+            UUID tenantId,
+            UUID veterinarianId,
+            Instant startsAt,
+            Instant endsAt) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM appointments a
+                    WHERE a.tenant_id = :tenantId
+                      AND a.veterinarian_id = :veterinarianId
+                      AND a.status <> 'CANCELADA'
+                      AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange(:startsAt, :endsAt, '[)')
+                )
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("veterinarianId", veterinarianId, Types.OTHER)
+                .addValue("startsAt", OffsetDateTime.ofInstant(startsAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("endsAt", OffsetDateTime.ofInstant(endsAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
+        Boolean exists = jdbc.queryForObject(sql, params, Boolean.class);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    @Override
+    public AppointmentSummary insertAppointment(NewAppointmentRecord record) {
+        String sql = """
+                INSERT INTO appointments (
+                    id,
+                    tenant_id,
+                    branch_id,
+                    patient_id,
+                    veterinarian_id,
+                    starts_at,
+                    ends_at,
+                    appointment_type,
+                    status,
+                    reason,
+                    notes,
+                    created_by,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :id,
+                    :tenantId,
+                    :branchId,
+                    :patientId,
+                    :veterinarianId,
+                    :startsAt,
+                    :endsAt,
+                    :appointmentType,
+                    :status,
+                    :reason,
+                    :notes,
+                    :createdBy,
+                    :createdAt,
+                    :updatedAt
+                )
+                """;
+        OffsetDateTime startsAtUtc = OffsetDateTime.ofInstant(record.startsAt(), ZoneOffset.UTC);
+        OffsetDateTime endsAtUtc = OffsetDateTime.ofInstant(record.endsAt(), ZoneOffset.UTC);
+        OffsetDateTime createdAtUtc = OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC);
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("id", record.id(), Types.OTHER)
+                .addValue("tenantId", record.tenantId(), Types.OTHER)
+                .addValue("branchId", record.branchId(), Types.OTHER)
+                .addValue("patientId", record.patientId(), Types.OTHER)
+                .addValue("veterinarianId", record.veterinarianId(), Types.OTHER)
+                .addValue("startsAt", startsAtUtc, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("endsAt", endsAtUtc, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("appointmentType", record.appointmentType(), Types.VARCHAR)
+                .addValue("status", record.status(), Types.VARCHAR)
+                .addValue("reason", record.reason(), Types.VARCHAR)
+                .addValue("notes", record.notes(), Types.VARCHAR)
+                .addValue("createdBy", record.createdBy(), Types.OTHER)
+                .addValue("createdAt", createdAtUtc, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("updatedAt", createdAtUtc, Types.TIMESTAMP_WITH_TIMEZONE);
+
+        jdbc.update(sql, params);
+
+        return new AppointmentSummary(
+                record.id(),
+                record.startsAt(),
+                record.endsAt(),
+                record.appointmentType(),
+                record.status(),
+                record.patientId(),
+                record.patientName(),
+                record.branchId(),
+                record.branchName(),
+                record.veterinarianId(),
+                record.veterinarianFullName());
     }
 
     private AppointmentSummary mapAppointment(ResultSet rs, int rowNum) throws SQLException {

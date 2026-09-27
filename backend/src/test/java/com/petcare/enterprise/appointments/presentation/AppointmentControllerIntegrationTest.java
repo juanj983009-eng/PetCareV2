@@ -2,11 +2,23 @@ package com.petcare.enterprise.appointments.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.petcare.enterprise.appointments.domain.AppointmentCreated;
+import com.petcare.enterprise.appointments.infrastructure.events.AppointmentCreatedEventListener;
+import com.petcare.enterprise.audit.application.AuditLogWriter;
+import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.identity.infrastructure.security.PetCarePrincipal;
 import com.petcare.enterprise.test.PostgreSqlIntegrationTest;
 import java.sql.Timestamp;
@@ -14,15 +26,24 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -35,10 +56,27 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
     @Autowired
     JdbcTemplate jdbc;
 
+    @MockitoSpyBean
+    AppointmentCreatedEventListener eventListener;
+
+    @MockitoSpyBean
+    AuditLogWriter auditLogWriter;
+
     private final List<UUID> createdTenantIds = new ArrayList<>();
 
     @AfterEach
     void cleanUpTenants() {
+        reset(auditLogWriter, eventListener);
+        if (!createdTenantIds.isEmpty()) {
+            jdbc.execute("ALTER TABLE audit_entries DISABLE TRIGGER USER");
+            try {
+                for (UUID tenantId : createdTenantIds) {
+                    jdbc.update("DELETE FROM audit_entries WHERE tenant_id = ?", tenantId);
+                }
+            } finally {
+                jdbc.execute("ALTER TABLE audit_entries ENABLE TRIGGER USER");
+            }
+        }
         for (UUID tenantId : createdTenantIds) {
             jdbc.update("DELETE FROM appointments WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM patients WHERE tenant_id = ?", tenantId);
@@ -407,6 +445,497 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 "PROGRAMADA",
                 null,
                 null)).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void createsAppointmentWithProgramadaStatusAuditEntryAndAfterCommitEvent() throws Exception {
+        TenantFixture tenant = createTenantFixture("create-ok");
+        UUID branchCentral = insertBranch(tenant.tenantId, "Sede Miraflores", "America/Lima", true);
+        UUID vetAna = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-create@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vetAna, branchCentral);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "70001122");
+        UUID patientLuna = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Golden Retriever");
+
+        reset(eventListener);
+
+        String payload = """
+                {
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-28T09:00",
+                  "endsAtLocal": "2026-09-28T09:30",
+                  "appointmentType": "CONSULTA_GENERAL",
+                  "reason": "  Chequeo anual preventivo  ",
+                  "notes": "  Paciente tranquilo  "
+                }
+                """.formatted(branchCentral, patientLuna, vetAna);
+
+        String expectedCorrelationId = "11111111-2222-4333-8444-555555555555";
+        var mvcResult = mvc.perform(post("/api/v1/appointments")
+                        .header("X-Correlation-ID", expectedCorrelationId)
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/api/v1/appointments/")))
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.branchId").value(branchCentral.toString()))
+                .andExpect(jsonPath("$.branchName").value("Sede Miraflores"))
+                .andExpect(jsonPath("$.startsAt").value("2026-09-28T14:00:00Z"))
+                .andExpect(jsonPath("$.endsAt").value("2026-09-28T14:30:00Z"))
+                .andExpect(jsonPath("$.status").value("PROGRAMADA"))
+                .andExpect(jsonPath("$.appointmentType").value("CONSULTA_GENERAL"))
+                .andExpect(jsonPath("$.patientId").value(patientLuna.toString()))
+                .andExpect(jsonPath("$.patientName").value("Luna"))
+                .andExpect(jsonPath("$.veterinarianId").value(vetAna.toString()))
+                .andExpect(jsonPath("$.veterinarianFullName").value("Ana Salazar"))
+                .andReturn();
+
+        String responseJson = mvcResult.getResponse().getContentAsString();
+        String responseCorrelationId = mvcResult.getResponse().getHeader("X-Correlation-ID");
+        assertThat(responseCorrelationId).isNotBlank();
+
+        String locationHeader = mvcResult.getResponse().getHeader("Location");
+        assertThat(locationHeader).isNotNull();
+        UUID createdAppointmentId = UUID.fromString(
+                locationHeader.substring("/api/v1/appointments/".length()));
+
+        assertThat(responseJson).doesNotContain("tenantId", "createdBy", "passwordHash");
+
+        Integer auditCount = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM audit_entries
+                WHERE tenant_id = ?
+                  AND actor_user_id = ?
+                  AND entity_id = ?
+                  AND action = 'APPOINTMENT_CREATED'
+                  AND entity_type = 'APPOINTMENT'
+                """, Integer.class, tenant.tenantId, tenant.userId, createdAppointmentId);
+        assertThat(auditCount).isEqualTo(1);
+
+        String auditCorrelationId = jdbc.queryForObject("""
+                SELECT correlation_id
+                FROM audit_entries
+                WHERE tenant_id = ?
+                  AND entity_id = ?
+                  AND action = 'APPOINTMENT_CREATED'
+                """, String.class, tenant.tenantId, createdAppointmentId);
+        assertThat(auditCorrelationId).isEqualTo(responseCorrelationId);
+
+        ArgumentCaptor<AppointmentCreated> eventCaptor = ArgumentCaptor.forClass(AppointmentCreated.class);
+        verify(eventListener, times(1)).onAppointmentCreated(eventCaptor.capture());
+
+        AppointmentCreated evt = eventCaptor.getValue();
+        assertThat(evt.tenantId()).isEqualTo(tenant.tenantId);
+        assertThat(evt.appointmentId()).isEqualTo(createdAppointmentId);
+        assertThat(evt.branchId()).isEqualTo(branchCentral);
+        assertThat(evt.patientId()).isEqualTo(patientLuna);
+        assertThat(evt.veterinarianId()).isEqualTo(vetAna);
+        assertThat(evt.createdBy()).isEqualTo(tenant.userId);
+        assertThat(evt.startsAt()).isEqualTo(Instant.parse("2026-09-28T14:00:00Z"));
+        assertThat(evt.endsAt()).isEqualTo(Instant.parse("2026-09-28T14:30:00Z"));
+        assertThat(evt.type()).isEqualTo("CONSULTA_GENERAL");
+        assertThat(evt.status()).isEqualTo("PROGRAMADA");
+        assertThat(evt.correlationId()).isEqualTo(UUID.fromString(expectedCorrelationId));
+    }
+
+    @Test
+    void rejectsUnauthenticatedForbiddenAndInvalidAppointmentCreationPayloads() throws Exception {
+        TenantFixture tenant = createTenantFixture("create-sec");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-sec@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "70002233");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        String validPayload = appointmentPayload(branch, patient, vet, "09:00", "09:30");
+
+        // 401 without authentication
+        mvc.perform(post("/api/v1/appointments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 403 with APPOINTMENT_READ only (e.g. VETERINARIO)
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 400 when unknown fields (tenantId, status, createdBy) are supplied
+        String forbiddenFieldPayload = """
+                {
+                  "tenantId": "%s",
+                  "status": "CONFIRMADA",
+                  "createdBy": "%s",
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-28T09:00",
+                  "endsAtLocal": "2026-09-28T09:30",
+                  "appointmentType": "CONSULTA_GENERAL"
+                }
+                """.formatted(tenant.tenantId, tenant.userId, branch, patient, vet);
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(forbiddenFieldPayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+
+        // 400 when endsAtLocal <= startsAtLocal
+        String invertedTimePayload = appointmentPayload(branch, patient, vet, "10:00", "09:30");
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invertedTimePayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("endsAtLocal"));
+
+        // 400 when appointmentType is outside the closed catalog
+        String invalidTypePayload = """
+                {
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-28T09:00",
+                  "endsAtLocal": "2026-09-28T09:30",
+                  "appointmentType": "PELUQUERIA_SPA"
+                }
+                """.formatted(branch, patient, vet);
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidTypePayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("appointmentType"));
+    }
+
+    @Test
+    void rejectsDstGapAndDstOverlapInBranchTimeZone() throws Exception {
+        TenantFixture tenant = createTenantFixture("create-dst");
+        UUID branchNy = insertBranch(tenant.tenantId, "Sede New York", "America/New_York", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-dst@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branchNy);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "70003344");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        // Spring-forward gap in America/New_York: 2026-03-08 02:15 does not exist
+        String dstGapPayload = """
+                {
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-03-08T02:15",
+                  "endsAtLocal": "2026-03-08T02:45",
+                  "appointmentType": "CONSULTA_GENERAL"
+                }
+                """.formatted(branchNy, patient, vet);
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dstGapPayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("startsAtLocal"));
+
+        // Fall-back overlap in America/New_York: 2026-11-01 01:15 occurs twice
+        String dstOverlapPayload = """
+                {
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-11-01T01:15",
+                  "endsAtLocal": "2026-11-01T01:45",
+                  "appointmentType": "CONSULTA_GENERAL"
+                }
+                """.formatted(branchNy, patient, vet);
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dstOverlapPayload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("startsAtLocal"));
+    }
+
+    @Test
+    void returnsUniform404ForMissingInactiveForeignResourcesAnd400ForUnassignedOrNonVetSameTenantUser() throws Exception {
+        TenantFixture tenantA = createTenantFixture("create-res-a");
+        TenantFixture tenantB = createTenantFixture("create-res-b");
+
+        UUID branchActive = insertBranch(tenantA.tenantId, "Sede Activa", "America/Lima", true);
+        UUID branchOtherActive = insertBranch(tenantA.tenantId, "Sede Secundaria", "America/Lima", true);
+        UUID branchInactive = insertBranch(tenantA.tenantId, "Sede Inactiva", "America/Lima", false);
+        UUID branchForeign = insertBranch(tenantB.tenantId, "Sede Ajena", "America/Lima", true);
+
+        UUID vetAssigned = insertUserWithRole(tenantA.tenantId, "Ana", "Salazar", "ana-a@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, vetAssigned, branchActive);
+
+        UUID vetUnassigned = insertUserWithRole(tenantA.tenantId, "Pedro", "Diaz", "pedro-a@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, vetUnassigned, branchOtherActive);
+
+        UUID vetWithoutAnyBranch = insertUserWithRole(tenantA.tenantId, "Luis", "Torres", "luis-a@petcare.test", "VETERINARIO", "ACTIVO");
+
+        UUID vetInactive = insertUserWithRole(tenantA.tenantId, "Rosa", "Mejia", "rosa-a@petcare.test", "VETERINARIO", "INACTIVO");
+        assignUserToBranch(tenantA.tenantId, vetInactive, branchActive);
+
+        UUID recepUser = insertUserWithRole(tenantA.tenantId, "Clara", "Rios", "clara-a@petcare.test", "RECEPCIONISTA", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, recepUser, branchActive);
+
+        UUID vetForeign = insertUserWithRole(tenantB.tenantId, "Marco", "Polo", "marco-b@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantB.tenantId, vetForeign, branchForeign);
+
+        UUID ownerActive = insertOwner(tenantA.tenantId, "Lucia", "Paredes", "DNI", "71112222");
+        UUID patientActive = insertPatient(tenantA.tenantId, ownerActive, "Luna", "PERRO", "Mestizo");
+
+        UUID patientInactive = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO patients (id, tenant_id, owner_id, name, species, breed, sex, status)
+                VALUES (?, ?, ?, 'Toby', 'PERRO', 'Mestizo', 'MACHO', 'INACTIVO')
+                """, patientInactive, tenantA.tenantId, ownerActive);
+
+        UUID ownerInactive = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO owners (id, tenant_id, first_name, last_name, document_type, document_number, phone, active)
+                VALUES (?, ?, 'Inactivo', 'Owner', 'DNI', '72223333', '999888777', false)
+                """, ownerInactive, tenantA.tenantId);
+        UUID patientWithInactiveOwner = insertPatient(tenantA.tenantId, ownerInactive, "Max", "PERRO", "Mestizo");
+
+        UUID ownerForeign = insertOwner(tenantB.tenantId, "Ajeno", "Owner", "DNI", "73334444");
+        UUID patientForeign = insertPatient(tenantB.tenantId, ownerForeign, "Rex", "PERRO", "Mestizo");
+
+        List<String> payloadsExpecting404 = List.of(
+                // Inactive branch
+                appointmentPayload(branchInactive, patientActive, vetAssigned, "09:00", "09:30"),
+                // Foreign branch
+                appointmentPayload(branchForeign, patientActive, vetAssigned, "09:00", "09:30"),
+                // Inactive patient
+                appointmentPayload(branchActive, patientInactive, vetAssigned, "09:00", "09:30"),
+                // Patient with inactive owner
+                appointmentPayload(branchActive, patientWithInactiveOwner, vetAssigned, "09:00", "09:30"),
+                // Foreign patient
+                appointmentPayload(branchActive, patientForeign, vetAssigned, "09:00", "09:30"),
+                // Inactive veterinarian
+                appointmentPayload(branchActive, patientActive, vetInactive, "09:00", "09:30"),
+                // Foreign veterinarian
+                appointmentPayload(branchActive, patientActive, vetForeign, "09:00", "09:30"));
+
+        for (String payload : payloadsExpecting404) {
+            mvc.perform(post("/api/v1/appointments")
+                            .with(authentication(auth(tenantA, "APPOINTMENT_CREATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(payload))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                    .andExpect(jsonPath("$.message").value(
+                            "El recurso solicitado para la cita no fue encontrado o no está disponible."));
+        }
+
+        // Veterinarian assigned to another branch -> 400 VALIDATION_FAILED on veterinarianId
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchActive, patientActive, vetUnassigned, "09:00", "09:30")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("veterinarianId"));
+
+        // Veterinarian without any row in user_branches -> 400 VALIDATION_FAILED on veterinarianId
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchActive, patientActive, vetWithoutAnyBranch, "09:00", "09:30")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("veterinarianId"));
+
+        // Active user without VETERINARIO role -> 400 VALIDATION_FAILED on veterinarianId
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchActive, patientActive, recepUser, "09:00", "09:30")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("veterinarianId"));
+    }
+
+    @Test
+    void detectsOverlapsAllowsAdjacentAndCancelledAndHandlesConcurrentRequestsSafely() throws Exception {
+        TenantFixture tenant = createTenantFixture("create-overlap");
+        UUID branchA = insertBranch(tenant.tenantId, "Sede Miraflores", "America/Lima", true);
+        UUID branchB = insertBranch(tenant.tenantId, "Sede San Isidro", "America/Lima", true);
+        UUID vetAna = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-ov@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vetAna, branchA);
+        assignUserToBranch(tenant.tenantId, vetAna, branchB);
+
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "74445555");
+        UUID patientLuna = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        UUID patientMilo = insertPatient(tenant.tenantId, owner, "Milo", "GATO", "Siames");
+
+        // 1. Create initial appointment 09:00 - 09:30
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchA, patientLuna, vetAna, "09:00", "09:30")))
+                .andExpect(status().isCreated());
+
+        // 2. Overlapping appointment 09:15 - 09:45 on another branch for the same veterinarian -> 409 Conflict
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchB, patientMilo, vetAna, "09:15", "09:45")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPOINTMENT_TIME_CONFLICT"));
+
+        // 3. Adjacent appointment 09:30 - 10:00 -> 201 Created
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchA, patientMilo, vetAna, "09:30", "10:00")))
+                .andExpect(status().isCreated());
+
+        // 4. Cancelled appointment at 10:00 - 10:30 (15:00Z - 15:30Z) does NOT block a new appointment
+        insertAppointment(
+                tenant.tenantId,
+                branchA,
+                patientLuna,
+                vetAna,
+                Instant.parse("2026-09-28T15:00:00Z"),
+                Instant.parse("2026-09-28T15:30:00Z"),
+                "CONSULTA_GENERAL",
+                "CANCELADA",
+                "Cita cancelada",
+                null);
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branchA, patientMilo, vetAna, "10:00", "10:30")))
+                .andExpect(status().isCreated());
+
+        // 5. Real concurrent overlap test for 11:00 - 11:30
+        CountDownLatch readyLatch = new CountDownLatch(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Callable<Integer> task1 = () -> {
+                readyLatch.countDown();
+                startLatch.await(5, TimeUnit.SECONDS);
+                return mvc.perform(post("/api/v1/appointments")
+                                .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(appointmentPayload(branchA, patientLuna, vetAna, "11:00", "11:30")))
+                        .andReturn()
+                        .getResponse()
+                        .getStatus();
+            };
+            Callable<Integer> task2 = () -> {
+                readyLatch.countDown();
+                startLatch.await(5, TimeUnit.SECONDS);
+                return mvc.perform(post("/api/v1/appointments")
+                                .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(appointmentPayload(branchB, patientMilo, vetAna, "11:00", "11:30")))
+                        .andReturn()
+                        .getResponse()
+                        .getStatus();
+            };
+
+            Future<Integer> future1 = pool.submit(task1);
+            Future<Integer> future2 = pool.submit(task2);
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            startLatch.countDown();
+
+            int status1 = future1.get(10, TimeUnit.SECONDS);
+            int status2 = future2.get(10, TimeUnit.SECONDS);
+
+            assertThat(List.of(status1, status2)).containsExactlyInAnyOrder(201, 409);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void rollsBackAppointmentAndSuppressesEventWhenAuditWriteFails() throws Exception {
+        TenantFixture tenant = createTenantFixture("create-rollback");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-rb@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "75556666");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        reset(eventListener);
+        doThrow(new IllegalStateException("Fallo simulado de auditoría"))
+                .when(auditLogWriter)
+                .append(any(AuditRecord.class));
+
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branch, patient, vet, "12:00", "12:30")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM appointments WHERE tenant_id = ?",
+                Integer.class,
+                tenant.tenantId);
+        assertThat(count).isZero();
+        verify(eventListener, never()).onAppointmentCreated(any(AppointmentCreated.class));
+    }
+
+    @Test
+    void assignsAppointmentCreateOnlyToAdministradorAndRecepcionistaInV12() {
+        TenantFixture tenant = createTenantFixture("rbac-v12");
+        jdbc.query("SELECT ensure_tenant_system_roles(?)", rs -> null, tenant.tenantId);
+
+        List<String> rolesWithCreate = jdbc.queryForList("""
+                SELECT r.name
+                FROM roles r
+                JOIN role_permissions rp
+                  ON rp.tenant_id = r.tenant_id
+                 AND rp.role_id = r.id
+                JOIN permissions p
+                  ON p.id = rp.permission_id
+                WHERE r.tenant_id = ?
+                  AND p.code = 'APPOINTMENT_CREATE'
+                ORDER BY r.name ASC
+                """, String.class, tenant.tenantId);
+
+        assertThat(rolesWithCreate).containsExactly("ADMINISTRADOR", "RECEPCIONISTA");
+    }
+
+    private String appointmentPayload(UUID branchId, UUID patientId, UUID veterinarianId, String startTime, String endTime) {
+        return """
+                {
+                  "branchId": "%s",
+                  "patientId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-28T%s",
+                  "endsAtLocal": "2026-09-28T%s",
+                  "appointmentType": "CONSULTA_GENERAL"
+                }
+                """.formatted(branchId, patientId, veterinarianId, startTime, endTime);
+    }
+
+    private void assignUserToBranch(UUID tenantId, UUID userId, UUID branchId) {
+        jdbc.update("""
+                INSERT INTO user_branches (tenant_id, user_id, branch_id, primary_branch, assigned_at)
+                VALUES (?, ?, ?, false, now())
+                ON CONFLICT (tenant_id, user_id, branch_id) DO NOTHING
+                """, tenantId, userId, branchId);
     }
 
     private TenantFixture createTenantFixture(String prefix) {
