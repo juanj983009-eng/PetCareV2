@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HU-012 — Pruebas de búsqueda de pacientes</title>
+    <link rel="stylesheet" href="../assets/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/css/app.css">
+  </head>
+  <body>
+    <main class="container py-4">
+      <h1 class="h4 mb-2">HU-012 — Pruebas de búsqueda de pacientes</h1>
+      <p id="test-summary" class="text-secondary">Ejecutando…</p>
+      <ol id="test-results" class="mb-4"></ol>
+
+      <nav aria-label="Navegación de prueba">
+        <button id="patients-nav-button" type="button" hidden>Pacientes</button>
+      </nav>
+
+      <div id="dashboard-home">
+        <button id="new-patient-button" type="button" hidden>Nuevo paciente</button>
+        <div id="patient-notice" tabindex="-1" hidden>Paciente registrado correctamente.</div>
+      </div>
+
+      <section id="patients-view" aria-labelledby="patients-title" hidden>
+        <h2 id="patients-title" tabindex="-1">Padrón de pacientes</h2>
+        <button id="patients-new-patient-button" type="button" hidden>Nuevo paciente</button>
+        <button id="patients-back-button" type="button">Volver al inicio</button>
+
+        <form id="patient-search-form" novalidate>
+          <label for="patient-search-query">Buscar paciente o propietario</label>
+          <input id="patient-search-query" type="search" maxlength="120" aria-describedby="patient-search-query-help">
+          <div id="patient-search-query-help">Mínimo 2 caracteres</div>
+
+          <label for="patient-species-filter">Especie</label>
+          <select id="patient-species-filter">
+            <option value="">Todas las especies</option>
+            <option value="CANINO">Canino</option>
+            <option value="FELINO">Felino</option>
+            <option value="AVE">Ave</option>
+            <option value="EXOTICO">Exótico</option>
+            <option value="OTRO">Otro</option>
+          </select>
+
+          <label for="patient-status-filter">Estado</label>
+          <select id="patient-status-filter">
+            <option value="">Todos los estados</option>
+            <option value="ACTIVO">Activo</option>
+            <option value="INACTIVO">Inactivo</option>
+            <option value="FALLECIDO">Fallecido</option>
+          </select>
+
+          <label for="patient-sort">Ordenar por</label>
+          <select id="patient-sort">
+            <option value="name" selected>Nombre del paciente</option>
+            <option value="species">Especie</option>
+            <option value="ownerName">Propietario</option>
+            <option value="createdAt">Registro reciente</option>
+          </select>
+
+          <label for="patient-direction">Dirección</label>
+          <select id="patient-direction">
+            <option value="asc" selected>Ascendente</option>
+            <option value="desc">Descendente</option>
+          </select>
+
+          <button id="patient-search-submit" type="submit">Buscar</button>
+          <button id="clear-patient-filters" type="button">Limpiar filtros</button>
+        </form>
+
+        <div id="patients-initial" role="status">Estado inicial de búsqueda.</div>
+        <div id="patients-validation" role="alert" tabindex="-1" hidden></div>
+        <div id="patients-forbidden" role="alert" tabindex="-1" hidden>No tienes permisos (PATIENT_READ).</div>
+        <div id="patients-loading" role="status" aria-live="polite" hidden>Consultando…</div>
+        <div id="patients-empty" role="status" hidden>No se encontraron pacientes.</div>
+        <div id="patients-error" role="alert" hidden>
+          <span id="patients-error-message">Error</span>
+          <button id="retry-patients" type="button">Reintentar</button>
+        </div>
+
+        <div id="patients-content" hidden>
+          <table>
+            <tbody id="patients-table-body"></tbody>
+          </table>
+          <div id="patients-cards"></div>
+          <div id="patients-pagination">
+            <span id="patients-page-status" aria-live="polite"></span>
+            <button id="patients-previous-page" type="button">Anterior</button>
+            <button id="patients-next-page" type="button">Siguiente</button>
+          </div>
+        </div>
+      </section>
+
+      <dialog id="patient-editor-dialog">
+        <form id="patient-editor-form">
+          <select id="patient-owner-id" required><option value=""></option></select>
+          <div class="invalid-feedback">Propietario</div>
+          <input id="patient-name" required>
+          <div class="invalid-feedback">Nombre</div>
+          <input id="patient-species" required>
+          <div class="invalid-feedback">Especie</div>
+          <input id="patient-sex" required>
+          <div class="invalid-feedback">Sexo</div>
+          <input id="patient-owner-query">
+          <button id="patient-owner-search" type="button">Buscar</button>
+          <input id="patient-breed">
+          <input id="patient-birth-date">
+          <input id="patient-color">
+          <input id="patient-microchip">
+          <input id="patient-sterilized" type="checkbox">
+          <button id="save-patient-button" type="submit">Registrar</button>
+          <button id="cancel-patient-button" type="button">Cancelar</button>
+          <div id="patient-form-error" hidden></div>
+          <div id="patient-form-validation" role="alert" hidden></div>
+        </form>
+      </dialog>
+    </main>
+    <script type="module" src="./patient-search.test.js"></script>
+  </body>
+</html>

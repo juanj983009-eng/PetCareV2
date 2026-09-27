@@ -59,7 +59,7 @@ class IdentityBootstrapEnabledIntegrationTest extends PostgreSqlIntegrationTest 
                 WHERE t.slug = 'enabled-bootstrap-fixture' AND r.name = 'ADMINISTRADOR'
                 ORDER BY p.code
                 """, String.class))
-                .containsExactly("DASHBOARD_VIEW", "OWNER_CREATE", "OWNER_READ", "PATIENT_CREATE", "ROLE_MANAGE", "ROLE_READ", "USER_MANAGE", "USER_READ");
+                .containsExactly("DASHBOARD_VIEW", "OWNER_CREATE", "OWNER_READ", "PATIENT_CREATE", "PATIENT_READ", "ROLE_MANAGE", "ROLE_READ", "USER_MANAGE", "USER_READ");
         assertThat(count("user_branches", "primary_branch = true")).isOne();
     }
 

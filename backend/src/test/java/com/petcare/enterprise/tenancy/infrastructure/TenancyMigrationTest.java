@@ -42,7 +42,7 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
         assertThat(flyway.info().applied())
                 .filteredOn(info -> info.getVersion() != null)
                 .extracting(info -> info.getVersion().toString())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
     }
 
     @Test
@@ -64,7 +64,10 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
                 "idx_branches_tenant_active",
                 "idx_audit_entries_tenant_entity",
                 "idx_audit_entries_tenant_occurred_at",
-                "idx_audit_entries_branch_id");
+                "idx_audit_entries_branch_id",
+                "idx_patients_tenant_status_species",
+                "idx_patients_name_search",
+                "idx_patients_microchip_search");
     }
 
     @Test

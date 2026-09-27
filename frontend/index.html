@@ -185,6 +185,9 @@
                   <button id="owners-nav-button" class="btn btn-outline-primary" type="button" hidden>
                     Buscar propietarios
                   </button>
+                  <button id="patients-nav-button" class="btn btn-outline-primary" type="button" hidden>
+                    Buscar pacientes
+                  </button>
                   <button id="logout-button" class="btn btn-outline-danger ms-lg-auto" type="button">
                     Cerrar sesión
                   </button>
@@ -402,6 +405,133 @@
                     <button id="owners-next-page" class="btn btn-outline-secondary" type="button">Siguiente</button>
                   </nav>
                 </div>
+              </section>
+
+              <!-- Subvista: Búsqueda de Pacientes (HU-012) -->
+              <section id="patients-view" aria-labelledby="patients-title" hidden>
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                  <div>
+                    <button id="patients-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
+                    <h2 id="patients-title" class="h2 mb-1" tabindex="-1">Buscar pacientes</h2>
+                    <p class="text-secondary mb-0">Consulta el padrón clínico por mascota, propietario, documento o microchip.</p>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 align-self-lg-end">
+                    <button id="patients-new-patient-button" class="btn btn-primary" type="button" hidden>Nuevo paciente</button>
+                  </div>
+                </div>
+
+                <form id="patient-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search" novalidate>
+                  <div class="col-12 col-lg-4">
+                    <label class="form-label" for="patient-search-query">Búsqueda clínica</label>
+                    <input id="patient-search-query" class="form-control" type="search" maxlength="100"
+                      placeholder="Mascota, propietario, documento o microchip"
+                      aria-describedby="patient-search-query-help patient-search-query-feedback">
+                    <div id="patient-search-query-help" class="form-text">Opcional o mínimo 2 caracteres.</div>
+                    <div id="patient-search-query-feedback" class="invalid-feedback">Ingresa al menos 2 caracteres para buscar por texto.</div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label" for="patient-species-filter">Especie</label>
+                    <select id="patient-species-filter" class="form-select">
+                      <option value="">Todas las especies</option>
+                      <option value="Canino">Canino</option>
+                      <option value="Felino">Felino</option>
+                      <option value="Perro">Perro</option>
+                      <option value="Gato">Gato</option>
+                      <option value="Ave">Ave</option>
+                      <option value="Lagomorfo">Lagomorfo</option>
+                      <option value="Exótico">Exótico</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label" for="patient-status-filter">Estado</label>
+                    <select id="patient-status-filter" class="form-select">
+                      <option value="">Todos los estados</option>
+                      <option value="ACTIVO">Activo</option>
+                      <option value="INACTIVO">Inactivo</option>
+                      <option value="FALLECIDO">Fallecido</option>
+                    </select>
+                  </div>
+                  <div class="col-7 col-sm-6 col-lg-2">
+                    <label class="form-label" for="patient-sort">Ordenar por</label>
+                    <select id="patient-sort" class="form-select">
+                      <option value="name">Mascota</option>
+                      <option value="species">Especie</option>
+                      <option value="ownerName">Propietario</option>
+                      <option value="status">Estado</option>
+                      <option value="createdAt">Fecha de registro</option>
+                    </select>
+                  </div>
+                  <div class="col-5 col-sm-6 col-lg-2">
+                    <label class="form-label" for="patient-direction">Dirección</label>
+                    <select id="patient-direction" class="form-select">
+                      <option value="asc">Ascendente</option>
+                      <option value="desc">Descendente</option>
+                    </select>
+                  </div>
+                  <div class="col-12 d-flex flex-wrap gap-2">
+                    <button id="patient-search-submit" class="btn btn-primary" type="submit">Buscar pacientes</button>
+                    <button id="clear-patient-filters" class="btn btn-outline-secondary" type="button">Limpiar</button>
+                  </div>
+                </form>
+
+                <div id="patients-initial" class="pc-empty-state py-4 px-3 mb-3 text-center" role="status">
+                  <h3 class="h5 mb-1">Consulta de pacientes de la clínica</h3>
+                  <p class="text-secondary mb-0">Ingresa el nombre de la mascota, propietario, documento o microchip, o aplica filtros por especie y estado.</p>
+                </div>
+
+                <div id="patients-validation" class="alert alert-danger" role="alert" tabindex="-1" hidden>
+                  <strong>● Validación de búsqueda:</strong> <span id="patients-validation-message">Ingresa al menos 2 caracteres cuando filtres por texto.</span>
+                </div>
+
+                <div id="patients-forbidden" class="alert alert-warning" role="alert" hidden>
+                  <strong>▲ Permiso insuficiente:</strong> Tu rol actual no cuenta con la autoridad <code>PATIENT_READ</code> para consultar pacientes.
+                </div>
+
+                <div id="patients-loading" class="text-center py-5" role="status" hidden>
+                  <div class="spinner-border text-primary" aria-hidden="true"></div>
+                  <p class="mt-2 mb-0">Buscando pacientes…</p>
+                </div>
+
+                <div id="patients-empty" class="text-center pc-empty-state py-5 px-3" role="status" hidden>
+                  <h3 class="h5">No se encontraron pacientes</h3>
+                  <p class="text-secondary mb-0">Ajusta el término de búsqueda o los filtros de especie y estado.</p>
+                </div>
+
+                <div id="patients-error" class="alert alert-danger" role="alert" hidden>
+                  <p class="fw-semibold mb-1">● No fue posible consultar los pacientes</p>
+                  <p id="patients-error-message" class="mb-0"></p>
+                  <p id="patients-error-correlation" class="pc-correlation-id mt-2 mb-0" hidden></p>
+                  <button id="retry-patients" class="btn btn-outline-danger mt-3" type="button">Reintentar búsqueda</button>
+                </div>
+
+                <div id="patients-content" hidden>
+                  <div class="table-responsive d-none d-md-block border rounded">
+                    <table class="table table-hover align-middle">
+                      <caption class="visually-hidden">Pacientes registrados en la clínica autenticada</caption>
+                      <thead>
+                        <tr>
+                          <th>Paciente</th>
+                          <th>Especie</th>
+                          <th>Propietario</th>
+                          <th>Microchip</th>
+                          <th>Estado</th>
+                          <th class="text-end">Expediente</th>
+                        </tr>
+                      </thead>
+                      <tbody id="patients-table-body"></tbody>
+                    </table>
+                  </div>
+                  <div id="patients-cards" class="d-grid gap-3 d-md-none"></div>
+                </div>
+
+                <nav id="patients-pagination" class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-4"
+                  aria-label="Paginación de pacientes">
+                  <p id="patients-page-status" class="small text-secondary mb-0" role="status" aria-live="polite">Sin resultados</p>
+                  <div class="btn-group">
+                    <button id="patients-previous-page" class="btn btn-outline-secondary" type="button" disabled>Anterior</button>
+                    <button id="patients-next-page" class="btn btn-outline-secondary" type="button" disabled>Siguiente</button>
+                  </div>
+                </nav>
               </section>
             </div>
           </div>

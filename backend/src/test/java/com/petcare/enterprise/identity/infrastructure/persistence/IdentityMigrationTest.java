@@ -50,7 +50,7 @@ class IdentityMigrationTest extends PostgreSqlIntegrationTest {
             while (result.next()) {
                 versions.add(result.getString(1));
             }
-            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
         }
     }
 

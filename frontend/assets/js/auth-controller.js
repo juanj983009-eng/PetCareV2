@@ -24,11 +24,17 @@ export function createAuthController({ document, window, client, errors, lifecyc
   for (const [button, view] of [
     [optional.usersNavButton, optional.usersView],
     [optional.rolesNavButton, optional.rolesView],
-    [optional.ownersNavButton, optional.ownersView]
+    [optional.ownersNavButton, optional.ownersView],
+    [optional.patientsNavButton, optional.patientsView]
   ]) {
     button?.addEventListener("click", () => activateModuleNav(button, view));
   }
-  for (const backBtn of [optional.usersBackButton, optional.rolesBackButton, optional.ownersBackButton]) {
+  for (const backBtn of [
+    optional.usersBackButton,
+    optional.rolesBackButton,
+    optional.ownersBackButton,
+    optional.patientsBackButton
+  ]) {
     backBtn?.addEventListener("click", () => markActiveNav(optional.dashboardNavButton));
   }
   document.addEventListener("keydown", handleKeydown);
@@ -296,13 +302,19 @@ export function createAuthController({ document, window, client, errors, lifecyc
     if (optional.usersView) optional.usersView.hidden = true;
     if (optional.rolesView) optional.rolesView.hidden = true;
     if (optional.ownersView) optional.ownersView.hidden = true;
+    if (optional.patientsView) optional.patientsView.hidden = true;
     if (optional.dashboardHome) optional.dashboardHome.hidden = false;
     markActiveNav(optional.dashboardNavButton);
     closeMobileNav();
   }
 
   function activateModuleNav(button, targetView) {
-    for (const view of [optional.usersView, optional.rolesView, optional.ownersView]) {
+    for (const view of [
+      optional.usersView,
+      optional.rolesView,
+      optional.ownersView,
+      optional.patientsView
+    ]) {
       if (view && view !== targetView) {
         view.hidden = true;
       }
@@ -316,7 +328,8 @@ export function createAuthController({ document, window, client, errors, lifecyc
       optional.dashboardNavButton,
       optional.usersNavButton,
       optional.rolesNavButton,
-      optional.ownersNavButton
+      optional.ownersNavButton,
+      optional.patientsNavButton
     ]) {
       if (!button) continue;
       if (button === activeButton) {
@@ -394,13 +407,16 @@ function findOptionalElements(document) {
     usersNavButton: document.querySelector("#users-nav-button"),
     rolesNavButton: document.querySelector("#roles-nav-button"),
     ownersNavButton: document.querySelector("#owners-nav-button"),
+    patientsNavButton: document.querySelector("#patients-nav-button"),
     usersBackButton: document.querySelector("#users-back-button"),
     rolesBackButton: document.querySelector("#roles-back-button"),
     ownersBackButton: document.querySelector("#owners-back-button"),
+    patientsBackButton: document.querySelector("#patients-back-button"),
     dashboardHome: document.querySelector("#dashboard-home"),
     usersView: document.querySelector("#users-view"),
     rolesView: document.querySelector("#roles-view"),
-    ownersView: document.querySelector("#owners-view")
+    ownersView: document.querySelector("#owners-view"),
+    patientsView: document.querySelector("#patients-view")
   };
 }
 
