@@ -19,9 +19,26 @@ public interface AppointmentScheduleUseCase {
 
     AppointmentSummary updateStatus(UpdateAppointmentStatusCommand command);
 
+    AppointmentSummary rescheduleAppointment(RescheduleAppointmentCommand command);
+
+    AppointmentSummary cancelAppointment(CancelAppointmentCommand command);
+
     record UpdateAppointmentStatusCommand(
             UUID appointmentId,
             String status) {
+    }
+
+    record RescheduleAppointmentCommand(
+            UUID appointmentId,
+            UUID branchId,
+            UUID veterinarianId,
+            String startsAtLocal,
+            String endsAtLocal) {
+    }
+
+    record CancelAppointmentCommand(
+            UUID appointmentId,
+            String reason) {
     }
 
     record CreateAppointmentCommand(

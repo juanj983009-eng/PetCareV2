@@ -354,6 +354,337 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
         throw new InvalidAppointmentStatusTransitionException();
     }
 
+    @Override
+    @Transactional
+    public AppointmentSummary rescheduleAppointment(RescheduleAppointmentCommand command) {
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+
+        if (command == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "startsAtLocal",
+                    "Los datos para reprogramar la cita son obligatorios.");
+        }
+        if (command.appointmentId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "appointmentId",
+                    "El identificador de la cita es obligatorio.");
+        }
+        if (command.branchId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "branchId",
+                    "La sucursal es obligatoria.");
+        }
+        if (command.veterinarianId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El veterinario es obligatorio.");
+        }
+
+        AppointmentSummary current = repository.findById(tenantId, command.appointmentId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        AppointmentStatus currentStatus = AppointmentStatus.valueOf(current.status());
+        if (currentStatus != AppointmentStatus.PROGRAMADA
+                && currentStatus != AppointmentStatus.CONFIRMADA) {
+            throw new InvalidAppointmentStatusTransitionException(
+                    currentStatus.name(),
+                    AppointmentStatus.PROGRAMADA.name());
+        }
+
+        BranchOption branch = repository.findActiveBranchById(tenantId, command.branchId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        VeterinarianEligibility veterinarian = repository
+                .findActiveUserEligibility(tenantId, command.veterinarianId(), command.branchId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        if (!veterinarian.hasVeterinarianRole()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El usuario seleccionado no posee el rol VETERINARIO en el tenant.");
+        }
+        if (!veterinarian.assignedToBranch()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "veterinarianId",
+                    "El veterinario seleccionado no tiene asignación explícita a la sucursal.");
+        }
+
+        ZoneId branchZone;
+        try {
+            branchZone = ZoneId.of(branch.timeZone());
+        } catch (Exception exception) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "branchId",
+                    "La zona horaria configurada en la sucursal no es válida.");
+        }
+        LocalDateTime startLocal = parseLocalDateTime(
+                command.startsAtLocal(),
+                "startsAtLocal",
+                "La fecha y hora de inicio deben usar el formato local YYYY-MM-DDTHH:mm.");
+        LocalDateTime endLocal = parseLocalDateTime(
+                command.endsAtLocal(),
+                "endsAtLocal",
+                "La fecha y hora de término deben usar el formato local YYYY-MM-DDTHH:mm.");
+
+        Instant startsAt = resolveInstantInBranchZone(startLocal, branchZone, "startsAtLocal");
+        Instant endsAt = resolveInstantInBranchZone(endLocal, branchZone, "endsAtLocal");
+
+        if (!endsAt.isAfter(startsAt)) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "endsAtLocal",
+                    "La fecha y hora de término deben ser posteriores a la de inicio.");
+        }
+
+        AppointmentStatus targetStatus = AppointmentStatus.PROGRAMADA;
+        if (current.branchId().equals(branch.id())
+                && current.veterinarianId().equals(veterinarian.id())
+                && current.startsAt().equals(startsAt)
+                && current.endsAt().equals(endsAt)
+                && currentStatus == targetStatus) {
+            return current;
+        }
+
+        if (repository.hasOverlappingActiveAppointmentExcluding(
+                tenantId, veterinarian.id(), startsAt, endsAt, current.id())) {
+            throw new AppointmentTimeConflictException();
+        }
+
+        Instant now = clock.instant();
+        boolean updated;
+        try {
+            updated = repository.rescheduleConditionally(
+                    new AppointmentScheduleRepository.RescheduleAppointmentMutation(
+                            tenantId,
+                            current.id(),
+                            currentStatus.name(),
+                            current.branchId(),
+                            current.veterinarianId(),
+                            current.startsAt(),
+                            current.endsAt(),
+                            branch.id(),
+                            veterinarian.id(),
+                            startsAt,
+                            endsAt,
+                            targetStatus.name(),
+                            now));
+        } catch (DataIntegrityViolationException exception) {
+            throw new AppointmentTimeConflictException();
+        }
+
+        if (!updated) {
+            AppointmentSummary latest = repository.findById(tenantId, command.appointmentId())
+                    .orElseThrow(AppointmentResourceNotFoundException::new);
+            if (latest.branchId().equals(branch.id())
+                    && latest.veterinarianId().equals(veterinarian.id())
+                    && latest.startsAt().equals(startsAt)
+                    && latest.endsAt().equals(endsAt)
+                    && targetStatus.name().equals(latest.status())) {
+                return latest;
+            }
+            throw new AppointmentConcurrentModificationException();
+        }
+
+        AppointmentSummary updatedSummary = new AppointmentSummary(
+                current.id(),
+                startsAt,
+                endsAt,
+                current.appointmentType(),
+                targetStatus.name(),
+                current.patientId(),
+                current.patientName(),
+                branch.id(),
+                branch.name(),
+                veterinarian.id(),
+                veterinarian.fullName());
+
+        if (currentStatus == AppointmentStatus.CONFIRMADA) {
+            repository.insertStatusHistory(new AppointmentStatusHistoryRecord(
+                    UUID.randomUUID(),
+                    tenantId,
+                    updatedSummary.id(),
+                    currentStatus.name(),
+                    targetStatus.name(),
+                    metadata.actorUserId(),
+                    now,
+                    metadata.correlationId()));
+        }
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                metadata.actorUserId(),
+                branch.id(),
+                "APPOINTMENT",
+                updatedSummary.id(),
+                "APPOINTMENT_RESCHEDULED",
+                now,
+                null,
+                metadata.correlationId(),
+                Map.of(
+                        "branchId", current.branchId().toString(),
+                        "veterinarianId", current.veterinarianId().toString(),
+                        "startsAt", current.startsAt().toString(),
+                        "endsAt", current.endsAt().toString(),
+                        "status", currentStatus.name()),
+                Map.of(
+                        "appointmentId", updatedSummary.id().toString(),
+                        "branchId", branch.id().toString(),
+                        "veterinarianId", veterinarian.id().toString(),
+                        "startsAt", startsAt.toString(),
+                        "endsAt", endsAt.toString(),
+                        "status", targetStatus.name())));
+
+        eventPublisher.publish(new com.petcare.enterprise.appointments.domain.AppointmentRescheduled(
+                tenantId,
+                updatedSummary.id(),
+                current.branchId(),
+                branch.id(),
+                current.veterinarianId(),
+                veterinarian.id(),
+                current.startsAt(),
+                current.endsAt(),
+                startsAt,
+                endsAt,
+                currentStatus.name(),
+                targetStatus.name(),
+                metadata.actorUserId(),
+                metadata.correlationId()));
+
+        return updatedSummary;
+    }
+
+    @Override
+    @Transactional
+    public AppointmentSummary cancelAppointment(CancelAppointmentCommand command) {
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+
+        if (command == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "reason",
+                    "El motivo de cancelación es obligatorio.");
+        }
+        if (command.appointmentId() == null) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "appointmentId",
+                    "El identificador de la cita es obligatorio.");
+        }
+        String normalizedReason = normalizeCancellationReason(command.reason());
+
+        AppointmentSummary current = repository.findById(tenantId, command.appointmentId())
+                .orElseThrow(AppointmentResourceNotFoundException::new);
+
+        AppointmentStatus currentStatus = AppointmentStatus.valueOf(current.status());
+        if (currentStatus == AppointmentStatus.CANCELADA) {
+            return current;
+        }
+
+        if (currentStatus != AppointmentStatus.PROGRAMADA
+                && currentStatus != AppointmentStatus.CONFIRMADA
+                && currentStatus != AppointmentStatus.EN_ESPERA) {
+            throw new InvalidAppointmentStatusTransitionException(
+                    currentStatus.name(),
+                    AppointmentStatus.CANCELADA.name());
+        }
+
+        Instant now = clock.instant();
+        boolean updated = repository.cancelConditionally(
+                new AppointmentScheduleRepository.CancelAppointmentMutation(
+                        tenantId,
+                        current.id(),
+                        currentStatus.name(),
+                        current.branchId(),
+                        current.veterinarianId(),
+                        current.startsAt(),
+                        current.endsAt(),
+                        normalizedReason,
+                        now,
+                        metadata.actorUserId()));
+
+        if (!updated) {
+            AppointmentSummary latest = repository.findById(tenantId, command.appointmentId())
+                    .orElseThrow(AppointmentResourceNotFoundException::new);
+            if (AppointmentStatus.CANCELADA.name().equals(latest.status())) {
+                return latest;
+            }
+            throw new AppointmentConcurrentModificationException();
+        }
+
+        AppointmentSummary updatedSummary = new AppointmentSummary(
+                current.id(),
+                current.startsAt(),
+                current.endsAt(),
+                current.appointmentType(),
+                AppointmentStatus.CANCELADA.name(),
+                current.patientId(),
+                current.patientName(),
+                current.branchId(),
+                current.branchName(),
+                current.veterinarianId(),
+                current.veterinarianFullName());
+
+        repository.insertStatusHistory(new AppointmentStatusHistoryRecord(
+                UUID.randomUUID(),
+                tenantId,
+                updatedSummary.id(),
+                currentStatus.name(),
+                AppointmentStatus.CANCELADA.name(),
+                metadata.actorUserId(),
+                now,
+                metadata.correlationId()));
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                metadata.actorUserId(),
+                updatedSummary.branchId(),
+                "APPOINTMENT",
+                updatedSummary.id(),
+                "APPOINTMENT_CANCELLED",
+                now,
+                null,
+                metadata.correlationId(),
+                Map.of("status", currentStatus.name()),
+                Map.of(
+                        "appointmentId", updatedSummary.id().toString(),
+                        "branchId", updatedSummary.branchId().toString(),
+                        "previousStatus", currentStatus.name(),
+                        "newStatus", AppointmentStatus.CANCELADA.name(),
+                        "cancellationReason", normalizedReason,
+                        "cancelledAt", now.toString(),
+                        "cancelledBy", metadata.actorUserId().toString())));
+
+        eventPublisher.publish(new com.petcare.enterprise.appointments.domain.AppointmentCancelled(
+                tenantId,
+                updatedSummary.id(),
+                updatedSummary.branchId(),
+                updatedSummary.patientId(),
+                updatedSummary.veterinarianId(),
+                currentStatus.name(),
+                AppointmentStatus.CANCELADA.name(),
+                metadata.actorUserId(),
+                now,
+                metadata.correlationId()));
+
+        return updatedSummary;
+    }
+
+    private static String normalizeCancellationReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "reason",
+                    "El motivo de cancelación es obligatorio.");
+        }
+        String normalized = reason.trim().replaceAll("\\s+", " ");
+        if (normalized.length() < 3 || normalized.length() > 500) {
+            throw new InvalidAppointmentScheduleQueryException(
+                    "reason",
+                    "El motivo de cancelación debe tener entre 3 y 500 caracteres.");
+        }
+        return normalized;
+    }
+
     private static AppointmentStatus parseAllowedTargetStatus(String currentStatus, String normalizedTarget) {
         if ("CONFIRMADA".equals(normalizedTarget)) {
             return AppointmentStatus.CONFIRMADA;

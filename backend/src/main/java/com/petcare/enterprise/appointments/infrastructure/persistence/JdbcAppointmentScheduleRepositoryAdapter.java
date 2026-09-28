@@ -288,6 +288,34 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
     }
 
     @Override
+    public boolean hasOverlappingActiveAppointmentExcluding(
+            UUID tenantId,
+            UUID veterinarianId,
+            Instant startsAt,
+            Instant endsAt,
+            UUID excludedAppointmentId) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM appointments a
+                    WHERE a.tenant_id = :tenantId
+                      AND a.veterinarian_id = :veterinarianId
+                      AND a.id <> :excludedAppointmentId
+                      AND a.status <> 'CANCELADA'
+                      AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange(:startsAt, :endsAt, '[)')
+                )
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("veterinarianId", veterinarianId, Types.OTHER)
+                .addValue("excludedAppointmentId", excludedAppointmentId, Types.OTHER)
+                .addValue("startsAt", OffsetDateTime.ofInstant(startsAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("endsAt", OffsetDateTime.ofInstant(endsAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
+        Boolean exists = jdbc.queryForObject(sql, params, Boolean.class);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    @Override
     public AppointmentSummary insertAppointment(NewAppointmentRecord record) {
         String sql = """
                 INSERT INTO appointments (
@@ -411,6 +439,73 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 .addValue("expectedPreviousStatus", expectedPreviousStatus, Types.VARCHAR)
                 .addValue("newStatus", newStatus, Types.VARCHAR)
                 .addValue("updatedAt", OffsetDateTime.ofInstant(updatedAt, ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
+        return jdbc.update(sql, params) == 1;
+    }
+
+    @Override
+    public boolean rescheduleConditionally(RescheduleAppointmentMutation mutation) {
+        String sql = """
+                UPDATE appointments
+                SET branch_id = :newBranchId,
+                    veterinarian_id = :newVeterinarianId,
+                    starts_at = :newStartsAt,
+                    ends_at = :newEndsAt,
+                    status = :newStatus,
+                    updated_at = :updatedAt
+                WHERE tenant_id = :tenantId
+                  AND id = :appointmentId
+                  AND status = :expectedPreviousStatus
+                  AND branch_id = :expectedBranchId
+                  AND veterinarian_id = :expectedVeterinarianId
+                  AND starts_at = :expectedStartsAt
+                  AND ends_at = :expectedEndsAt
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", mutation.tenantId(), Types.OTHER)
+                .addValue("appointmentId", mutation.appointmentId(), Types.OTHER)
+                .addValue("expectedPreviousStatus", mutation.expectedPreviousStatus(), Types.VARCHAR)
+                .addValue("expectedBranchId", mutation.expectedBranchId(), Types.OTHER)
+                .addValue("expectedVeterinarianId", mutation.expectedVeterinarianId(), Types.OTHER)
+                .addValue("expectedStartsAt", OffsetDateTime.ofInstant(mutation.expectedStartsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("expectedEndsAt", OffsetDateTime.ofInstant(mutation.expectedEndsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("newBranchId", mutation.newBranchId(), Types.OTHER)
+                .addValue("newVeterinarianId", mutation.newVeterinarianId(), Types.OTHER)
+                .addValue("newStartsAt", OffsetDateTime.ofInstant(mutation.newStartsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("newEndsAt", OffsetDateTime.ofInstant(mutation.newEndsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("newStatus", mutation.newStatus(), Types.VARCHAR)
+                .addValue("updatedAt", OffsetDateTime.ofInstant(mutation.updatedAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE);
+        return jdbc.update(sql, params) == 1;
+    }
+
+    @Override
+    public boolean cancelConditionally(CancelAppointmentMutation mutation) {
+        String sql = """
+                UPDATE appointments
+                SET status = 'CANCELADA',
+                    cancellation_reason = :cancellationReason,
+                    cancelled_at = :cancelledAt,
+                    cancelled_by = :cancelledBy,
+                    updated_at = :cancelledAt
+                WHERE tenant_id = :tenantId
+                  AND id = :appointmentId
+                  AND status = :expectedPreviousStatus
+                  AND branch_id = :expectedBranchId
+                  AND veterinarian_id = :expectedVeterinarianId
+                  AND starts_at = :expectedStartsAt
+                  AND ends_at = :expectedEndsAt
+                """;
+        OffsetDateTime cancelledAtUtc = OffsetDateTime.ofInstant(mutation.cancelledAt(), ZoneOffset.UTC);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", mutation.tenantId(), Types.OTHER)
+                .addValue("appointmentId", mutation.appointmentId(), Types.OTHER)
+                .addValue("expectedPreviousStatus", mutation.expectedPreviousStatus(), Types.VARCHAR)
+                .addValue("expectedBranchId", mutation.expectedBranchId(), Types.OTHER)
+                .addValue("expectedVeterinarianId", mutation.expectedVeterinarianId(), Types.OTHER)
+                .addValue("expectedStartsAt", OffsetDateTime.ofInstant(mutation.expectedStartsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("expectedEndsAt", OffsetDateTime.ofInstant(mutation.expectedEndsAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("cancellationReason", mutation.cancellationReason(), Types.VARCHAR)
+                .addValue("cancelledAt", cancelledAtUtc, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("cancelledBy", mutation.cancelledBy(), Types.OTHER);
         return jdbc.update(sql, params) == 1;
     }
 

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -63,6 +64,22 @@ class AppointmentController {
             @PathVariable("appointmentId") UUID appointmentId,
             @Valid @RequestBody UpdateAppointmentStatusRequest request) {
         AppointmentSummary updated = schedule.updateStatus(request.toCommand(appointmentId));
+        return AppointmentCreatedResponse.from(updated);
+    }
+
+    @PutMapping("/{appointmentId}/schedule")
+    AppointmentCreatedResponse rescheduleAppointment(
+            @PathVariable("appointmentId") UUID appointmentId,
+            @Valid @RequestBody RescheduleAppointmentRequest request) {
+        AppointmentSummary updated = schedule.rescheduleAppointment(request.toCommand(appointmentId));
+        return AppointmentCreatedResponse.from(updated);
+    }
+
+    @PutMapping("/{appointmentId}/cancellation")
+    AppointmentCreatedResponse cancelAppointment(
+            @PathVariable("appointmentId") UUID appointmentId,
+            @Valid @RequestBody CancelAppointmentRequest request) {
+        AppointmentSummary updated = schedule.cancelAppointment(request.toCommand(appointmentId));
         return AppointmentCreatedResponse.from(updated);
     }
 }

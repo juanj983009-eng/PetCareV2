@@ -143,6 +143,49 @@
           <button id="save-appointment-button" type="submit">Programar cita</button>
         </form>
       </dialog>
+      <dialog id="appointment-reschedule-dialog">
+        <form id="appointment-reschedule-form" novalidate>
+          <div id="appointment-reschedule-summary"></div>
+          <div id="appointment-reschedule-error" role="alert" hidden></div>
+          <div id="appointment-reschedule-validation" role="alert" hidden></div>
+          <div>
+            <label for="appointment-reschedule-branch-id">Sucursal</label>
+            <select id="appointment-reschedule-branch-id" required></select>
+            <div id="appointment-reschedule-branch-timezone">Zona horaria: America/Lima</div>
+          </div>
+          <div>
+            <label for="appointment-reschedule-veterinarian-id">Veterinario</label>
+            <select id="appointment-reschedule-veterinarian-id" required></select>
+          </div>
+          <div>
+            <label for="appointment-reschedule-date">Fecha</label>
+            <input id="appointment-reschedule-date" type="date" required>
+          </div>
+          <div>
+            <label for="appointment-reschedule-start-time">Hora de inicio</label>
+            <input id="appointment-reschedule-start-time" type="time" required>
+          </div>
+          <div>
+            <label for="appointment-reschedule-end-time">Hora de término</label>
+            <input id="appointment-reschedule-end-time" type="time" required>
+          </div>
+          <button id="cancel-reschedule-appointment-button" type="button">Cancelar</button>
+          <button id="save-reschedule-appointment-button" type="submit">Guardar reprogramación</button>
+        </form>
+      </dialog>
+      <dialog id="appointment-cancel-dialog">
+        <form id="appointment-cancel-form" novalidate>
+          <div id="appointment-cancel-summary"></div>
+          <div id="appointment-cancel-error" role="alert" hidden></div>
+          <div id="appointment-cancel-validation" role="alert" hidden></div>
+          <div>
+            <label for="appointment-cancel-reason">Motivo de cancelación</label>
+            <textarea id="appointment-cancel-reason" maxlength="500" required></textarea>
+          </div>
+          <button id="dismiss-cancel-appointment-button" type="button">Volver</button>
+          <button id="confirm-cancel-appointment-button" type="submit">Confirmar cancelación</button>
+        </form>
+      </dialog>
     </main>
     <script type="module" src="./appointment-schedule.test.js"></script>
   </body>

@@ -1106,6 +1106,85 @@
     </div>
   </dialog>
 
+  <!-- MODAL: REPROGRAMAR CITA (HU-018) -->
+  <dialog id="appointment-reschedule-dialog" class="petcare-dialog" aria-labelledby="appointment-reschedule-title">
+    <div class="card border-0">
+      <div class="pc-folio-header">
+        <p class="text-uppercase text-primary fw-semibold small mb-1">Agenda clínica</p>
+        <h2 id="appointment-reschedule-title" class="h4 mb-0">Reprogramar cita</h2>
+      </div>
+      <div class="card-body p-4">
+        <p id="appointment-reschedule-summary" class="text-secondary small mb-3"></p>
+        <div id="appointment-reschedule-error" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
+        <div id="appointment-reschedule-validation" class="alert alert-warning" role="alert" tabindex="-1" hidden></div>
+        <form id="appointment-reschedule-form" class="row g-3" novalidate>
+          <input id="reschedule-appointment-id" type="hidden">
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="reschedule-branch-id">Sucursal</label>
+            <select id="reschedule-branch-id" class="form-select" required>
+              <option value="">Selecciona una sucursal</option>
+            </select>
+            <div id="reschedule-branch-timezone" class="form-text text-secondary small">Zona horaria: —</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="reschedule-veterinarian-id">Veterinario asignado</label>
+            <select id="reschedule-veterinarian-id" class="form-select" required>
+              <option value="">Selecciona un veterinario</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label" for="reschedule-date">Fecha</label>
+            <input id="reschedule-date" class="form-control pc-data-mono" type="date" required>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label" for="reschedule-start-time">Hora de inicio</label>
+            <input id="reschedule-start-time" class="form-control pc-data-mono" type="time" required>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label" for="reschedule-end-time">Hora de término</label>
+            <input id="reschedule-end-time" class="form-control pc-data-mono" type="time" required>
+          </div>
+          <div class="col-12 d-flex flex-column-reverse flex-sm-row justify-content-end gap-2 pt-3 border-top">
+            <button id="cancel-reschedule-button" class="btn btn-outline-secondary" type="button">Volver</button>
+            <button id="save-reschedule-button" class="btn btn-primary" type="submit">Guardar reprogramación</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: CANCELAR CITA (HU-018) -->
+  <dialog id="appointment-cancel-dialog" class="petcare-dialog petcare-dialog-sm" aria-labelledby="appointment-cancel-title">
+    <div class="card border-0">
+      <div class="pc-folio-header">
+        <p class="text-uppercase text-danger fw-semibold small mb-1">Agenda clínica</p>
+        <h2 id="appointment-cancel-title" class="h4 mb-0">Cancelar cita</h2>
+      </div>
+      <div class="card-body p-4">
+        <p id="appointment-cancel-summary" class="text-secondary small mb-3"></p>
+        <div id="appointment-cancel-error" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
+        <div id="appointment-cancel-validation" class="alert alert-warning" role="alert" tabindex="-1" hidden></div>
+        <form id="appointment-cancel-form" class="row g-3" novalidate>
+          <input id="cancel-appointment-id" type="hidden">
+          <div class="col-12">
+            <label class="form-label" for="appointment-cancel-reason">Motivo de cancelación</label>
+            <textarea id="appointment-cancel-reason" class="form-control" rows="3" minlength="3" maxlength="500"
+              aria-describedby="appointment-cancel-reason-counter"
+              placeholder="Indica el motivo de la cancelación (entre 3 y 500 caracteres)" required></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <span class="form-text text-secondary small">Mínimo 3 caracteres. La cita conservará su historial.</span>
+              <span id="appointment-cancel-reason-counter" class="form-text text-secondary small pc-data-mono">0 / 500</span>
+            </div>
+          </div>
+          <div class="col-12 d-flex flex-column-reverse flex-sm-row justify-content-end gap-2 pt-3 border-top">
+            <button id="dismiss-cancel-appointment-button" class="btn btn-outline-secondary" type="button">Volver</button>
+            <button id="confirm-cancel-appointment-button" class="btn btn-danger" type="submit">Confirmar cancelación</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
   <!-- MODAL: CAMBIO DE ESTADO DE USUARIO -->
   <dialog id="user-status-dialog" class="petcare-dialog petcare-dialog-sm" aria-labelledby="user-status-title">
     <div class="card border-0">

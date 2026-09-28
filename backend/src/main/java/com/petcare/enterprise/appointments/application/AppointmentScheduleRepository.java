@@ -26,6 +26,13 @@ public interface AppointmentScheduleRepository {
 
     boolean hasOverlappingActiveAppointment(UUID tenantId, UUID veterinarianId, Instant startsAt, Instant endsAt);
 
+    boolean hasOverlappingActiveAppointmentExcluding(
+            UUID tenantId,
+            UUID veterinarianId,
+            Instant startsAt,
+            Instant endsAt,
+            UUID excludedAppointmentId);
+
     AppointmentSummary insertAppointment(NewAppointmentRecord record);
 
     Optional<AppointmentSummary> findById(UUID tenantId, UUID appointmentId);
@@ -36,6 +43,10 @@ public interface AppointmentScheduleRepository {
             String expectedPreviousStatus,
             String newStatus,
             Instant updatedAt);
+
+    boolean rescheduleConditionally(RescheduleAppointmentMutation mutation);
+
+    boolean cancelConditionally(CancelAppointmentMutation mutation);
 
     void insertStatusHistory(AppointmentStatusHistoryRecord record);
 
@@ -63,6 +74,35 @@ public interface AppointmentScheduleRepository {
             String notes,
             UUID createdBy,
             Instant createdAt) {
+    }
+
+    record RescheduleAppointmentMutation(
+            UUID tenantId,
+            UUID appointmentId,
+            String expectedPreviousStatus,
+            UUID expectedBranchId,
+            UUID expectedVeterinarianId,
+            Instant expectedStartsAt,
+            Instant expectedEndsAt,
+            UUID newBranchId,
+            UUID newVeterinarianId,
+            Instant newStartsAt,
+            Instant newEndsAt,
+            String newStatus,
+            Instant updatedAt) {
+    }
+
+    record CancelAppointmentMutation(
+            UUID tenantId,
+            UUID appointmentId,
+            String expectedPreviousStatus,
+            UUID expectedBranchId,
+            UUID expectedVeterinarianId,
+            Instant expectedStartsAt,
+            Instant expectedEndsAt,
+            String cancellationReason,
+            Instant cancelledAt,
+            UUID cancelledBy) {
     }
 
     record AppointmentStatusHistoryRecord(

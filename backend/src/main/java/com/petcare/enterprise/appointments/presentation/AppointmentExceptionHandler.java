@@ -1,5 +1,6 @@
 package com.petcare.enterprise.appointments.presentation;
 
+import com.petcare.enterprise.appointments.application.AppointmentConcurrentModificationException;
 import com.petcare.enterprise.appointments.application.AppointmentResourceNotFoundException;
 import com.petcare.enterprise.appointments.application.AppointmentTimeConflictException;
 import com.petcare.enterprise.appointments.application.InvalidAppointmentScheduleQueryException;
@@ -54,6 +55,14 @@ class AppointmentExceptionHandler {
         return errors.response(
                 HttpStatus.CONFLICT,
                 ApiErrorCode.INVALID_APPOINTMENT_STATUS_TRANSITION,
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(AppointmentConcurrentModificationException.class)
+    ResponseEntity<ApiErrorResponse> concurrentModification(AppointmentConcurrentModificationException exception) {
+        return errors.response(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.APPOINTMENT_CONCURRENT_MODIFICATION,
                 exception.getMessage());
     }
 }

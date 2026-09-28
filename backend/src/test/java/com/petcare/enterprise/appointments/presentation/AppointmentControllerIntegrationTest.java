@@ -3,6 +3,7 @@ package com.petcare.enterprise.appointments.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -12,14 +13,19 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository;
 import com.petcare.enterprise.appointments.application.AppointmentScheduleRepository.AppointmentStatusHistoryRecord;
+import com.petcare.enterprise.appointments.domain.AppointmentCancelled;
 import com.petcare.enterprise.appointments.domain.AppointmentCreated;
+import com.petcare.enterprise.appointments.domain.AppointmentRescheduled;
+import com.petcare.enterprise.appointments.infrastructure.events.AppointmentCancelledEventListener;
 import com.petcare.enterprise.appointments.infrastructure.events.AppointmentCreatedEventListener;
+import com.petcare.enterprise.appointments.infrastructure.events.AppointmentRescheduledEventListener;
 import com.petcare.enterprise.audit.application.AuditLogWriter;
 import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.identity.infrastructure.security.PetCarePrincipal;
@@ -63,6 +69,12 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
     AppointmentCreatedEventListener eventListener;
 
     @MockitoSpyBean
+    AppointmentRescheduledEventListener rescheduledEventListener;
+
+    @MockitoSpyBean
+    AppointmentCancelledEventListener cancelledEventListener;
+
+    @MockitoSpyBean
     AuditLogWriter auditLogWriter;
 
     @MockitoSpyBean
@@ -72,7 +84,7 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
 
     @AfterEach
     void cleanUpTenants() {
-        reset(auditLogWriter, eventListener, scheduleRepository);
+        reset(auditLogWriter, eventListener, rescheduledEventListener, cancelledEventListener, scheduleRepository);
         if (!createdTenantIds.isEmpty()) {
             jdbc.execute("ALTER TABLE audit_entries DISABLE TRIGGER USER");
             jdbc.execute("ALTER TABLE appointment_status_history DISABLE TRIGGER USER");
@@ -1412,6 +1424,943 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
         }
     }
 
+    @Test
+    void reschedulesProgramadaAndConfirmadaAppointmentsWithStatusReversionHistoryAuditAndAfterCommitEvent() throws Exception {
+        TenantFixture tenant = createTenantFixture("resched-valid");
+        UUID branchCentral = insertBranch(tenant.tenantId, "Sede Miraflores", "America/Lima", true);
+        UUID branchSanBorja = insertBranch(tenant.tenantId, "Sede San Borja", "America/Lima", true);
+
+        UUID vetAna = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-rs@petcare.test", "VETERINARIO", "ACTIVO");
+        UUID vetCarlos = insertUserWithRole(tenant.tenantId, "Carlos", "Vega", "carlos-rs@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vetAna, branchCentral);
+        assignUserToBranch(tenant.tenantId, vetCarlos, branchSanBorja);
+
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "77001122");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Golden Retriever");
+
+        // 1. Appointment in CONFIRMADA at 09:00-09:30 (14:00Z-14:30Z)
+        UUID apptConfirmada = insertAppointment(
+                tenant.tenantId,
+                branchCentral,
+                patient,
+                vetAna,
+                Instant.parse("2026-09-30T14:00:00Z"),
+                Instant.parse("2026-09-30T14:30:00Z"),
+                "VACUNACION",
+                "CONFIRMADA",
+                "Vacuna séxtuple",
+                "Notas internas de vacunación");
+
+        reset(rescheduledEventListener);
+        String corrResched1 = "44444444-5555-4666-8777-888888888888";
+        String reschedPayload1 = """
+                {
+                  "branchId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-30T11:00",
+                  "endsAtLocal": "2026-09-30T11:45"
+                }
+                """.formatted(branchSanBorja, vetCarlos);
+
+        String respJson = mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptConfirmada)
+                        .header("X-Correlation-ID", corrResched1)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reschedPayload1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(apptConfirmada.toString()))
+                .andExpect(jsonPath("$.status").value("PROGRAMADA"))
+                .andExpect(jsonPath("$.branchId").value(branchSanBorja.toString()))
+                .andExpect(jsonPath("$.branchName").value("Sede San Borja"))
+                .andExpect(jsonPath("$.veterinarianId").value(vetCarlos.toString()))
+                .andExpect(jsonPath("$.veterinarianFullName").value("Carlos Vega"))
+                .andExpect(jsonPath("$.startsAt").value("2026-09-30T16:00:00Z"))
+                .andExpect(jsonPath("$.endsAt").value("2026-09-30T16:45:00Z"))
+                .andExpect(jsonPath("$.appointmentType").value("VACUNACION"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(respJson).doesNotContain("tenantId", "createdBy", "reason", "notes", "cancellationReason");
+
+        // Verify patient, type, reason and notes were preserved intact in DB
+        var dbRow = jdbc.queryForMap("SELECT patient_id, appointment_type, reason, notes, status FROM appointments WHERE id = ?", apptConfirmada);
+        assertThat(dbRow.get("patient_id")).isEqualTo(patient);
+        assertThat(dbRow.get("appointment_type")).isEqualTo("VACUNACION");
+        assertThat(dbRow.get("reason")).isEqualTo("Vacuna séxtuple");
+        assertThat(dbRow.get("notes")).isEqualTo("Notas internas de vacunación");
+        assertThat(dbRow.get("status")).isEqualTo("PROGRAMADA");
+
+        // Verify append-only status history recorded CONFIRMADA -> PROGRAMADA
+        List<String> historyTransitions = jdbc.queryForList("""
+                SELECT previous_status || '->' || new_status || ':' || changed_by::text || ':' || correlation_id::text
+                FROM appointment_status_history
+                WHERE tenant_id = ? AND appointment_id = ?
+                """, String.class, tenant.tenantId, apptConfirmada);
+        assertThat(historyTransitions).containsExactly(
+                "CONFIRMADA->PROGRAMADA:" + tenant.userId + ":" + corrResched1);
+
+        // Verify audit entry APPOINTMENT_RESCHEDULED with previous and new schedule + status
+        String auditOldData = jdbc.queryForObject(
+                "SELECT old_data::text FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'",
+                String.class, tenant.tenantId, apptConfirmada);
+        String auditNewData = jdbc.queryForObject(
+                "SELECT new_data::text FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'",
+                String.class, tenant.tenantId, apptConfirmada);
+        assertThat(auditOldData)
+                .contains(branchCentral.toString(), vetAna.toString(), "2026-09-30T14:00:00Z", "CONFIRMADA")
+                .doesNotContain("reason", "notes");
+        assertThat(auditNewData)
+                .contains(branchSanBorja.toString(), vetCarlos.toString(), "2026-09-30T16:00:00Z", "PROGRAMADA")
+                .doesNotContain("reason", "notes");
+
+        // Verify AFTER_COMMIT event AppointmentRescheduled fired once
+        ArgumentCaptor<AppointmentRescheduled> evtCaptor = ArgumentCaptor.forClass(AppointmentRescheduled.class);
+        verify(rescheduledEventListener, times(1)).onAppointmentRescheduled(evtCaptor.capture());
+        AppointmentRescheduled evt = evtCaptor.getValue();
+        assertThat(evt.tenantId()).isEqualTo(tenant.tenantId);
+        assertThat(evt.appointmentId()).isEqualTo(apptConfirmada);
+        assertThat(evt.previousBranchId()).isEqualTo(branchCentral);
+        assertThat(evt.newBranchId()).isEqualTo(branchSanBorja);
+        assertThat(evt.previousVeterinarianId()).isEqualTo(vetAna);
+        assertThat(evt.newVeterinarianId()).isEqualTo(vetCarlos);
+        assertThat(evt.previousStatus()).isEqualTo("CONFIRMADA");
+        assertThat(evt.newStatus()).isEqualTo("PROGRAMADA");
+        assertThat(evt.correlationId()).isEqualTo(UUID.fromString(corrResched1));
+
+        // 2. Idempotency: submitting exact same branch, veterinarian and schedule produces 200 without new history, audit or event
+        reset(rescheduledEventListener);
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptConfirmada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reschedPayload1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROGRAMADA"));
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptConfirmada))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptConfirmada))
+                .isEqualTo(1);
+        verify(rescheduledEventListener, never()).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+
+        // 3. Rescheduling an already PROGRAMADA appointment to a partially overlapping slot with itself (11:15-12:00) succeeds without status history row
+        String selfOverlapPayload = """
+                {
+                  "branchId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-30T11:15",
+                  "endsAtLocal": "2026-09-30T12:00"
+                }
+                """.formatted(branchSanBorja, vetCarlos);
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptConfirmada)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(selfOverlapPayload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.startsAt").value("2026-09-30T16:15:00Z"))
+                .andExpect(jsonPath("$.endsAt").value("2026-09-30T17:00:00Z"));
+
+        // Status history remains 1 (since it was PROGRAMADA -> PROGRAMADA), while audit count becomes 2
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptConfirmada))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptConfirmada))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void rescheduleValidatesOverlapsAdjacentSlotsAndRollsBackWhenAuditOrHistoryFails() throws Exception {
+        TenantFixture tenant = createTenantFixture("resched-overlap");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID branchAlt = insertBranch(tenant.tenantId, "Sede Alterna", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-ro@petcare.test", "VETERINARIO", "ACTIVO");
+        UUID vetAlt = insertUserWithRole(tenant.tenantId, "Carlos", "Vega", "carlos-ro@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        assignUserToBranch(tenant.tenantId, vetAlt, branchAlt);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "77002233");
+        UUID patient1 = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        UUID patient2 = insertPatient(tenant.tenantId, owner, "Milo", "GATO", "Siames");
+
+        // Appt 1 at 09:00-09:30 (14:00Z-14:30Z)
+        UUID appt1 = insertAppointment(
+                tenant.tenantId, branch, patient1, vet,
+                Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        // Appt 2 at 10:00-10:30 (15:00Z-15:30Z)
+        UUID appt2 = insertAppointment(
+                tenant.tenantId, branch, patient2, vet,
+                Instant.parse("2026-09-30T15:00:00Z"), Instant.parse("2026-09-30T15:30:00Z"),
+                "CONSULTA_GENERAL", "CONFIRMADA", null, null);
+
+        // 1. Reschedule appt2 to overlap appt1 (09:15-09:45) -> 409 APPOINTMENT_TIME_CONFLICT
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "branchId": "%s",
+                                  "veterinarianId": "%s",
+                                  "startsAtLocal": "2026-09-30T09:15",
+                                  "endsAtLocal": "2026-09-30T09:45"
+                                }
+                                """.formatted(branch, vet)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPOINTMENT_TIME_CONFLICT"));
+
+        // 2. Rollback when insertStatusHistory fails during reschedule of CONFIRMADA appointment:
+        // preserves original schedule, branch, veterinarian and status, with 0 history, 0 audit and 0 events
+        reset(rescheduledEventListener, scheduleRepository, auditLogWriter);
+        doThrow(new IllegalStateException("Fallo simulado de historial en reprogramación"))
+                .when(scheduleRepository)
+                .insertStatusHistory(any(AppointmentStatusHistoryRecord.class));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "branchId": "%s",
+                                  "veterinarianId": "%s",
+                                  "startsAtLocal": "2026-09-30T11:30",
+                                  "endsAtLocal": "2026-09-30T12:00"
+                                }
+                                """.formatted(branchAlt, vetAlt)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        var appt2AfterHistoryFail = jdbc.queryForMap(
+                "SELECT branch_id, veterinarian_id, starts_at, ends_at, status FROM appointments WHERE id = ?",
+                appt2);
+        assertThat(appt2AfterHistoryFail.get("branch_id")).isEqualTo(branch);
+        assertThat(appt2AfterHistoryFail.get("veterinarian_id")).isEqualTo(vet);
+        assertThat(((Timestamp) appt2AfterHistoryFail.get("starts_at")).toInstant())
+                .isEqualTo(Instant.parse("2026-09-30T15:00:00Z"));
+        assertThat(((Timestamp) appt2AfterHistoryFail.get("ends_at")).toInstant())
+                .isEqualTo(Instant.parse("2026-09-30T15:30:00Z"));
+        assertThat(appt2AfterHistoryFail.get("status")).isEqualTo("CONFIRMADA");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt2))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, appt2))
+                .isZero();
+        verify(rescheduledEventListener, never()).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+
+        reset(scheduleRepository);
+
+        // 3. Rollback when audit fails during reschedule of CONFIRMADA appointment -> stays CONFIRMADA at 10:00-10:30, no history or event
+        reset(rescheduledEventListener);
+        doThrow(new IllegalStateException("Fallo simulado de auditoría en reprogramación"))
+                .when(auditLogWriter)
+                .append(any(AuditRecord.class));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "branchId": "%s",
+                                  "veterinarianId": "%s",
+                                  "startsAtLocal": "2026-09-30T09:30",
+                                  "endsAtLocal": "2026-09-30T10:00"
+                                }
+                                """.formatted(branch, vet)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM appointments WHERE id = ?", String.class, appt2))
+                .isEqualTo("CONFIRMADA");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt2))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, appt2))
+                .isZero();
+        verify(rescheduledEventListener, never()).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+
+        reset(auditLogWriter);
+
+        // 4. Rollback when insertStatusHistory fails during cancellation -> preserves original status and null cancellation metadata, 0 history, 0 audit, 0 events
+        reset(cancelledEventListener, scheduleRepository, auditLogWriter);
+        doThrow(new IllegalStateException("Fallo simulado de historial en cancelación"))
+                .when(scheduleRepository)
+                .insertStatusHistory(any(AppointmentStatusHistoryRecord.class));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"reason\": \"Motivo que debe revertirse por fallo en historial\" }"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        var appt2AfterCancelHistoryFail = jdbc.queryForMap(
+                "SELECT status, cancellation_reason, cancelled_at, cancelled_by FROM appointments WHERE id = ?",
+                appt2);
+        assertThat(appt2AfterCancelHistoryFail.get("status")).isEqualTo("CONFIRMADA");
+        assertThat(appt2AfterCancelHistoryFail.get("cancellation_reason")).isNull();
+        assertThat(appt2AfterCancelHistoryFail.get("cancelled_at")).isNull();
+        assertThat(appt2AfterCancelHistoryFail.get("cancelled_by")).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt2))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, appt2))
+                .isZero();
+        verify(cancelledEventListener, never()).onAppointmentCancelled(any(AppointmentCancelled.class));
+
+        reset(scheduleRepository);
+
+        // 5. Rollback when AuditLogWriter fails during cancellation -> reverts status, cancellation_reason, cancelled_at, cancelled_by and history; AppointmentCancelled not processed
+        doThrow(new IllegalStateException("Fallo simulado de auditoría en cancelación"))
+                .when(auditLogWriter)
+                .append(any(AuditRecord.class));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"reason\": \"Motivo que debe revertirse por fallo en auditoría\" }"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        var appt2AfterCancelAuditFail = jdbc.queryForMap(
+                "SELECT status, cancellation_reason, cancelled_at, cancelled_by FROM appointments WHERE id = ?",
+                appt2);
+        assertThat(appt2AfterCancelAuditFail.get("status")).isEqualTo("CONFIRMADA");
+        assertThat(appt2AfterCancelAuditFail.get("cancellation_reason")).isNull();
+        assertThat(appt2AfterCancelAuditFail.get("cancelled_at")).isNull();
+        assertThat(appt2AfterCancelAuditFail.get("cancelled_by")).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, appt2))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, appt2))
+                .isZero();
+        verify(cancelledEventListener, never()).onAppointmentCancelled(any(AppointmentCancelled.class));
+
+        reset(auditLogWriter);
+
+        // 6. Adjacent slot 09:30-10:00 succeeds once audit and history are restored
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", appt2)
+                        .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "branchId": "%s",
+                                  "veterinarianId": "%s",
+                                  "startsAtLocal": "2026-09-30T09:30",
+                                  "endsAtLocal": "2026-09-30T10:00"
+                                }
+                                """.formatted(branch, vet)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROGRAMADA"));
+    }
+
+    @Test
+    void handlesConcurrentReschedulesAndCancellationsWithSingleCasIdempotencyAnd409ConcurrentModification() throws Exception {
+        TenantFixture tenant = createTenantFixture("hu018-conc");
+        UUID branchA = insertBranch(tenant.tenantId, "Sede Miraflores", "America/Lima", true);
+        UUID branchB = insertBranch(tenant.tenantId, "Sede San Borja", "America/Lima", true);
+        UUID vetAna = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-c18@petcare.test", "VETERINARIO", "ACTIVO");
+        UUID vetCarlos = insertUserWithRole(tenant.tenantId, "Carlos", "Vega", "carlos-c18@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vetAna, branchA);
+        assignUserToBranch(tenant.tenantId, vetCarlos, branchB);
+
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "77009988");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            // =========================================================================
+            // 1. Dos reprogramaciones concurrentes DIFERENTES:
+            //    - exactamente una modifica la cita (200);
+            //    - la otra obtiene 409 APPOINTMENT_CONCURRENT_MODIFICATION con correlationId;
+            //    - horario/sede/veterinario final coincide íntegramente con la solicitud ganadora;
+            //    - una sola auditoría y un solo evento.
+            // =========================================================================
+            UUID apptDiff = insertAppointment(
+                    tenant.tenantId, branchA, patient, vetAna,
+                    Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                    "CONSULTA_GENERAL", "CONFIRMADA", null, null);
+
+            reset(rescheduledEventListener, scheduleRepository);
+            CountDownLatch diffReadLatch = new CountDownLatch(2);
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                UUID idArg = invocation.getArgument(1);
+                if (apptDiff.equals(idArg) && diffReadLatch.getCount() > 0) {
+                    diffReadLatch.countDown();
+                    diffReadLatch.await(5, TimeUnit.SECONDS);
+                }
+                return res;
+            }).when(scheduleRepository).findById(any(UUID.class), any(UUID.class));
+
+            String payloadDiff1 = """
+                    {
+                      "branchId": "%s",
+                      "veterinarianId": "%s",
+                      "startsAtLocal": "2026-09-30T11:00",
+                      "endsAtLocal": "2026-09-30T11:30"
+                    }
+                    """.formatted(branchA, vetAna);
+            String payloadDiff2 = """
+                    {
+                      "branchId": "%s",
+                      "veterinarianId": "%s",
+                      "startsAtLocal": "2026-09-30T12:00",
+                      "endsAtLocal": "2026-09-30T12:45"
+                    }
+                    """.formatted(branchB, vetCarlos);
+
+            Future<org.springframework.mock.web.MockHttpServletResponse> fDiff1 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptDiff)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(payloadDiff1))
+                            .andReturn().getResponse());
+            Future<org.springframework.mock.web.MockHttpServletResponse> fDiff2 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptDiff)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(payloadDiff2))
+                            .andReturn().getResponse());
+
+            var respDiff1 = fDiff1.get(10, TimeUnit.SECONDS);
+            var respDiff2 = fDiff2.get(10, TimeUnit.SECONDS);
+            reset(scheduleRepository);
+
+            assertThat(List.of(respDiff1.getStatus(), respDiff2.getStatus()))
+                    .containsExactlyInAnyOrder(200, 409);
+
+            var conflictRespDiff = respDiff1.getStatus() == 409 ? respDiff1 : respDiff2;
+            assertThat(conflictRespDiff.getContentAsString())
+                    .contains("\"code\":\"APPOINTMENT_CONCURRENT_MODIFICATION\"")
+                    .contains("\"correlationId\":");
+
+            var diffRow = jdbc.queryForMap(
+                    "SELECT branch_id, veterinarian_id, starts_at, ends_at, status FROM appointments WHERE id = ?",
+                    apptDiff);
+            assertThat(diffRow.get("status")).isEqualTo("PROGRAMADA");
+            if (respDiff1.getStatus() == 200) {
+                assertThat(diffRow.get("branch_id")).isEqualTo(branchA);
+                assertThat(diffRow.get("veterinarian_id")).isEqualTo(vetAna);
+                assertThat(((Timestamp) diffRow.get("starts_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T16:00:00Z"));
+                assertThat(((Timestamp) diffRow.get("ends_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T16:30:00Z"));
+            } else {
+                assertThat(diffRow.get("branch_id")).isEqualTo(branchB);
+                assertThat(diffRow.get("veterinarian_id")).isEqualTo(vetCarlos);
+                assertThat(((Timestamp) diffRow.get("starts_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T17:00:00Z"));
+                assertThat(((Timestamp) diffRow.get("ends_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T17:45:00Z"));
+            }
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptDiff))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptDiff))
+                    .isEqualTo(1);
+            verify(rescheduledEventListener, times(1)).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+
+            // =========================================================================
+            // 2. Dos reprogramaciones concurrentes IDÉNTICAS:
+            //    - ambas responden 200;
+            //    - una sola modificación, un historial, una auditoría y un evento.
+            // =========================================================================
+            UUID apptIdentical = insertAppointment(
+                    tenant.tenantId, branchA, patient, vetAna,
+                    Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                    "CONSULTA_GENERAL", "CONFIRMADA", null, null);
+
+            reset(rescheduledEventListener, scheduleRepository);
+            CountDownLatch sameReadLatch = new CountDownLatch(2);
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                UUID idArg = invocation.getArgument(1);
+                if (apptIdentical.equals(idArg) && sameReadLatch.getCount() > 0) {
+                    sameReadLatch.countDown();
+                    sameReadLatch.await(5, TimeUnit.SECONDS);
+                }
+                return res;
+            }).when(scheduleRepository).findById(any(UUID.class), any(UUID.class));
+
+            String payloadSame = """
+                    {
+                      "branchId": "%s",
+                      "veterinarianId": "%s",
+                      "startsAtLocal": "2026-09-30T13:00",
+                      "endsAtLocal": "2026-09-30T13:30"
+                    }
+                    """.formatted(branchB, vetCarlos);
+
+            Future<Integer> fSame1 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptIdentical)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(payloadSame))
+                            .andReturn().getResponse().getStatus());
+            Future<Integer> fSame2 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptIdentical)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(payloadSame))
+                            .andReturn().getResponse().getStatus());
+
+            assertThat(fSame1.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(fSame2.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            reset(scheduleRepository);
+
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptIdentical))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptIdentical))
+                    .isEqualTo(1);
+            verify(rescheduledEventListener, times(1)).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+
+            // =========================================================================
+            // 3. Dos cancelaciones concurrentes:
+            //    - ambas responden 200 idempotentemente;
+            //    - solo una transición a CANCELADA;
+            //    - un historial, una auditoría y un evento;
+            //    - motivo original preservado.
+            // =========================================================================
+            UUID apptDoubleCancel = insertAppointment(
+                    tenant.tenantId, branchA, patient, vetAna,
+                    Instant.parse("2026-09-30T15:00:00Z"), Instant.parse("2026-09-30T15:30:00Z"),
+                    "CONSULTA_GENERAL", "CONFIRMADA", null, null);
+
+            reset(cancelledEventListener, scheduleRepository);
+            CountDownLatch cancelReadLatch = new CountDownLatch(2);
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                UUID idArg = invocation.getArgument(1);
+                if (apptDoubleCancel.equals(idArg) && cancelReadLatch.getCount() > 0) {
+                    cancelReadLatch.countDown();
+                    cancelReadLatch.await(5, TimeUnit.SECONDS);
+                }
+                return res;
+            }).when(scheduleRepository).findById(any(UUID.class), any(UUID.class));
+
+            String reasonA = "Motivo de cancelación concurrente A";
+            String reasonB = "Motivo de cancelación concurrente B";
+
+            Future<Integer> fCancel1 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptDoubleCancel)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{ \"reason\": \"" + reasonA + "\" }"))
+                            .andReturn().getResponse().getStatus());
+            Future<Integer> fCancel2 = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptDoubleCancel)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{ \"reason\": \"" + reasonB + "\" }"))
+                            .andReturn().getResponse().getStatus());
+
+            assertThat(fCancel1.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(fCancel2.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            reset(scheduleRepository);
+
+            String savedReason = jdbc.queryForObject(
+                    "SELECT cancellation_reason FROM appointments WHERE id = ?",
+                    String.class,
+                    apptDoubleCancel);
+            assertThat(savedReason).isIn(reasonA, reasonB);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptDoubleCancel))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, apptDoubleCancel))
+                    .isEqualTo(1);
+            String auditedCancelJson = jdbc.queryForObject(
+                    "SELECT new_data::text FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'",
+                    String.class,
+                    apptDoubleCancel);
+            assertThat(auditedCancelJson).contains(savedReason);
+            verify(cancelledEventListener, times(1)).onAppointmentCancelled(any(AppointmentCancelled.class));
+
+            // =========================================================================
+            // 4. Reprogramación y cancelación concurrentes:
+            //    - no dejan combinación parcial de horario, estado o metadatos;
+            //    - una operación gana (200) y la incompatible devuelve 409 APPOINTMENT_CONCURRENT_MODIFICATION;
+            //    - historial y auditoría coinciden con el resultado final.
+            // =========================================================================
+            UUID apptRace = insertAppointment(
+                    tenant.tenantId, branchA, patient, vetAna,
+                    Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                    "CONSULTA_GENERAL", "CONFIRMADA", null, null);
+
+            reset(rescheduledEventListener, cancelledEventListener, scheduleRepository);
+            CountDownLatch raceReadLatch = new CountDownLatch(2);
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                UUID idArg = invocation.getArgument(1);
+                if (apptRace.equals(idArg) && raceReadLatch.getCount() > 0) {
+                    raceReadLatch.countDown();
+                    raceReadLatch.await(5, TimeUnit.SECONDS);
+                }
+                return res;
+            }).when(scheduleRepository).findById(any(UUID.class), any(UUID.class));
+
+            String raceReschedPayload = """
+                    {
+                      "branchId": "%s",
+                      "veterinarianId": "%s",
+                      "startsAtLocal": "2026-09-30T15:00",
+                      "endsAtLocal": "2026-09-30T15:30"
+                    }
+                    """.formatted(branchB, vetCarlos);
+
+            Future<org.springframework.mock.web.MockHttpServletResponse> fRaceResched = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptRace)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(raceReschedPayload))
+                            .andReturn().getResponse());
+            Future<org.springframework.mock.web.MockHttpServletResponse> fRaceCancel = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptRace)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{ \"reason\": \"Cancelación en competencia con reprogramación\" }"))
+                            .andReturn().getResponse());
+
+            var respRaceResched = fRaceResched.get(10, TimeUnit.SECONDS);
+            var respRaceCancel = fRaceCancel.get(10, TimeUnit.SECONDS);
+            reset(scheduleRepository);
+
+            assertThat(List.of(respRaceResched.getStatus(), respRaceCancel.getStatus()))
+                    .containsExactlyInAnyOrder(200, 409);
+
+            var losingRaceResp = respRaceResched.getStatus() == 409 ? respRaceResched : respRaceCancel;
+            assertThat(losingRaceResp.getContentAsString())
+                    .contains("\"code\":\"APPOINTMENT_CONCURRENT_MODIFICATION\"")
+                    .contains("\"correlationId\":");
+
+            var raceRow = jdbc.queryForMap(
+                    "SELECT branch_id, veterinarian_id, starts_at, ends_at, status, cancellation_reason, cancelled_at, cancelled_by FROM appointments WHERE id = ?",
+                    apptRace);
+
+            if (respRaceResched.getStatus() == 200) {
+                // Reschedule won: schedule updated to 15:00-15:30 on branchB/vetCarlos, status PROGRAMADA, cancellation metadata NULL
+                assertThat(raceRow.get("status")).isEqualTo("PROGRAMADA");
+                assertThat(raceRow.get("branch_id")).isEqualTo(branchB);
+                assertThat(raceRow.get("veterinarian_id")).isEqualTo(vetCarlos);
+                assertThat(((Timestamp) raceRow.get("starts_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T20:00:00Z"));
+                assertThat(raceRow.get("cancellation_reason")).isNull();
+                assertThat(raceRow.get("cancelled_at")).isNull();
+                assertThat(raceRow.get("cancelled_by")).isNull();
+                assertThat(jdbc.queryForObject("SELECT new_status FROM appointment_status_history WHERE appointment_id = ?", String.class, apptRace))
+                        .isEqualTo("PROGRAMADA");
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptRace))
+                        .isEqualTo(1);
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, apptRace))
+                        .isZero();
+                verify(rescheduledEventListener, times(1)).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+                verify(cancelledEventListener, never()).onAppointmentCancelled(any(AppointmentCancelled.class));
+            } else {
+                // Cancel won: original schedule 09:00-09:30 on branchA/vetAna preserved, status CANCELADA, cancellation metadata populated
+                assertThat(raceRow.get("status")).isEqualTo("CANCELADA");
+                assertThat(raceRow.get("branch_id")).isEqualTo(branchA);
+                assertThat(raceRow.get("veterinarian_id")).isEqualTo(vetAna);
+                assertThat(((Timestamp) raceRow.get("starts_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T14:00:00Z"));
+                assertThat(raceRow.get("cancellation_reason")).isEqualTo("Cancelación en competencia con reprogramación");
+                assertThat(raceRow.get("cancelled_at")).isNotNull();
+                assertThat(raceRow.get("cancelled_by")).isEqualTo(tenant.userId);
+                assertThat(jdbc.queryForObject("SELECT new_status FROM appointment_status_history WHERE appointment_id = ?", String.class, apptRace))
+                        .isEqualTo("CANCELADA");
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, apptRace))
+                        .isEqualTo(1);
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptRace))
+                        .isZero();
+                verify(cancelledEventListener, times(1)).onAppointmentCancelled(any(AppointmentCancelled.class));
+                verify(rescheduledEventListener, never()).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+            }
+
+            // 4b. Reprogramación y cancelación concurrentes sobre cita PROGRAMADA (donde reprogramar mantiene PROGRAMADA):
+            //     cuando reprogramar ejecuta CAS primero, cancelar detecta el cambio de horario y devuelve 409 APPOINTMENT_CONCURRENT_MODIFICATION
+            UUID apptRaceProgramada = insertAppointment(
+                    tenant.tenantId, branchA, patient, vetAna,
+                    Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                    "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+            reset(rescheduledEventListener, cancelledEventListener, scheduleRepository);
+            CountDownLatch progReadLatch = new CountDownLatch(2);
+            CountDownLatch reschedCasDoneLatch = new CountDownLatch(1);
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                UUID idArg = invocation.getArgument(1);
+                if (apptRaceProgramada.equals(idArg) && progReadLatch.getCount() > 0) {
+                    progReadLatch.countDown();
+                    progReadLatch.await(5, TimeUnit.SECONDS);
+                }
+                return res;
+            }).when(scheduleRepository).findById(any(UUID.class), any(UUID.class));
+
+            doAnswer(invocation -> {
+                Object res = invocation.callRealMethod();
+                reschedCasDoneLatch.countDown();
+                return res;
+            }).when(scheduleRepository).rescheduleConditionally(any());
+
+            doAnswer(invocation -> {
+                reschedCasDoneLatch.await(5, TimeUnit.SECONDS);
+                return invocation.callRealMethod();
+            }).when(scheduleRepository).cancelConditionally(any());
+
+            String progReschedPayload = """
+                    {
+                      "branchId": "%s",
+                      "veterinarianId": "%s",
+                      "startsAtLocal": "2026-09-30T16:00",
+                      "endsAtLocal": "2026-09-30T16:30"
+                    }
+                    """.formatted(branchB, vetCarlos);
+
+            Future<org.springframework.mock.web.MockHttpServletResponse> fProgResched = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptRaceProgramada)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_RESCHEDULE")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(progReschedPayload))
+                            .andReturn().getResponse());
+            Future<org.springframework.mock.web.MockHttpServletResponse> fProgCancel = pool.submit(() ->
+                    mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptRaceProgramada)
+                                    .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{ \"reason\": \"Cancelación tras reprogramación concurrente\" }"))
+                            .andReturn().getResponse());
+
+            var respProgResched = fProgResched.get(10, TimeUnit.SECONDS);
+            var respProgCancel = fProgCancel.get(10, TimeUnit.SECONDS);
+            reset(scheduleRepository);
+
+            assertThat(respProgResched.getStatus()).isEqualTo(200);
+            assertThat(respProgCancel.getStatus()).isEqualTo(409);
+            assertThat(respProgCancel.getContentAsString())
+                    .contains("\"code\":\"APPOINTMENT_CONCURRENT_MODIFICATION\"")
+                    .contains("\"correlationId\":");
+
+            var progRow = jdbc.queryForMap(
+                    "SELECT branch_id, veterinarian_id, starts_at, ends_at, status, cancellation_reason, cancelled_at, cancelled_by FROM appointments WHERE id = ?",
+                    apptRaceProgramada);
+            assertThat(progRow.get("status")).isEqualTo("PROGRAMADA");
+            assertThat(progRow.get("branch_id")).isEqualTo(branchB);
+            assertThat(progRow.get("veterinarian_id")).isEqualTo(vetCarlos);
+            assertThat(((Timestamp) progRow.get("starts_at")).toInstant()).isEqualTo(Instant.parse("2026-09-30T21:00:00Z"));
+            assertThat(progRow.get("cancellation_reason")).isNull();
+            assertThat(progRow.get("cancelled_at")).isNull();
+            assertThat(progRow.get("cancelled_by")).isNull();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptRaceProgramada))
+                    .isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_RESCHEDULED'", Integer.class, apptRaceProgramada))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, apptRaceProgramada))
+                    .isZero();
+            verify(rescheduledEventListener, times(1)).onAppointmentRescheduled(any(AppointmentRescheduled.class));
+            verify(cancelledEventListener, never()).onAppointmentCancelled(any(AppointmentCancelled.class));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void cancelsAppointmentsFromAllowedStatusesFreesSlotPreservesOriginalReasonIdempotentlyAndAuditsAtomically() throws Exception {
+        TenantFixture tenant = createTenantFixture("cancel-valid");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-cn@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "77003344");
+        UUID patient1 = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        UUID patient2 = insertPatient(tenant.tenantId, owner, "Milo", "GATO", "Siames");
+
+        // Appointment in EN_ESPERA at 09:00-09:30 on 2026-09-28 (14:00Z-14:30Z)
+        UUID apptEnEspera = insertAppointment(
+                tenant.tenantId, branch, patient1, vet,
+                Instant.parse("2026-09-28T14:00:00Z"), Instant.parse("2026-09-28T14:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", null, null);
+
+        reset(cancelledEventListener);
+        String corrCancel = "55555555-6666-4777-8888-999999999999";
+        String originalReason = "Propietario solicitó cancelar por viaje imprevisto";
+
+        String cancelResp = mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptEnEspera)
+                        .header("X-Correlation-ID", corrCancel)
+                        .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "reason": "  %s  " }
+                                """.formatted(originalReason)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(apptEnEspera.toString()))
+                .andExpect(jsonPath("$.status").value("CANCELADA"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(cancelResp).doesNotContain("tenantId", "cancellationReason", "cancelledBy");
+
+        // Verify metadata persisted in appointments table
+        var dbRow = jdbc.queryForMap(
+                "SELECT status, cancellation_reason, cancelled_at, cancelled_by FROM appointments WHERE id = ?",
+                apptEnEspera);
+        assertThat(dbRow.get("status")).isEqualTo("CANCELADA");
+        assertThat(dbRow.get("cancellation_reason")).isEqualTo(originalReason);
+        assertThat(dbRow.get("cancelled_at")).isNotNull();
+        assertThat(dbRow.get("cancelled_by")).isEqualTo(tenant.userId);
+
+        // Verify status history recorded EN_ESPERA -> CANCELADA
+        String historyTransition = jdbc.queryForObject(
+                "SELECT previous_status || '->' || new_status FROM appointment_status_history WHERE appointment_id = ?",
+                String.class, apptEnEspera);
+        assertThat(historyTransition).isEqualTo("EN_ESPERA->CANCELADA");
+
+        // Verify APPOINTMENT_CANCELLED audit entry contains previousStatus, newStatus, cancelledBy and cancellationReason
+        String auditNewData = jdbc.queryForObject(
+                "SELECT new_data::text FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'",
+                String.class, apptEnEspera);
+        assertThat(auditNewData)
+                .contains("\"previousStatus\": \"EN_ESPERA\"")
+                .contains("\"newStatus\": \"CANCELADA\"")
+                .contains("\"cancellationReason\": \"" + originalReason + "\"")
+                .contains("\"cancelledBy\": \"" + tenant.userId + "\"")
+                .doesNotContain("notes", "passwordHash");
+
+        // Verify AFTER_COMMIT AppointmentCancelled event fired once
+        ArgumentCaptor<AppointmentCancelled> evtCaptor = ArgumentCaptor.forClass(AppointmentCancelled.class);
+        verify(cancelledEventListener, times(1)).onAppointmentCancelled(evtCaptor.capture());
+        AppointmentCancelled evt = evtCaptor.getValue();
+        assertThat(evt.appointmentId()).isEqualTo(apptEnEspera);
+        assertThat(evt.previousStatus()).isEqualTo("EN_ESPERA");
+        assertThat(evt.cancelledBy()).isEqualTo(tenant.userId);
+        assertThat(evt.correlationId()).isEqualTo(UUID.fromString(corrCancel));
+
+        // Verify idempotency: cancelling an already CANCELADA appointment with a different reason returns 200,
+        // preserves original reason/metadata, and does NOT duplicate history, audit or event
+        reset(cancelledEventListener);
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptEnEspera)
+                        .with(authentication(auth(tenant, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "reason": "Nuevo motivo enviado en reintento que no debe sobrescribir" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELADA"));
+
+        assertThat(jdbc.queryForObject("SELECT cancellation_reason FROM appointments WHERE id = ?", String.class, apptEnEspera))
+                .isEqualTo(originalReason);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM appointment_status_history WHERE appointment_id = ?", Integer.class, apptEnEspera))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_entries WHERE entity_id = ? AND action = 'APPOINTMENT_CANCELLED'", Integer.class, apptEnEspera))
+                .isEqualTo(1);
+        verify(cancelledEventListener, never()).onAppointmentCancelled(any(AppointmentCancelled.class));
+
+        // Verify the freed 09:00-09:30 slot can immediately be booked for another appointment
+        mvc.perform(post("/api/v1/appointments")
+                        .with(authentication(auth(tenant, "APPOINTMENT_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(appointmentPayload(branch, patient2, vet, "09:00", "09:30")))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void enforcesRbacTenantIsolationInvalidTransitionsValidationAndV14Constraints() throws Exception {
+        TenantFixture tenantA = createTenantFixture("hu018-sec-a");
+        TenantFixture tenantB = createTenantFixture("hu018-sec-b");
+
+        UUID branchA = insertBranch(tenantA.tenantId, "Sede A", "America/Lima", true);
+        UUID vetA = insertUserWithRole(tenantA.tenantId, "Ana", "Salazar", "ana-s18@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, vetA, branchA);
+        UUID ownerA = insertOwner(tenantA.tenantId, "Lucia", "Paredes", "DNI", "77004455");
+        UUID patientA = insertPatient(tenantA.tenantId, ownerA, "Luna", "PERRO", "Mestizo");
+
+        UUID apptProgramada = insertAppointment(
+                tenantA.tenantId, branchA, patientA, vetA,
+                Instant.parse("2026-09-30T14:00:00Z"), Instant.parse("2026-09-30T14:30:00Z"),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+        UUID apptEnEspera = insertAppointment(
+                tenantA.tenantId, branchA, patientA, vetA,
+                Instant.parse("2026-09-30T15:00:00Z"), Instant.parse("2026-09-30T15:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", null, null);
+        UUID apptFinalizada = insertAppointment(
+                tenantA.tenantId, branchA, patientA, vetA,
+                Instant.parse("2026-09-30T16:00:00Z"), Instant.parse("2026-09-30T16:30:00Z"),
+                "CONSULTA_GENERAL", "FINALIZADA", null, null);
+
+        String validResched = """
+                {
+                  "branchId": "%s",
+                  "veterinarianId": "%s",
+                  "startsAtLocal": "2026-09-30T17:00",
+                  "endsAtLocal": "2026-09-30T17:30"
+                }
+                """.formatted(branchA, vetA);
+
+        // 1. 401 and 403 on reschedule and cancellation
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptProgramada)
+                        .contentType(MediaType.APPLICATION_JSON).content(validResched))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptProgramada)
+                        .contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"Motivo válido\" }"))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptProgramada)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_READ", "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON).content(validResched))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptProgramada)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_READ", "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"Motivo válido\" }"))
+                .andExpect(status().isForbidden());
+
+        // 2. Uniform 404 for foreign tenant appointment
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptProgramada)
+                        .with(authentication(auth(tenantB, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(validResched))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptProgramada)
+                        .with(authentication(auth(tenantB, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"Motivo válido\" }"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // 3. Disallowed source states -> 409 INVALID_APPOINTMENT_STATUS_TRANSITION
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/schedule", apptEnEspera)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_RESCHEDULE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(validResched))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptFinalizada)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"Motivo válido\" }"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+
+        // 4. Validation: blank/short cancellation reason or injected internal fields -> 400
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptProgramada)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{ \"reason\": \"ab\" }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mvc.perform(put("/api/v1/appointments/{appointmentId}/cancellation", apptProgramada)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_CANCEL")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"reason\": \"Motivo válido\", \"cancelledBy\": \"" + tenantA.userId + "\" }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+
+        // 5. Verify V14 system role assignments for APPOINTMENT_RESCHEDULE and APPOINTMENT_CANCEL
+        jdbc.query("SELECT ensure_tenant_system_roles(?)", rs -> null, tenantA.tenantId);
+        for (String permCode : List.of("APPOINTMENT_RESCHEDULE", "APPOINTMENT_CANCEL")) {
+            List<String> assignedRoles = jdbc.queryForList("""
+                    SELECT r.name
+                    FROM roles r
+                    JOIN role_permissions rp ON rp.tenant_id = r.tenant_id AND rp.role_id = r.id
+                    JOIN permissions p ON p.id = rp.permission_id
+                    WHERE r.tenant_id = ? AND p.code = ?
+                    ORDER BY r.name ASC
+                    """, String.class, tenantA.tenantId, permCode);
+            assertThat(assignedRoles).containsExactly("ADMINISTRADOR", "RECEPCIONISTA");
+        }
+
+        // 6. Verify PostgreSQL ck_appointments_cancellation_metadata rejects CANCELADA without reason and non-CANCELADA with reason
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE appointments SET status = 'CANCELADA', cancellation_reason = NULL WHERE id = ?",
+                apptProgramada))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE appointments SET cancellation_reason = 'Motivo inválido en programada' WHERE id = ?",
+                apptProgramada))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private String appointmentPayload(UUID branchId, UUID patientId, UUID veterinarianId, String startTime, String endTime) {
         return """
                 {
@@ -1523,12 +2472,15 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
             String reason,
             String notes) {
         UUID id = UUID.randomUUID();
+        boolean cancelled = "CANCELADA".equals(status);
         jdbc.update("""
                 INSERT INTO appointments (
                     id, tenant_id, branch_id, patient_id, veterinarian_id,
-                    starts_at, ends_at, appointment_type, status, reason, notes, created_by, created_at, updated_at
+                    starts_at, ends_at, appointment_type, status, reason, notes,
+                    cancellation_reason, cancelled_at, cancelled_by,
+                    created_by, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
                 """,
                 id,
                 tenantId,
@@ -1541,6 +2493,9 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 status,
                 reason,
                 notes,
+                cancelled ? "Cancelación previa de prueba" : null,
+                cancelled ? Timestamp.from(startsAt) : null,
+                cancelled ? veterinarianId : null,
                 veterinarianId);
         return id;
     }

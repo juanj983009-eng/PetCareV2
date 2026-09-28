@@ -3,6 +3,8 @@ import { ApiRequestError } from "./api-client.js";
 const APPOINTMENT_READ = "APPOINTMENT_READ";
 const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
 const APPOINTMENT_STATUS_UPDATE = "APPOINTMENT_STATUS_UPDATE";
+const APPOINTMENT_RESCHEDULE = "APPOINTMENT_RESCHEDULE";
+const APPOINTMENT_CANCEL = "APPOINTMENT_CANCEL";
 const PATIENT_READ = "PATIENT_READ";
 
 const APPOINTMENT_TYPE_LABELS = Object.freeze({
@@ -60,17 +62,26 @@ export function createAppointmentsController({
 }) {
   const s = findElements(document);
   const d = findDialogElements(document);
+  const r = findRescheduleDialogElements(document);
+  const c = findCancelDialogElements(document);
   let canRead = false;
   let canCreate = false;
   let canUpdateStatus = false;
+  let canReschedule = false;
+  let canCancel = false;
   let canReadPatient = false;
   let searching = false;
   let savingAppointment = false;
+  let reschedulingAppointment = false;
+  let cancellingAppointment = false;
+  let reschedulingAppointmentId = null;
+  let cancellingAppointmentId = null;
   let searchingPatients = false;
   let optionsLoaded = false;
   let page = 0;
   let totalPages = 0;
   const updatingAppointmentIds = new Set();
+  const renderedItemsById = new Map();
   const branchTimeZones = new Map();
   let branchesCatalog = [];
   let veterinariansCatalog = [];
@@ -100,20 +111,48 @@ export function createAppointmentsController({
     d.form.addEventListener("submit", submitCreateAppointment);
   }
 
+  if (r) {
+    r.cancelButton.addEventListener("click", closeRescheduleDialog);
+    r.branchSelect.addEventListener("change", handleRescheduleBranchChange);
+    r.form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitRescheduleAppointment();
+    });
+  }
+
+  if (c) {
+    c.cancelButton.addEventListener("click", closeCancelDialog);
+    c.form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitCancelAppointment();
+    });
+  }
+
   return Object.freeze({
     sessionReady(identity) {
       const authorities = new Set(identity?.authorities ?? []);
       canRead = authorities.has(APPOINTMENT_READ);
       canCreate = authorities.has(APPOINTMENT_CREATE);
       canUpdateStatus = authorities.has(APPOINTMENT_STATUS_UPDATE);
+      canReschedule = authorities.has(APPOINTMENT_RESCHEDULE);
+      canCancel = authorities.has(APPOINTMENT_CANCEL);
       canReadPatient = authorities.has(PATIENT_READ);
       updatingAppointmentIds.clear();
+      renderedItemsById.clear();
+      reschedulingAppointmentId = null;
+      cancellingAppointmentId = null;
       optionsLoaded = false;
       branchTimeZones.clear();
       branchesCatalog = [];
       veterinariansCatalog = [];
       if (d?.dialog.open) {
         d.dialog.close();
+      }
+      if (r?.dialog.open) {
+        r.dialog.close();
+      }
+      if (c?.dialog.open) {
+        c.dialog.close();
       }
       if (s) {
         s.navButton.hidden = !canRead;
@@ -133,14 +172,25 @@ export function createAppointmentsController({
       canRead = false;
       canCreate = false;
       canUpdateStatus = false;
+      canReschedule = false;
+      canCancel = false;
       canReadPatient = false;
       updatingAppointmentIds.clear();
+      renderedItemsById.clear();
+      reschedulingAppointmentId = null;
+      cancellingAppointmentId = null;
       optionsLoaded = false;
       branchTimeZones.clear();
       branchesCatalog = [];
       veterinariansCatalog = [];
       if (d?.dialog.open) {
         d.dialog.close();
+      }
+      if (r?.dialog.open) {
+        r.dialog.close();
+      }
+      if (c?.dialog.open) {
+        c.dialog.close();
       }
       if (s) {
         s.navButton.hidden = true;
@@ -231,7 +281,7 @@ export function createAppointmentsController({
   }
 
   async function loadOptions() {
-    if (!s || (!canRead && !canCreate)) return;
+    if (!s || (!canRead && !canCreate && !canReschedule)) return;
     try {
       const response = await client.requestJson("/api/v1/appointments/options");
       branchTimeZones.clear();
@@ -256,7 +306,7 @@ export function createAppointmentsController({
       s.veterinarianFilter.replaceChildren(...vetOptions);
       optionsLoaded = true;
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 403 && !canCreate) {
+      if (error instanceof ApiRequestError && error.status === 403 && !canCreate && !canReschedule) {
         setViewState("forbidden");
       }
     }
@@ -615,6 +665,13 @@ export function createAppointmentsController({
     totalPages = Number.isInteger(response?.totalPages) ? response.totalPages : 0;
     const totalElements = Number.isFinite(response?.totalElements) ? response.totalElements : items.length;
 
+    renderedItemsById.clear();
+    for (const item of items) {
+      if (item?.id) {
+        renderedItemsById.set(item.id, item);
+      }
+    }
+
     s.rows.replaceChildren();
     s.cards.replaceChildren();
     renderStatusIndicators(items);
@@ -681,10 +738,11 @@ export function createAppointmentsController({
   }
 
   function createStatusActionButtons(item) {
-    const actions = getAvailableStatusActions(item.status);
-    if (!item.id || actions.length === 0) return [];
+    if (!item.id) return [];
     const isBusy = updatingAppointmentIds.has(item.id);
-    return actions.map((action) => {
+    const buttons = [];
+
+    for (const action of getAvailableStatusActions(item.status)) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = action.btnClass;
@@ -693,8 +751,32 @@ export function createAppointmentsController({
       btn.dataset.targetStatus = action.targetStatus;
       btn.disabled = isBusy;
       btn.textContent = action.label;
-      return btn;
-    });
+      buttons.push(btn);
+    }
+
+    if (canReschedule && (item.status === "PROGRAMADA" || item.status === "CONFIRMADA")) {
+      const rescheduleBtn = document.createElement("button");
+      rescheduleBtn.type = "button";
+      rescheduleBtn.className = "btn btn-outline-secondary btn-sm";
+      rescheduleBtn.dataset.action = "reschedule-appointment";
+      rescheduleBtn.dataset.appointmentId = item.id;
+      rescheduleBtn.disabled = isBusy;
+      rescheduleBtn.textContent = "Reprogramar";
+      buttons.push(rescheduleBtn);
+    }
+
+    if (canCancel && (item.status === "PROGRAMADA" || item.status === "CONFIRMADA" || item.status === "EN_ESPERA")) {
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn btn-outline-danger btn-sm";
+      cancelBtn.dataset.action = "cancel-appointment";
+      cancelBtn.dataset.appointmentId = item.id;
+      cancelBtn.disabled = isBusy;
+      cancelBtn.textContent = "Cancelar";
+      buttons.push(cancelBtn);
+    }
+
+    return buttons;
   }
 
   function createTableRow(item) {
@@ -826,12 +908,288 @@ export function createAppointmentsController({
       return;
     }
 
+    const rescheduleButton = event.target?.closest?.("[data-action='reschedule-appointment']");
+    if (rescheduleButton) {
+      const appointmentId = rescheduleButton.dataset.appointmentId;
+      const item = renderedItemsById.get(appointmentId);
+      if (item) {
+        await openRescheduleDialog(item);
+      }
+      return;
+    }
+
+    const cancelButton = event.target?.closest?.("[data-action='cancel-appointment']");
+    if (cancelButton) {
+      const appointmentId = cancelButton.dataset.appointmentId;
+      const item = renderedItemsById.get(appointmentId);
+      if (item) {
+        openCancelDialog(item);
+      }
+      return;
+    }
+
     const button = event.target?.closest?.("[data-action='view-appointment-patient']");
     if (!button || !canReadPatient || typeof onViewPatientProfile !== "function") return;
     const patientId = button.dataset.patientId;
     if (patientId) {
       s.view.hidden = true;
       onViewPatientProfile(patientId);
+    }
+  }
+
+  async function openRescheduleDialog(item) {
+    if (!r || !canReschedule || !item?.id) return;
+    if (!optionsLoaded) {
+      await loadOptions();
+    }
+
+    reschedulingAppointmentId = item.id;
+    clearRescheduleDialogMessages();
+    r.form.reset();
+
+    r.branchSelect.replaceChildren(createOption("", "Selecciona una sucursal"));
+    for (const branch of branchesCatalog) {
+      r.branchSelect.append(createOption(branch.id, branch.name));
+    }
+    if (item.branchId) {
+      r.branchSelect.value = item.branchId;
+    }
+    handleRescheduleBranchChange();
+    if (item.veterinarianId) {
+      r.veterinarianSelect.value = item.veterinarianId;
+    }
+
+    const timeZone = branchTimeZones.get(item.branchId) || "America/Lima";
+    const localDate = formatLocalDateInZone(item.startsAt, timeZone) || s?.dateFilter?.value || todayLocalIsoDate();
+    const localStartTime = formatTime(item.startsAt, timeZone) || "09:00";
+    const localEndTime = formatTime(item.endsAt, timeZone) || "09:30";
+
+    r.dateInput.value = localDate;
+    r.startTimeInput.value = localStartTime;
+    r.endTimeInput.value = localEndTime;
+
+    if (r.summary) {
+      r.summary.textContent = `${item.patientName || "Paciente"} — ${formatAppointmentType(item.appointmentType)} (${item.status === "CONFIRMADA" ? "Confirmada → pasará a Programada" : "Programada"})`;
+    }
+
+    if (typeof r.dialog.showModal === "function") {
+      if (!r.dialog.open) {
+        r.dialog.showModal();
+      }
+    } else {
+      r.dialog.setAttribute("open", "");
+    }
+  }
+
+  function closeRescheduleDialog() {
+    if (!r || reschedulingAppointment) return;
+    reschedulingAppointmentId = null;
+    if (typeof r.dialog.close === "function" && r.dialog.open) {
+      r.dialog.close();
+    } else {
+      r.dialog.removeAttribute("open");
+    }
+  }
+
+  function handleRescheduleBranchChange() {
+    if (!r) return;
+    const branchId = r.branchSelect.value;
+    const branch = branchesCatalog.find((b) => b.id === branchId);
+    r.branchTimeZone.textContent = branch?.timeZone
+      ? `Zona horaria: ${branch.timeZone}`
+      : "Zona horaria: America/Lima";
+
+    r.veterinarianSelect.replaceChildren(createOption("", "Selecciona un veterinario"));
+    for (const vet of veterinariansCatalog) {
+      const assignedIds = Array.isArray(vet.branchIds) ? vet.branchIds : [];
+      if (!branchId || assignedIds.length === 0 || assignedIds.includes(branchId)) {
+        r.veterinarianSelect.append(createOption(vet.id, vet.fullName));
+      }
+    }
+  }
+
+  function clearRescheduleDialogMessages() {
+    if (!r) return;
+    r.errorAlert.hidden = true;
+    r.errorAlert.textContent = "";
+    r.validationAlert.hidden = true;
+    r.validationAlert.textContent = "";
+  }
+
+  async function submitRescheduleAppointment() {
+    if (!r || !canReschedule || reschedulingAppointment || !reschedulingAppointmentId) return;
+    clearRescheduleDialogMessages();
+
+    const branchId = r.branchSelect.value.trim();
+    const veterinarianId = r.veterinarianSelect.value.trim();
+    const dateVal = r.dateInput.value.trim();
+    const startTimeVal = r.startTimeInput.value.trim();
+    const endTimeVal = r.endTimeInput.value.trim();
+
+    const errors = [];
+    if (!branchId) errors.push("Selecciona una sucursal.");
+    if (!veterinarianId) errors.push("Selecciona un veterinario asignado.");
+    if (!isValidIsoDate(dateVal)) errors.push("Ingresa una fecha válida (YYYY-MM-DD).");
+    if (!/^\d{2}:\d{2}$/.test(startTimeVal)) errors.push("Ingresa una hora de inicio válida (HH:mm).");
+    if (!/^\d{2}:\d{2}$/.test(endTimeVal)) errors.push("Ingresa una hora de fin válida (HH:mm).");
+    if (/^\d{2}:\d{2}$/.test(startTimeVal) && /^\d{2}:\d{2}$/.test(endTimeVal) && endTimeVal <= startTimeVal) {
+      errors.push("La hora de fin debe ser posterior a la hora de inicio.");
+    }
+
+    if (errors.length > 0) {
+      r.validationAlert.textContent = errors.join(" ");
+      r.validationAlert.hidden = false;
+      return;
+    }
+
+    const appointmentId = reschedulingAppointmentId;
+    reschedulingAppointment = true;
+    updatingAppointmentIds.add(appointmentId);
+    r.saveButton.disabled = true;
+    r.cancelButton.disabled = true;
+
+    try {
+      const updated = await client.requestJson(`/api/v1/appointments/${appointmentId}/schedule`, {
+        method: "PUT",
+        body: {
+          branchId,
+          veterinarianId,
+          startsAtLocal: `${dateVal}T${startTimeVal}`,
+          endsAtLocal: `${dateVal}T${endTimeVal}`
+        }
+      });
+
+      reschedulingAppointment = false;
+      updatingAppointmentIds.delete(appointmentId);
+      closeRescheduleDialog();
+
+      if (s?.notice) {
+        s.notice.textContent = updated?.status === "PROGRAMADA"
+          ? "Cita reprogramada correctamente (estado: Programada)."
+          : "Cita reprogramada correctamente.";
+        s.notice.hidden = false;
+      }
+
+      if (canRead) {
+        await executeSearch(page);
+      }
+    } catch (error) {
+      const baseMessage = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible reprogramar la cita.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+      if (error instanceof ApiRequestError && error.status === 400) {
+        const fieldMsgs = Array.isArray(error.fieldErrors)
+          ? error.fieldErrors.map((f) => `${f.field}: ${f.message}`).join(" ")
+          : "";
+        r.validationAlert.textContent = [baseMessage, fieldMsgs, correlationSuffix].filter(Boolean).join(" ").trim();
+        r.validationAlert.hidden = false;
+      } else {
+        r.errorAlert.textContent = `${baseMessage}${correlationSuffix}`;
+        r.errorAlert.hidden = false;
+      }
+    } finally {
+      reschedulingAppointment = false;
+      updatingAppointmentIds.delete(appointmentId);
+      r.saveButton.disabled = false;
+      r.cancelButton.disabled = false;
+    }
+  }
+
+  function openCancelDialog(item) {
+    if (!c || !canCancel || !item?.id) return;
+    cancellingAppointmentId = item.id;
+    clearCancelDialogMessages();
+    c.form.reset();
+    if (c.summary) {
+      c.summary.textContent = `${item.patientName || "Paciente"} — ${formatAppointmentType(item.appointmentType)} (${item.veterinarianFullName || "Veterinario"})`;
+    }
+    if (typeof c.dialog.showModal === "function") {
+      if (!c.dialog.open) {
+        c.dialog.showModal();
+      }
+    } else {
+      c.dialog.setAttribute("open", "");
+    }
+  }
+
+  function closeCancelDialog() {
+    if (!c || cancellingAppointment) return;
+    cancellingAppointmentId = null;
+    if (typeof c.dialog.close === "function" && c.dialog.open) {
+      c.dialog.close();
+    } else {
+      c.dialog.removeAttribute("open");
+    }
+  }
+
+  function clearCancelDialogMessages() {
+    if (!c) return;
+    c.errorAlert.hidden = true;
+    c.errorAlert.textContent = "";
+    c.validationAlert.hidden = true;
+    c.validationAlert.textContent = "";
+  }
+
+  async function submitCancelAppointment() {
+    if (!c || !canCancel || cancellingAppointment || !cancellingAppointmentId) return;
+    clearCancelDialogMessages();
+
+    const reason = c.reasonInput.value.trim();
+    if (reason.length < 3 || reason.length > 500) {
+      c.validationAlert.textContent = "El motivo de cancelación debe tener entre 3 y 500 caracteres.";
+      c.validationAlert.hidden = false;
+      return;
+    }
+
+    const appointmentId = cancellingAppointmentId;
+    cancellingAppointment = true;
+    updatingAppointmentIds.add(appointmentId);
+    c.saveButton.disabled = true;
+    c.cancelButton.disabled = true;
+
+    try {
+      await client.requestJson(`/api/v1/appointments/${appointmentId}/cancellation`, {
+        method: "PUT",
+        body: { reason }
+      });
+
+      cancellingAppointment = false;
+      updatingAppointmentIds.delete(appointmentId);
+      closeCancelDialog();
+
+      if (s?.notice) {
+        s.notice.textContent = "Cita cancelada correctamente y horario liberado.";
+        s.notice.hidden = false;
+      }
+
+      if (canRead) {
+        await executeSearch(page);
+      }
+    } catch (error) {
+      const baseMessage = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible cancelar la cita.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+      if (error instanceof ApiRequestError && error.status === 400) {
+        const fieldMsgs = Array.isArray(error.fieldErrors)
+          ? error.fieldErrors.map((f) => `${f.field}: ${f.message}`).join(" ")
+          : "";
+        c.validationAlert.textContent = [baseMessage, fieldMsgs, correlationSuffix].filter(Boolean).join(" ").trim();
+        c.validationAlert.hidden = false;
+      } else {
+        c.errorAlert.textContent = `${baseMessage}${correlationSuffix}`;
+        c.errorAlert.hidden = false;
+      }
+    } finally {
+      cancellingAppointment = false;
+      updatingAppointmentIds.delete(appointmentId);
+      c.saveButton.disabled = false;
+      c.cancelButton.disabled = false;
     }
   }
 
@@ -853,13 +1211,13 @@ export function createAppointmentsController({
     }
 
     const relatedButtons = Array.from(
-      s.view.querySelectorAll(`[data-action="change-appointment-status"][data-appointment-id="${appointmentId}"]`)
+      s.view.querySelectorAll(`[data-appointment-id="${appointmentId}"]`)
     );
     const originalLabels = new Map();
     for (const btn of relatedButtons) {
       originalLabels.set(btn, btn.textContent);
       btn.disabled = true;
-      if (btn.dataset.targetStatus === targetStatus) {
+      if (btn.dataset.action === "change-appointment-status" && btn.dataset.targetStatus === targetStatus) {
         btn.setAttribute("aria-busy", "true");
         btn.textContent = targetStatus === "CONFIRMADA" ? "Confirmando..." : "Registrando llegada...";
       }
@@ -952,6 +1310,26 @@ function formatTime(isoInstant, timeZone) {
   }
 }
 
+function formatLocalDateInZone(isoInstant, timeZone) {
+  if (!isoInstant) return "";
+  try {
+    const date = new Date(isoInstant);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: timeZone || "America/Lima"
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === "year")?.value;
+    const m = parts.find((p) => p.type === "month")?.value;
+    const d = parts.find((p) => p.type === "day")?.value;
+    return y && m && d ? `${y}-${m}-${d}` : "";
+  } catch {
+    return "";
+  }
+}
+
 function todayLocalIsoDate() {
   const now = new Date();
   const year = now.getFullYear();
@@ -1037,5 +1415,44 @@ function findDialogElements(document) {
     notesInput: document.querySelector("#appointment-notes"),
     cancelButton: document.querySelector("#cancel-appointment-button"),
     saveButton: document.querySelector("#save-appointment-button")
+  };
+}
+
+function findRescheduleDialogElements(document) {
+  const dialog = document.querySelector("#appointment-reschedule-dialog");
+  if (!dialog) {
+    return null;
+  }
+  return {
+    dialog,
+    form: document.querySelector("#appointment-reschedule-form"),
+    summary: document.querySelector("#appointment-reschedule-summary"),
+    errorAlert: document.querySelector("#appointment-reschedule-error"),
+    validationAlert: document.querySelector("#appointment-reschedule-validation"),
+    branchSelect: document.querySelector("#appointment-reschedule-branch-id"),
+    branchTimeZone: document.querySelector("#appointment-reschedule-branch-timezone"),
+    veterinarianSelect: document.querySelector("#appointment-reschedule-veterinarian-id"),
+    dateInput: document.querySelector("#appointment-reschedule-date"),
+    startTimeInput: document.querySelector("#appointment-reschedule-start-time"),
+    endTimeInput: document.querySelector("#appointment-reschedule-end-time"),
+    cancelButton: document.querySelector("#cancel-reschedule-appointment-button"),
+    saveButton: document.querySelector("#save-reschedule-appointment-button")
+  };
+}
+
+function findCancelDialogElements(document) {
+  const dialog = document.querySelector("#appointment-cancel-dialog");
+  if (!dialog) {
+    return null;
+  }
+  return {
+    dialog,
+    form: document.querySelector("#appointment-cancel-form"),
+    summary: document.querySelector("#appointment-cancel-summary"),
+    errorAlert: document.querySelector("#appointment-cancel-error"),
+    validationAlert: document.querySelector("#appointment-cancel-validation"),
+    reasonInput: document.querySelector("#appointment-cancel-reason"),
+    cancelButton: document.querySelector("#dismiss-cancel-appointment-button"),
+    saveButton: document.querySelector("#confirm-cancel-appointment-button")
   };
 }

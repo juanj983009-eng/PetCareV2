@@ -526,6 +526,222 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
   controller.sessionEnded();
 });
 
+test("HU-018: reprograma y cancela citas según permisos/estado, maneja 409 con correlationId y bloquea doble envío", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const branchB = "99999999-9999-4999-8999-999999999999";
+  const vetAna = "22222222-2222-4222-8222-222222222222";
+  const vetCarlos = "88888888-8888-4888-8888-888888888888";
+  const apptProgramada = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const apptConfirmada = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const apptEnEspera = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const apptFinalizada = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+  let items = [
+    {
+      id: apptProgramada,
+      startsAt: "2026-09-28T14:00:00Z",
+      endsAt: "2026-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "PROGRAMADA",
+      patientId: "33333333-3333-4333-8333-333333333333",
+      patientName: "Luna",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    },
+    {
+      id: apptConfirmada,
+      startsAt: "2026-09-28T15:00:00Z",
+      endsAt: "2026-09-28T15:30:00Z",
+      appointmentType: "CONTROL",
+      status: "CONFIRMADA",
+      patientId: "44444444-4444-4444-8444-444444444444",
+      patientName: "Max",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    },
+    {
+      id: apptEnEspera,
+      startsAt: "2026-09-28T16:00:00Z",
+      endsAt: "2026-09-28T16:30:00Z",
+      appointmentType: "VACUNACION",
+      status: "EN_ESPERA",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Toby",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    },
+    {
+      id: apptFinalizada,
+      startsAt: "2026-09-28T17:00:00Z",
+      endsAt: "2026-09-28T17:30:00Z",
+      appointmentType: "CIRUGIA",
+      status: "FINALIZADA",
+      patientId: "66666666-6666-4666-8666-666666666666",
+      patientName: "Rocky",
+      branchId: branchA,
+      branchName: "Sede Miraflores",
+      veterinarianId: vetAna,
+      veterinarianFullName: "Dra. Ana Salazar"
+    }
+  ];
+
+  const putCalls = [];
+  const searchUrls = [];
+  let failNextReschedule = false;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      requestJson: async (url, options = {}) => {
+        if (url === "/api/v1/appointments/options") {
+          return {
+            branches: [
+              { id: branchA, name: "Sede Miraflores", timeZone: "America/Lima" },
+              { id: branchB, name: "Sede San Borja", timeZone: "America/Lima" }
+            ],
+            veterinarians: [
+              { id: vetAna, fullName: "Dra. Ana Salazar", branchIds: [branchA] },
+              { id: vetCarlos, fullName: "Dr. Carlos Vega", branchIds: [branchB] }
+            ]
+          };
+        }
+        if (options.method === "PUT") {
+          const payload = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+          putCalls.push({ url, body: payload });
+          await new Promise((r) => setTimeout(r, 35));
+          const targetId = url.split("/")[4];
+          if (url.endsWith("/schedule")) {
+            if (failNextReschedule) {
+              failNextReschedule = false;
+              throw new ApiRequestError({
+                kind: "HTTP",
+                status: 409,
+                code: "APPOINTMENT_TIME_CONFLICT",
+                message: "El veterinario ya cuenta con una cita activa en ese horario.",
+                correlationId: "corr-resched-409"
+              });
+            }
+            items = items.map((item) =>
+              item.id === targetId
+                ? {
+                    ...item,
+                    branchId: payload.branchId,
+                    branchName: payload.branchId === branchB ? "Sede San Borja" : "Sede Miraflores",
+                    veterinarianId: payload.veterinarianId,
+                    veterinarianFullName: payload.veterinarianId === vetCarlos ? "Dr. Carlos Vega" : "Dra. Ana Salazar",
+                    status: "PROGRAMADA"
+                  }
+                : item
+            );
+            return items.find((item) => item.id === targetId);
+          }
+          if (url.endsWith("/cancellation")) {
+            items = items.map((item) =>
+              item.id === targetId ? { ...item, status: "CANCELADA" } : item
+            );
+            return items.find((item) => item.id === targetId);
+          }
+        }
+        searchUrls.push(url);
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: items.length,
+          totalPages: 1
+        };
+      }
+    }
+  });
+
+  // 1. Sin permisos de reprogramar/cancelar: no muestra botones
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ"] });
+  await controller.openAppointmentsView();
+  assert(document.querySelectorAll('[data-action="reschedule-appointment"]').length === 0, "Sin APPOINTMENT_RESCHEDULE no debe mostrar Reprogramar");
+  assert(document.querySelectorAll('[data-action="cancel-appointment"]').length === 0, "Sin APPOINTMENT_CANCEL no debe mostrar Cancelar");
+
+  // 2. Con permisos: Reprogramar solo en PROGRAMADA y CONFIRMADA; Cancelar en PROGRAMADA, CONFIRMADA y EN_ESPERA (no en FINALIZADA)
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ", "APPOINTMENT_RESCHEDULE", "APPOINTMENT_CANCEL"] });
+  await controller.openAppointmentsView();
+  document.querySelector("#appointment-date-filter").value = "2026-09-28";
+  document.querySelector("#appointment-branch-filter").value = branchA;
+  document.querySelector("#appointment-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 25));
+
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  assert(rows[0].querySelector('[data-action="reschedule-appointment"]') !== null, "PROGRAMADA debe mostrar Reprogramar");
+  assert(rows[0].querySelector('[data-action="cancel-appointment"]') !== null, "PROGRAMADA debe mostrar Cancelar");
+  assert(rows[1].querySelector('[data-action="reschedule-appointment"]') !== null, "CONFIRMADA debe mostrar Reprogramar");
+  assert(rows[1].querySelector('[data-action="cancel-appointment"]') !== null, "CONFIRMADA debe mostrar Cancelar");
+  assert(rows[2].querySelector('[data-action="reschedule-appointment"]') === null, "EN_ESPERA no debe mostrar Reprogramar");
+  assert(rows[2].querySelector('[data-action="cancel-appointment"]') !== null, "EN_ESPERA debe mostrar Cancelar");
+  assert(rows[3].querySelector('[data-action="reschedule-appointment"]') === null, "FINALIZADA no debe mostrar Reprogramar");
+  assert(rows[3].querySelector('[data-action="cancel-appointment"]') === null, "FINALIZADA no debe mostrar Cancelar");
+
+  // 3. Reprogramar cita CONFIRMADA: maneja 409 con correlationId y luego éxito (vuelve a PROGRAMADA y bloquea doble envío)
+  rows[1].querySelector('[data-action="reschedule-appointment"]').click();
+  await new Promise((r) => setTimeout(r, 15));
+
+  document.querySelector("#appointment-reschedule-branch-id").value = branchB;
+  document.querySelector("#appointment-reschedule-branch-id").dispatchEvent(new Event("change"));
+  document.querySelector("#appointment-reschedule-veterinarian-id").value = vetCarlos;
+  document.querySelector("#appointment-reschedule-date").value = "2026-09-28";
+  document.querySelector("#appointment-reschedule-start-time").value = "11:00";
+  document.querySelector("#appointment-reschedule-end-time").value = "11:45";
+
+  failNextReschedule = true;
+  const reschedForm = document.querySelector("#appointment-reschedule-form");
+  reschedForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 55));
+
+  assert(document.querySelector("#appointment-reschedule-error").hidden === false, "Debe mostrar error 409 en diálogo de reprogramación");
+  assert(document.querySelector("#appointment-reschedule-error").textContent.includes("corr-resched-409"), "Error 409 debe incluir correlationId");
+
+  // Envío exitoso con doble submit bloqueado
+  putCalls.length = 0;
+  reschedForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  reschedForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  assert(document.querySelector("#save-reschedule-appointment-button").disabled === true, "Debe deshabilitar botón Guardar reprogramación mientras envía");
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert(putCalls.length === 1, `Doble submit en reprogramar debe enviar 1 PUT (enviados: ${putCalls.length})`);
+  assert(putCalls[0].url === `/api/v1/appointments/${apptConfirmada}/schedule`, "Debe llamar PUT /api/v1/appointments/{id}/schedule");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Programadas: 2"), "Cita CONFIRMADA reprogramada debe volver a Programadas (2)");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("Confirmadas: 0"), "Confirmadas debe bajar a 0");
+
+  // 4. Cancelar cita EN_ESPERA: valida motivo obligatorio (3..500) y luego cancela preservando filtros
+  const updatedRows = document.querySelectorAll("#appointments-table-body tr");
+  updatedRows[2].querySelector('[data-action="cancel-appointment"]').click();
+
+  const cancelForm = document.querySelector("#appointment-cancel-form");
+  const cancelReasonInput = document.querySelector("#appointment-cancel-reason");
+  cancelReasonInput.value = "ab";
+  cancelForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 15));
+  assert(document.querySelector("#appointment-cancel-validation").hidden === false, "Debe validar motivo menor a 3 caracteres");
+
+  putCalls.length = 0;
+  cancelReasonInput.value = "Propietario solicitó cancelar por emergencia familiar";
+  cancelForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  cancelForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert(putCalls.length === 1, `Doble submit en cancelar debe enviar 1 PUT (enviados: ${putCalls.length})`);
+  assert(putCalls[0].url === `/api/v1/appointments/${apptEnEspera}/cancellation`, "Debe llamar PUT /api/v1/appointments/{id}/cancellation");
+  assert(putCalls[0].body.reason === "Propietario solicitó cancelar por emergencia familiar", "Debe enviar motivo de cancelación");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("En espera: 0"), "Tras cancelar EN_ESPERA debe actualizar En espera: 0");
+  const lastSearchUrl = searchUrls[searchUrls.length - 1];
+  assert(lastSearchUrl.includes(`branchId=${branchA}`), "Debe preservar filtro branchId al refrescar agenda");
+
+  controller.sessionEnded();
+});
+
 async function run() {
   let passed = 0;
   for (const t of tests) {
