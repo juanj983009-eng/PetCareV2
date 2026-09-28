@@ -293,11 +293,12 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
                 return current;
             }
 
-            if (!isAllowedTransition(currentStatus, targetStatus)) {
+            Instant now = clock.instant();
+            if (!isAllowedTransition(currentStatus, targetStatus)
+                    || (targetStatus == AppointmentStatus.NO_ASISTIO && current.endsAt().isAfter(now))) {
                 throw new InvalidAppointmentStatusTransitionException(currentStatus.name(), targetStatus.name());
             }
 
-            Instant now = clock.instant();
             boolean updated = repository.updateStatusConditionally(
                     tenantId,
                     command.appointmentId(),
@@ -692,16 +693,21 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
         if ("EN_ESPERA".equals(normalizedTarget)) {
             return AppointmentStatus.EN_ESPERA;
         }
+        if ("NO_ASISTIO".equals(normalizedTarget)) {
+            return AppointmentStatus.NO_ASISTIO;
+        }
         throw new InvalidAppointmentStatusTransitionException(currentStatus, normalizedTarget);
     }
 
     private static boolean isAllowedTransition(AppointmentStatus currentStatus, AppointmentStatus targetStatus) {
         if (currentStatus == AppointmentStatus.PROGRAMADA) {
             return targetStatus == AppointmentStatus.CONFIRMADA
-                    || targetStatus == AppointmentStatus.EN_ESPERA;
+                    || targetStatus == AppointmentStatus.EN_ESPERA
+                    || targetStatus == AppointmentStatus.NO_ASISTIO;
         }
         if (currentStatus == AppointmentStatus.CONFIRMADA) {
-            return targetStatus == AppointmentStatus.EN_ESPERA;
+            return targetStatus == AppointmentStatus.EN_ESPERA
+                    || targetStatus == AppointmentStatus.NO_ASISTIO;
         }
         return false;
     }

@@ -75,7 +75,37 @@ public interface AppointmentScheduleUseCase {
             int page,
             int size,
             long totalElements,
-            int totalPages) {
+            int totalPages,
+            long scheduledCount,
+            long confirmedCount,
+            long waitingCount,
+            long noShowCount) {
+
+        public AppointmentPage(
+                List<AppointmentSummary> content,
+                int page,
+                int size,
+                long totalElements,
+                int totalPages,
+                long noShowCount) {
+            this(
+                    content,
+                    page,
+                    size,
+                    totalElements,
+                    totalPages,
+                    countByStatus(content, "PROGRAMADA"),
+                    countByStatus(content, "CONFIRMADA"),
+                    countByStatus(content, "EN_ESPERA"),
+                    noShowCount);
+        }
+
+        private static long countByStatus(List<AppointmentSummary> items, String status) {
+            if (items == null) {
+                return 0L;
+            }
+            return items.stream().filter(item -> item != null && status.equals(item.status())).count();
+        }
     }
 
     record AppointmentSummary(

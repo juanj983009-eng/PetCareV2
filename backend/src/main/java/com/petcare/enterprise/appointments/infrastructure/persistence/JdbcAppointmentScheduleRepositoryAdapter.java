@@ -64,9 +64,25 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 .addValue("limit", query.size(), Types.INTEGER)
                 .addValue("offset", query.page() * query.size(), Types.INTEGER);
 
-        String countSql = "SELECT count(*) " + BASE_FROM_AND_WHERE;
-        Long total = jdbc.queryForObject(countSql, params, Long.class);
-        long totalElements = total != null ? total : 0L;
+        String countSql = """
+                SELECT
+                    count(*) AS total_elements,
+                    count(*) FILTER (WHERE a.status = 'PROGRAMADA') AS scheduled_count,
+                    count(*) FILTER (WHERE a.status = 'CONFIRMADA') AS confirmed_count,
+                    count(*) FILTER (WHERE a.status = 'EN_ESPERA') AS waiting_count,
+                    count(*) FILTER (WHERE a.status = 'NO_ASISTIO') AS no_show_count
+                """
+                + BASE_FROM_AND_WHERE;
+        AppointmentCounts counts = jdbc.queryForObject(
+                countSql,
+                params,
+                (rs, rowNum) -> new AppointmentCounts(
+                        rs.getLong("total_elements"),
+                        rs.getLong("scheduled_count"),
+                        rs.getLong("confirmed_count"),
+                        rs.getLong("waiting_count"),
+                        rs.getLong("no_show_count")));
+        long totalElements = counts != null ? counts.totalElements() : 0L;
 
         String orderDirection = query.ascending() ? "ASC" : "DESC";
         String selectSql = """
@@ -95,7 +111,24 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 ? 0
                 : (int) Math.ceil((double) totalElements / query.size());
 
-        return new AppointmentPage(content, query.page(), query.size(), totalElements, totalPages);
+        return new AppointmentPage(
+                content,
+                query.page(),
+                query.size(),
+                totalElements,
+                totalPages,
+                counts != null ? counts.scheduledCount() : 0L,
+                counts != null ? counts.confirmedCount() : 0L,
+                counts != null ? counts.waitingCount() : 0L,
+                counts != null ? counts.noShowCount() : 0L);
+    }
+
+    private record AppointmentCounts(
+            long totalElements,
+            long scheduledCount,
+            long confirmedCount,
+            long waitingCount,
+            long noShowCount) {
     }
 
     @Override
@@ -432,6 +465,7 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 WHERE tenant_id = :tenantId
                   AND id = :appointmentId
                   AND status = :expectedPreviousStatus
+                  AND (:newStatus <> 'NO_ASISTIO' OR ends_at <= :updatedAt)
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("tenantId", tenantId, Types.OTHER)

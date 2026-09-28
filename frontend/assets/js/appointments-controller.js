@@ -674,7 +674,7 @@ export function createAppointmentsController({
 
     s.rows.replaceChildren();
     s.cards.replaceChildren();
-    renderStatusIndicators(items);
+    renderStatusIndicators(items, response);
 
     if (items.length === 0) {
       setViewState("empty");
@@ -696,21 +696,28 @@ export function createAppointmentsController({
     setViewState("results");
   }
 
-  function renderStatusIndicators(items) {
+  function renderStatusIndicators(items, response) {
     if (!s?.indicators) return;
     s.indicators.replaceChildren();
     let programadas = 0;
     let confirmadas = 0;
     let enEspera = 0;
+    let noAsistieron = 0;
     for (const item of items) {
       if (item.status === "PROGRAMADA") programadas += 1;
       else if (item.status === "CONFIRMADA") confirmadas += 1;
       else if (item.status === "EN_ESPERA") enEspera += 1;
+      else if (item.status === "NO_ASISTIO") noAsistieron += 1;
     }
+    const totalProgramadas = Number.isFinite(response?.scheduledCount) ? response.scheduledCount : programadas;
+    const totalConfirmadas = Number.isFinite(response?.confirmedCount) ? response.confirmedCount : confirmadas;
+    const totalEnEspera = Number.isFinite(response?.waitingCount) ? response.waitingCount : enEspera;
+    const totalNoShow = Number.isFinite(response?.noShowCount) ? response.noShowCount : noAsistieron;
     const chips = [
-      { key: "programadas", label: `Programadas: ${programadas}` },
-      { key: "confirmadas", label: `Confirmadas: ${confirmadas}` },
-      { key: "en-espera", label: `En espera: ${enEspera}` }
+      { key: "programadas", label: `Programadas: ${totalProgramadas}` },
+      { key: "confirmadas", label: `Confirmadas: ${totalConfirmadas}` },
+      { key: "en-espera", label: `En espera: ${totalEnEspera}` },
+      { key: "no-show", label: `No asistieron: ${totalNoShow}` }
     ];
     for (const chip of chips) {
       const span = document.createElement("span");
@@ -721,20 +728,23 @@ export function createAppointmentsController({
     }
   }
 
-  function getAvailableStatusActions(status) {
+  function getAvailableStatusActions(item) {
     if (!canUpdateStatus) return [];
-    if (status === "PROGRAMADA") {
-      return [
+    let actions = [];
+    if (item.status === "PROGRAMADA") {
+      actions = [
         { label: "Confirmar", targetStatus: "CONFIRMADA", btnClass: "btn btn-outline-primary btn-sm" },
         { label: "Registrar llegada", targetStatus: "EN_ESPERA", btnClass: "btn btn-primary btn-sm" }
       ];
-    }
-    if (status === "CONFIRMADA") {
-      return [
+    } else if (item.status === "CONFIRMADA") {
+      actions = [
         { label: "Registrar llegada", targetStatus: "EN_ESPERA", btnClass: "btn btn-primary btn-sm" }
       ];
     }
-    return [];
+    if (actions.length > 0 && Number.isFinite(Date.parse(item.endsAt)) && Date.parse(item.endsAt) <= Date.now()) {
+      actions.push({ label: "Marcar inasistencia", targetStatus: "NO_ASISTIO", btnClass: "btn btn-outline-dark btn-sm" });
+    }
+    return actions;
   }
 
   function createStatusActionButtons(item) {
@@ -742,7 +752,7 @@ export function createAppointmentsController({
     const isBusy = updatingAppointmentIds.has(item.id);
     const buttons = [];
 
-    for (const action of getAvailableStatusActions(item.status)) {
+    for (const action of getAvailableStatusActions(item)) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = action.btnClass;
@@ -1219,7 +1229,9 @@ export function createAppointmentsController({
       btn.disabled = true;
       if (btn.dataset.action === "change-appointment-status" && btn.dataset.targetStatus === targetStatus) {
         btn.setAttribute("aria-busy", "true");
-        btn.textContent = targetStatus === "CONFIRMADA" ? "Confirmando..." : "Registrando llegada...";
+        btn.textContent = targetStatus === "CONFIRMADA"
+          ? "Confirmando..."
+          : targetStatus === "NO_ASISTIO" ? "Marcando inasistencia..." : "Registrando llegada...";
       }
     }
 
@@ -1234,7 +1246,7 @@ export function createAppointmentsController({
       if (s.notice) {
         s.notice.textContent = targetStatus === "CONFIRMADA"
           ? "Cita confirmada correctamente."
-          : "Llegada registrada: paciente en espera.";
+          : targetStatus === "NO_ASISTIO" ? "Inasistencia registrada correctamente." : "Llegada registrada: paciente en espera.";
         s.notice.hidden = false;
       }
 

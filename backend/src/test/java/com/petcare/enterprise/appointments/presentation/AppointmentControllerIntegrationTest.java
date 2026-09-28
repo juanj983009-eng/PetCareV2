@@ -32,6 +32,8 @@ import com.petcare.enterprise.identity.infrastructure.security.PetCarePrincipal;
 import com.petcare.enterprise.test.PostgreSqlIntegrationTest;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -1088,6 +1090,203 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void marksOverdueUnattendedAppointmentsAsNoShowWithTenantScopedHistoryAndAudit() throws Exception {
+        TenantFixture tenant = createTenantFixture("no-show-success");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-noshow@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76009911");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        ZoneId branchZone = ZoneId.of("America/Lima");
+        Instant scheduledStart = LocalDate.now(branchZone).minusDays(1)
+                .atTime(9, 0).atZone(branchZone).toInstant();
+        UUID scheduled = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                scheduledStart, scheduledStart.plusSeconds(1800),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+        UUID confirmed = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                scheduledStart.plusSeconds(3600), scheduledStart.plusSeconds(5400),
+                "CONTROL", "CONFIRMADA", null, null);
+
+        String correlationId = "c1c1c1c1-2222-4333-8444-555555555555";
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", scheduled)
+                        .header("X-Correlation-ID", correlationId)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"NO_ASISTIO\" }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NO_ASISTIO"));
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", confirmed)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"NO_ASISTIO\" }"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NO_ASISTIO"));
+
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", scheduled)
+                        .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"NO_ASISTIO\" }"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT status FROM appointments WHERE tenant_id = ? AND id = ?",
+                String.class, tenant.tenantId, scheduled)).isEqualTo("NO_ASISTIO");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM appointment_status_history WHERE tenant_id = ? AND appointment_id = ?",
+                Integer.class, tenant.tenantId, scheduled)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT previous_status || '->' || new_status || ':' || changed_by::text || ':' || correlation_id::text FROM appointment_status_history WHERE tenant_id = ? AND appointment_id = ?",
+                String.class, tenant.tenantId, scheduled))
+                .isEqualTo("PROGRAMADA->NO_ASISTIO:" + tenant.userId + ":" + correlationId);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'",
+                Integer.class, tenant.tenantId, scheduled)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT new_data::text FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'APPOINTMENT_STATUS_CHANGED'",
+                String.class, tenant.tenantId, scheduled)).contains("NO_ASISTIO");
+
+        String scheduleDate = LocalDate.ofInstant(scheduledStart, branchZone).toString();
+        UUID branchSecondary = insertBranch(tenant.tenantId, "Sede Secundaria", "America/Lima", true);
+        UUID vetSecondary = insertUserWithRole(tenant.tenantId, "Carlos", "Vega", "carlos-noshow@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vetSecondary, branchSecondary);
+
+        Instant baseDayStart = LocalDate.ofInstant(scheduledStart, branchZone).atTime(15, 0).atZone(branchZone).toInstant();
+        insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                baseDayStart, baseDayStart.plusSeconds(1800),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+        insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                baseDayStart.plusSeconds(1800), baseDayStart.plusSeconds(3600),
+                "VACUNACION", "CONFIRMADA", null, null);
+        insertAppointment(
+                tenant.tenantId, branchSecondary, patient, vetSecondary,
+                baseDayStart.plusSeconds(3600), baseDayStart.plusSeconds(5400),
+                "CONTROL", "EN_ESPERA", null, null);
+
+        // Page 0 and Page 1 with size=1 must report the exact same global filtered counts
+        for (int pageIndex : List.of(0, 1)) {
+            mvc.perform(get("/api/v1/appointments")
+                            .param("date", scheduleDate)
+                            .param("page", String.valueOf(pageIndex))
+                            .param("size", "1")
+                            .with(authentication(auth(tenant, "APPOINTMENT_READ"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content.length()").value(1))
+                    .andExpect(jsonPath("$.totalElements").value(5))
+                    .andExpect(jsonPath("$.totalPages").value(5))
+                    .andExpect(jsonPath("$.scheduledCount").value(1))
+                    .andExpect(jsonPath("$.confirmedCount").value(1))
+                    .andExpect(jsonPath("$.waitingCount").value(1))
+                    .andExpect(jsonPath("$.noShowCount").value(2));
+        }
+
+        // Filtering by branch or veterinarian narrows all four status counts coherently
+        mvc.perform(get("/api/v1/appointments")
+                        .param("date", scheduleDate)
+                        .param("branchId", branch.toString())
+                        .param("size", "1")
+                        .with(authentication(auth(tenant, "APPOINTMENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(4))
+                .andExpect(jsonPath("$.scheduledCount").value(1))
+                .andExpect(jsonPath("$.confirmedCount").value(1))
+                .andExpect(jsonPath("$.waitingCount").value(0))
+                .andExpect(jsonPath("$.noShowCount").value(2));
+
+        mvc.perform(get("/api/v1/appointments")
+                        .param("date", scheduleDate)
+                        .param("veterinarianId", vetSecondary.toString())
+                        .param("size", "1")
+                        .with(authentication(auth(tenant, "APPOINTMENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.scheduledCount").value(0))
+                .andExpect(jsonPath("$.confirmedCount").value(0))
+                .andExpect(jsonPath("$.waitingCount").value(1))
+                .andExpect(jsonPath("$.noShowCount").value(0));
+
+        TenantFixture otherTenant = createTenantFixture("no-show-report-other");
+        mvc.perform(get("/api/v1/appointments")
+                        .param("date", scheduleDate)
+                        .with(authentication(auth(otherTenant, "APPOINTMENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.scheduledCount").value(0))
+                .andExpect(jsonPath("$.confirmedCount").value(0))
+                .andExpect(jsonPath("$.waitingCount").value(0))
+                .andExpect(jsonPath("$.noShowCount").value(0));
+    }
+
+    @Test
+    void rejectsNoShowBeforeAppointmentEndsOrAfterArrivalAndForForeignTenant() throws Exception {
+        TenantFixture tenantA = createTenantFixture("no-show-tenant-a");
+        TenantFixture tenantB = createTenantFixture("no-show-tenant-b");
+        UUID branch = insertBranch(tenantA.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenantA.tenantId, "Ana", "Salazar", "ana-noshow-a@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenantA.tenantId, vet, branch);
+        UUID owner = insertOwner(tenantA.tenantId, "Lucia", "Paredes", "DNI", "76009912");
+        UUID patient = insertPatient(tenantA.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        Instant now = Instant.now();
+        UUID future = insertAppointment(
+                tenantA.tenantId, branch, patient, vet,
+                now.plusSeconds(3600), now.plusSeconds(5400),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+        UUID arrived = insertAppointment(
+                tenantA.tenantId, branch, patient, vet,
+                now.minusSeconds(7200), now.minusSeconds(5400),
+                "CONTROL", "EN_ESPERA", null, null);
+
+        for (UUID appointmentId : List.of(future, arrived)) {
+            mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", appointmentId)
+                            .with(authentication(auth(tenantA, "APPOINTMENT_STATUS_UPDATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{ \"status\": \"NO_ASISTIO\" }"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
+        }
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", arrived)
+                        .with(authentication(auth(tenantB, "APPOINTMENT_STATUS_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"NO_ASISTIO\" }"))
+                .andExpect(status().isNotFound());
+        mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", future)
+                        .with(authentication(auth(tenantA, "APPOINTMENT_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"status\": \"NO_ASISTIO\" }"))
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM appointment_status_history WHERE tenant_id = ? AND appointment_id IN (?, ?)",
+                Integer.class, tenantA.tenantId, future, arrived)).isZero();
+    }
+
+    @Test
+    void conditionalNoShowWriteRechecksEndTimeAfterTheAppointmentWasRescheduled() {
+        TenantFixture tenant = createTenantFixture("no-show-concurrent-schedule");
+        UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
+        UUID vet = insertUserWithRole(tenant.tenantId, "Ana", "Salazar", "ana-noshow-race@petcare.test", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(tenant.tenantId, vet, branch);
+        UUID owner = insertOwner(tenant.tenantId, "Lucia", "Paredes", "DNI", "76009913");
+        UUID patient = insertPatient(tenant.tenantId, owner, "Luna", "PERRO", "Mestizo");
+        Instant now = Instant.now();
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, branch, patient, vet,
+                now.plusSeconds(3600), now.plusSeconds(5400),
+                "CONSULTA_GENERAL", "PROGRAMADA", null, null);
+
+        boolean updated = scheduleRepository.updateStatusConditionally(
+                tenant.tenantId, appointmentId, "PROGRAMADA", "NO_ASISTIO", now);
+
+        assertThat(updated).isFalse();
+        assertThat(jdbc.queryForObject(
+                "SELECT status FROM appointments WHERE tenant_id = ? AND id = ?",
+                String.class, tenant.tenantId, appointmentId)).isEqualTo("PROGRAMADA");
+    }
+
+    @Test
     void rejectsInvalidStatusTransitionsOutOfScopeTargetsAndInvalidBodies() throws Exception {
         TenantFixture tenant = createTenantFixture("status-invalid");
         UUID branch = insertBranch(tenant.tenantId, "Sede Central", "America/Lima", true);
@@ -1125,7 +1324,7 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_APPOINTMENT_STATUS_TRANSITION"));
 
         // 409 for out-of-scope or disallowed targets on PROGRAMADA
-        for (String disallowedTarget : List.of("PROGRAMADA", "EN_ATENCION", "FINALIZADA", "CANCELADA", "NO_ASISTIO", "OTRO_ESTADO")) {
+        for (String disallowedTarget : List.of("PROGRAMADA", "EN_ATENCION", "FINALIZADA", "CANCELADA", "OTRO_ESTADO")) {
             mvc.perform(patch("/api/v1/appointments/{appointmentId}/status", apptProgramada)
                             .with(authentication(auth(tenant, "APPOINTMENT_STATUS_UPDATE")))
                             .contentType(MediaType.APPLICATION_JSON)

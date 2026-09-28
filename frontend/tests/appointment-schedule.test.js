@@ -526,6 +526,122 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
   controller.sessionEnded();
 });
 
+test("HU-019: marca inasistencia solo en citas vencidas sin atención y actualiza la agenda", async () => {
+  const branchId = "11111111-1111-4111-8111-111111111111";
+  const vetId = "22222222-2222-4222-8222-222222222222";
+  const base = {
+    appointmentType: "CONSULTA_GENERAL",
+    patientId: "33333333-3333-4333-8333-333333333333",
+    patientName: "Luna",
+    branchId,
+    branchName: "Sede Miraflores",
+    veterinarianId: vetId,
+    veterinarianFullName: "Dra. Ana Salazar"
+  };
+  let items = [
+    { ...base, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", startsAt: "2020-01-01T14:00:00Z", endsAt: "2020-01-01T14:30:00Z", status: "PROGRAMADA" },
+    { ...base, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", startsAt: "2020-01-01T15:00:00Z", endsAt: "2020-01-01T15:30:00Z", status: "CONFIRMADA" },
+    { ...base, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", startsAt: "2100-01-01T14:00:00Z", endsAt: "2100-01-01T14:30:00Z", status: "PROGRAMADA" },
+    { ...base, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", startsAt: "2020-01-01T16:00:00Z", endsAt: "2020-01-01T16:30:00Z", status: "EN_ESPERA" }
+  ];
+  const patchCalls = [];
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      requestJson: async (url, options = {}) => {
+        if (url === "/api/v1/appointments/options") {
+          return {
+            branches: [{ id: branchId, name: "Sede Miraflores", timeZone: "America/Lima" }],
+            veterinarians: [{ id: vetId, fullName: "Dra. Ana Salazar", branchIds: [branchId] }]
+          };
+        }
+        if (options.method === "PATCH") {
+          patchCalls.push({ url, body: options.body });
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          const targetId = url.split("/")[4];
+          items = items.map((item) => item.id === targetId ? { ...item, status: options.body.status } : item);
+          return items.find((item) => item.id === targetId);
+        }
+        const parsedUrl = new URL(url, "http://localhost");
+        const requestedPage = Number(parsedUrl.searchParams.get("page") ?? "0");
+        const branchParam = parsedUrl.searchParams.get("branchId");
+        const filteredItems = branchParam ? items.filter((item) => item.branchId === branchParam) : items;
+        const pageContent = requestedPage === 0 ? filteredItems.slice(0, 2) : filteredItems.slice(2, 4);
+        return {
+          content: pageContent,
+          page: requestedPage,
+          size: 2,
+          totalElements: filteredItems.length,
+          totalPages: Math.ceil(filteredItems.length / 2),
+          scheduledCount: filteredItems.filter((item) => item.status === "PROGRAMADA").length,
+          confirmedCount: filteredItems.filter((item) => item.status === "CONFIRMADA").length,
+          waitingCount: filteredItems.filter((item) => item.status === "EN_ESPERA").length,
+          noShowCount: filteredItems.filter((item) => item.status === "NO_ASISTIO").length
+        };
+      }
+    }
+  });
+
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ"] });
+  await controller.openAppointmentsView();
+  assert(document.querySelectorAll('[data-target-status="NO_ASISTIO"]').length === 0,
+    "Sin APPOINTMENT_STATUS_UPDATE no debe ofrecer inasistencia");
+
+  controller.sessionReady({ authorities: ["APPOINTMENT_READ", "APPOINTMENT_STATUS_UPDATE"] });
+  await controller.openAppointmentsView();
+  const indicatorsBefore = document.querySelector("#appointments-status-indicators").textContent;
+  assert(indicatorsBefore.includes("Programadas: 2"),
+    "Indicadores en página 1 deben reflejar el total global de Programadas (2) aunque la página muestre solo 1");
+  assert(indicatorsBefore.includes("Confirmadas: 1"),
+    "Indicadores en página 1 deben reflejar el total global de Confirmadas (1)");
+  assert(indicatorsBefore.includes("En espera: 1"),
+    "Indicadores en página 1 deben reflejar el total global de En espera (1)");
+  assert(indicatorsBefore.includes("No asistieron: 0"),
+    "Indicadores en página 1 deben reflejar el total global de No asistieron (0)");
+
+  // Navegar a página 2 conserva exactamente los mismos indicadores globales del filtro
+  document.querySelector("#appointments-next-page").click();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const indicatorsPage2 = document.querySelector("#appointments-status-indicators").textContent;
+  assert(indicatorsPage2 === indicatorsBefore,
+    "Los indicadores de estado deben mantenerse idénticos entre páginas para los mismos filtros");
+
+  const rowsPage2 = document.querySelectorAll("#appointments-table-body tr");
+  assert(rowsPage2[0].querySelector('[data-target-status="NO_ASISTIO"]') === null,
+    "No debe ofrecer inasistencia antes de finalizar el horario");
+  assert(rowsPage2[1].querySelector('[data-target-status="NO_ASISTIO"]') === null,
+    "No debe ofrecer inasistencia si el paciente ya llegó");
+
+  // Volver a página 1 para probar citas vencidas
+  document.querySelector("#appointments-previous-page").click();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  assert(rows[0].querySelector('[data-target-status="NO_ASISTIO"]') !== null,
+    "Debe ofrecer inasistencia para PROGRAMADA vencida");
+  assert(rows[1].querySelector('[data-target-status="NO_ASISTIO"]') !== null,
+    "Debe ofrecer inasistencia para CONFIRMADA vencida");
+  assert(document.querySelectorAll('#appointments-cards [data-target-status="NO_ASISTIO"]').length === 2,
+    "La acción también debe estar disponible en tarjetas móviles");
+
+  const noShowButton = rows[0].querySelector('[data-target-status="NO_ASISTIO"]');
+  noShowButton.click();
+  noShowButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert(patchCalls.length === 1, "El doble clic no debe enviar dos cambios de estado");
+  assert(patchCalls[0].url === `/api/v1/appointments/${items[0].id}/status`, "Debe usar el endpoint existente");
+  assert(patchCalls[0].body.status === "NO_ASISTIO", "Debe enviar el estado NO_ASISTIO");
+  assert(document.querySelector("#appointments-notice").textContent.toLowerCase().includes("inasistencia"),
+    "Debe confirmar la inasistencia al usuario");
+  const indicatorsAfter = document.querySelector("#appointments-status-indicators").textContent;
+  assert(indicatorsAfter.includes("Programadas: 1"),
+    "El resumen global debe descontar la cita reprogramada a inasistencia (Programadas: 1)");
+  assert(indicatorsAfter.includes("No asistieron: 1"),
+    "El resumen global debe mostrar el conteo de inasistencias (No asistieron: 1)");
+  assert(document.querySelector("#appointments-table-body tr").textContent.includes("No asistió"),
+    "La agenda debe mostrar el nuevo estado");
+  controller.sessionEnded();
+});
+
 test("HU-018: reprograma y cancela citas según permisos/estado, maneja 409 con correlationId y bloquea doble envío", async () => {
   const branchA = "11111111-1111-4111-8111-111111111111";
   const branchB = "99999999-9999-4999-8999-999999999999";

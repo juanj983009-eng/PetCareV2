@@ -11,7 +11,11 @@ record AppointmentPageResponse(
         int page,
         int size,
         long totalElements,
-        int totalPages) {
+        int totalPages,
+        long scheduledCount,
+        long confirmedCount,
+        long waitingCount,
+        long noShowCount) {
 
     static AppointmentPageResponse from(AppointmentPage page) {
         return new AppointmentPageResponse(
@@ -19,7 +23,11 @@ record AppointmentPageResponse(
                 page.page(),
                 page.size(),
                 page.totalElements(),
-                page.totalPages());
+                page.totalPages(),
+                page.scheduledCount(),
+                page.confirmedCount(),
+                page.waitingCount(),
+                page.noShowCount());
     }
 
     record AppointmentItemResponse(
