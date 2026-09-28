@@ -1,0 +1,330 @@
+:root {
+  color-scheme: light;
+
+  /* Tokens Semánticos Canónicos — Sistema de Diseño "Clínica Editorial" */
+  --pc-bg-body: #F8F8F5;
+  --pc-bg-surface: #FFFFFF;
+  --pc-bg-subtle: #EFEFEA;
+  --pc-text-main: #16201B;
+  --pc-text-muted: #536259;
+  --pc-border-color: #D7DCD5;
+  --pc-border-strong: #A3ADA0;
+  --pc-primary: #1D4032;
+  --pc-primary-hover: #132B22;
+  --pc-primary-subtle: #E5ECE8;
+  --pc-warning: #945305;
+  --pc-warning-subtle: #FEF5E7;
+  --pc-success: #196944;
+  --pc-success-subtle: #E8F4EE;
+
+  /* Mapeo sobre Bootstrap 5.3.3 */
+  --bs-body-bg: #F8F8F5;
+  --bs-body-color: #16201B;
+  --bs-body-color-rgb: 22, 32, 27;
+  --bs-primary: #1D4032;
+  --bs-primary-rgb: 29, 64, 50;
+  --bs-secondary: #536259;
+  --bs-secondary-rgb: 83, 98, 89;
+  --bs-border-color: #D7DCD5;
+  --bs-border-radius-sm: 2px;
+  --bs-border-radius: 4px;
+  --bs-border-radius-lg: 6px;
+  --bs-font-sans-serif: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --bs-font-serif: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
+  --bs-focus-ring-color: rgba(29, 64, 50, 0.35);
+  --bs-focus-ring-width: 0.25rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.pc-landing-body {
+  background-color: var(--pc-bg-body);
+  color: var(--pc-text-main);
+  font-family: var(--bs-font-sans-serif);
+  font-size: 1rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+.h1,
+h2,
+.h2,
+.pc-brand-title,
+.pc-hero-title {
+  font-family: var(--bs-font-serif);
+  color: var(--pc-text-main);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.pc-hero-title {
+  font-size: clamp(1.75rem, 2.8vw, 2.5rem);
+  line-height: 1.2;
+}
+
+.pc-hero-lead {
+  font-size: clamp(1.02rem, 1.25vw, 1.15rem);
+  max-width: 64ch;
+}
+
+/* Foco accesible visible WCAG 2.1 AA */
+a:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+.nav-link:focus-visible,
+.navbar-toggler:focus-visible {
+  outline: 3px solid var(--pc-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 0.2rem rgba(29, 64, 50, 0.25);
+}
+
+.pc-skip-link {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 1080;
+  padding: 0.5rem 1rem;
+  background-color: var(--pc-primary);
+  color: #FFFFFF;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.pc-touch-target {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pc-landing-header {
+  background-color: rgba(248, 248, 245, 0.96);
+  backdrop-filter: blur(6px);
+  border-color: var(--pc-border-color) !important;
+}
+
+.pc-brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 4px;
+  background-color: var(--pc-primary);
+  color: #FFFFFF;
+  font-family: var(--bs-font-serif);
+  font-weight: 600;
+  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pc-brand-subtitle {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--pc-text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.pc-nav-link {
+  color: var(--pc-text-main);
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.pc-nav-link:hover,
+.pc-nav-link:focus {
+  color: var(--pc-primary);
+  background-color: var(--pc-primary-subtle);
+}
+
+/* Botones Clínica Editorial */
+.btn-primary {
+  background-color: var(--pc-primary);
+  border-color: var(--pc-primary);
+  color: #FFFFFF;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--pc-primary-hover) !important;
+  border-color: var(--pc-primary-hover) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-outline-primary {
+  color: var(--pc-primary);
+  border-color: var(--pc-primary);
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus,
+.btn-outline-primary:active {
+  background-color: var(--pc-primary) !important;
+  border-color: var(--pc-primary) !important;
+  color: #FFFFFF !important;
+}
+
+/* Componentes Editoriales */
+.pc-eyebrow-pill {
+  background-color: var(--pc-primary-subtle);
+  color: var(--pc-primary);
+  border: 1px solid var(--pc-border-strong);
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.pc-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--pc-success);
+  display: inline-block;
+}
+
+.pc-editorial-note {
+  background-color: var(--pc-bg-subtle);
+  border-left: 3px solid var(--pc-primary);
+  border-radius: 0 4px 4px 0;
+}
+
+.pc-folio-panel {
+  background-color: var(--pc-bg-surface);
+  border: 1px solid var(--pc-border-strong);
+  border-top: 4px solid var(--pc-primary);
+  border-radius: 6px;
+}
+
+.pc-folio-callout {
+  background-color: var(--pc-bg-subtle);
+  border: 1px solid var(--pc-border-color);
+  border-radius: 4px;
+}
+
+.pc-benefit-surface,
+.pc-module-card {
+  background-color: var(--pc-bg-surface);
+  border: 1px solid var(--pc-border-color);
+  border-radius: 6px;
+}
+
+.pc-upcoming-card {
+  background-color: var(--pc-bg-subtle);
+  border: 1px dashed var(--pc-border-strong);
+  border-radius: 6px;
+}
+
+.pc-folio-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--pc-primary);
+}
+
+.pc-mono-note {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--pc-primary);
+  overflow-wrap: anywhere;
+}
+
+.pc-badge-implemented {
+  background-color: var(--pc-success-subtle);
+  color: var(--pc-success);
+  border: 1px solid rgba(25, 105, 68, 0.35);
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.pc-badge-upcoming {
+  background-color: var(--pc-warning-subtle);
+  color: var(--pc-warning);
+  border: 1px solid rgba(148, 83, 5, 0.35);
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.pc-warning-eyebrow {
+  color: var(--pc-warning);
+}
+
+.pc-inline-link,
+.pc-footer-link {
+  color: var(--pc-primary);
+}
+
+.pc-inline-link:hover,
+.pc-footer-link:hover {
+  color: var(--pc-primary-hover);
+  text-decoration: underline !important;
+}
+
+/* Ledger de Stack Tecnológico */
+.pc-stack-ledger {
+  background-color: var(--pc-bg-surface);
+  border: 1px solid var(--pc-border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pc-stack-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.pc-stack-layer {
+  background-color: var(--pc-bg-subtle);
+  color: var(--pc-primary);
+}
+
+@media (min-width: 768px) {
+  .pc-stack-layer,
+  .pc-stack-tech {
+    border-right: 1px solid var(--pc-border-color);
+  }
+}
+
+/* Banner CTA Final */
+.pc-cta-banner {
+  background-color: var(--pc-primary);
+  color: #FFFFFF;
+  border-radius: 6px;
+}
+
+.pc-cta-eyebrow {
+  color: #D7E6DF;
+  letter-spacing: 0.05em;
+}
+
+.pc-cta-subtext {
+  color: #E5ECE8;
+}
+
+/* Modal y Footer */
+.pc-modal-surface {
+  background-color: var(--pc-bg-surface);
+  border: 1px solid var(--pc-border-strong);
+  border-radius: 6px;
+}
+
+.pc-landing-footer {
+  background-color: var(--pc-bg-subtle);
+  border-color: var(--pc-border-color) !important;
+}

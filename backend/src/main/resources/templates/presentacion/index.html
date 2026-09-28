@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Presentación institucional de PetCare Enterprise — Plataforma multi-tenant de gestión clínica veterinaria">
+  <title th:text="${valueProposition.brandName + ' — Presentación y Arquitectura Clínica'}">PetCare Enterprise — Presentación</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link th:href="@{/presentacion-assets/css/presentacion.css}" href="/presentacion-assets/css/presentacion.css" rel="stylesheet">
+</head>
+<body class="pc-landing-body">
+
+  <div th:replace="~{presentacion/fragments/header :: siteHeader(${valueProposition}, ${productPhase}, ${navigationLinks})}"></div>
+
+  <main id="contenido-principal">
+    <!-- HERO CON PROPUESTA DE VALOR -->
+    <section class="pc-hero-section py-4 py-md-5 border-bottom" aria-labelledby="hero-heading">
+      <div class="container">
+        <div class="row g-4 g-lg-5 align-items-stretch">
+          <div class="col-12 col-lg-7 d-flex flex-column justify-content-between">
+            <div>
+              <div class="d-inline-flex align-items-center gap-2 px-3 py-1 mb-3 pc-eyebrow-pill">
+                <span class="pc-status-dot" aria-hidden="true"></span>
+                <span class="small fw-semibold text-uppercase" th:text="${valueProposition.eyebrow}">Plataforma Multi-Tenant</span>
+              </div>
+
+              <h1 id="hero-heading" class="pc-hero-title mb-3" th:text="${valueProposition.headline}">
+                Operación clínica veterinaria con aislamiento por clínica, agenda verificada y trazabilidad auditable
+              </h1>
+
+              <p class="pc-hero-lead text-secondary mb-4" th:text="${valueProposition.lead}">
+                Descripción principal de la propuesta de valor.
+              </p>
+
+              <div class="d-flex flex-column flex-sm-row flex-wrap gap-2 mb-4">
+                <a class="btn btn-primary btn-lg pc-touch-target"
+                   th:href="${valueProposition.loginUrl}">
+                  Ingresar al sistema
+                </a>
+                <button type="button"
+                        class="btn btn-outline-primary btn-lg pc-touch-target"
+                        data-bs-toggle="modal"
+                        data-bs-target="#mvpStatusModal">
+                  Estado actual del MVP
+                </button>
+              </div>
+            </div>
+
+            <div class="pc-editorial-note p-3 mt-2">
+              <p class="small mb-0 text-secondary" th:text="${valueProposition.institutionalNote}">
+                Renderizado server-side mediante Spring MVC y Thymeleaf.
+              </p>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-5">
+            <aside class="pc-folio-panel h-100 p-4 d-flex flex-column justify-content-between"
+                   aria-labelledby="folio-phase-heading">
+              <div>
+                <div class="d-flex justify-content-between align-items-start gap-2 pb-3 mb-3 border-bottom">
+                  <div>
+                    <p class="small text-uppercase fw-semibold text-primary mb-1">Folio de Fase Actual</p>
+                    <h2 id="folio-phase-heading" class="h4 mb-0" th:text="${productPhase.phaseCode}">
+                      MVP Universitario · Segundo Avance
+                    </h2>
+                  </div>
+                  <span class="badge pc-badge-implemented">Verificado</span>
+                </div>
+
+                <p class="fw-semibold mb-2" th:text="${productPhase.phaseTitle}">
+                  Base multi-tenant, seguridad RBAC, propietarios, pacientes y ciclo de agenda implementados
+                </p>
+                <p class="small text-secondary mb-3" th:text="${productPhase.summary}">
+                  Resumen del estado del producto.
+                </p>
+                <div class="pc-folio-callout p-3 mb-3">
+                  <p class="small fw-semibold mb-1 text-uppercase">Evidencia técnica</p>
+                  <p class="small text-secondary mb-0" th:text="${productPhase.verificationSummary}">
+                    Persistencia versionada con Flyway V1 a V14.
+                  </p>
+                </div>
+              </div>
+
+              <div class="pt-3 border-top d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <a class="pc-inline-link small fw-semibold text-decoration-none"
+                   th:href="@{#modulos-implementados}">
+                  Explorar módulos activos &rarr;
+                </a>
+                <a class="pc-inline-link small fw-semibold text-decoration-none"
+                   th:href="${valueProposition.loginUrl}">
+                  Ir al acceso clínico &rarr;
+                </a>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BENEFICIOS ARQUITECTÓNICOS Y OPERATIVOS -->
+    <section id="beneficios" class="py-4 py-md-5 border-bottom" aria-labelledby="beneficios-heading">
+      <div class="container">
+        <div class="row mb-4 align-items-end">
+          <div class="col-12 col-lg-8">
+            <p class="text-uppercase text-primary fw-semibold small mb-1">Principios de Ingeniería Clínica</p>
+            <h2 id="beneficios-heading" class="h2 mb-2">Beneficios de una base multi-tenant disciplinada</h2>
+            <p class="text-secondary mb-0">
+              Cada decisión de diseño prioriza la integridad del expediente, la separación entre clínicas y la claridad operativa del personal veterinario.
+            </p>
+          </div>
+        </div>
+
+        <div class="row g-3 g-md-4">
+          <div class="col-12 col-md-6" th:each="benefit : ${benefits}">
+            <article class="pc-benefit-surface h-100 p-4 d-flex flex-column justify-content-between">
+              <div>
+                <p class="pc-folio-tag mb-2" th:text="${benefit.folio}">01 · AISLAMIENTO</p>
+                <h3 class="h5 mb-2" th:text="${benefit.title}">Frontera multi-tenant no negociable</h3>
+                <p class="text-secondary small mb-3" th:text="${benefit.summary}">
+                  Descripción del beneficio.
+                </p>
+              </div>
+              <div class="pt-2 border-top">
+                <p class="small mb-0 pc-mono-note" th:text="${benefit.architecturalPrinciple}">
+                  Principio arquitectónico aplicado
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MÓDULOS ACTUALMENTE IMPLEMENTADOS -->
+    <section id="modulos-implementados" class="py-4 py-md-5 border-bottom" aria-labelledby="implementados-heading">
+      <div class="container">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+          <div>
+            <p class="text-uppercase text-primary fw-semibold small mb-1">Alcance Funcional Operativo</p>
+            <h2 id="implementados-heading" class="h2 mb-1">Módulos actualmente implementados</h2>
+            <p class="text-secondary mb-0">
+              Capacidades reales construidas, protegidas por permisos y validadas mediante pruebas automatizadas sobre PostgreSQL 18.
+            </p>
+          </div>
+          <div>
+            <span class="badge pc-badge-implemented px-3 py-2">
+              Estado: Operativo en el MVP actual (HU-005 a HU-018)
+            </span>
+          </div>
+        </div>
+
+        <div class="row g-3 g-md-4">
+          <div class="col-12 col-lg-6" th:each="module : ${implementedModules}">
+            <article class="pc-module-card h-100 p-4">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <span class="pc-folio-tag" th:text="${module.folio + ' · ' + module.stories}">MÓDULO 01 · HU-005</span>
+                <span class="badge pc-badge-implemented" th:text="${'✓ ' + module.statusLabel}">✓ Implementado</span>
+              </div>
+              <h3 class="h5 mb-2" th:text="${module.name}">Nombre del módulo</h3>
+              <p class="text-secondary small mb-3" th:text="${module.description}">
+                Descripción funcional del módulo implementado.
+              </p>
+              <ul class="pc-feature-list small mb-0 ps-3">
+                <li class="mb-1" th:each="point : ${module.highlights}" th:text="${point}">
+                  Punto destacado del módulo.
+                </li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROADMAP PRÓXIMO ("PRÓXIMAMENTE") -->
+    <section id="roadmap-proximo" class="py-4 py-md-5 border-bottom" aria-labelledby="roadmap-heading">
+      <div class="container">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+          <div>
+            <p class="text-uppercase fw-semibold small mb-1 pc-warning-eyebrow">Evolución Planificada del MVP</p>
+            <h2 id="roadmap-heading" class="h2 mb-1">Funcionalidades en hoja de ruta (Próximamente)</h2>
+            <p class="text-secondary mb-0">
+              Módulos definidos en el modelo de dominio y backlog del MVP cuya implementación corresponde a las siguientes entregas académicas.
+            </p>
+          </div>
+          <div>
+            <span class="badge pc-badge-upcoming px-3 py-2">
+              Planificado · No activo en esta entrega
+            </span>
+          </div>
+        </div>
+
+        <div class="row g-3 g-md-4">
+          <div class="col-12 col-md-6" th:each="upcoming : ${upcomingModules}">
+            <article class="pc-upcoming-card h-100 p-4 d-flex flex-column justify-content-between">
+              <div>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                  <span class="pc-folio-tag" th:text="${upcoming.folio}">ROADMAP 01</span>
+                  <span class="badge pc-badge-upcoming" th:text="${'◷ ' + upcoming.badgeLabel}">◷ Próximamente</span>
+                </div>
+                <h3 class="h5 mb-2" th:text="${upcoming.name}">Consultas clínicas completas</h3>
+                <p class="text-secondary small mb-3" th:text="${upcoming.description}">
+                  Descripción de la funcionalidad futura.
+                </p>
+              </div>
+              <div class="pt-2 border-top">
+                <p class="small text-secondary mb-0">
+                  <strong>Etapa prevista:</strong> <span th:text="${upcoming.sprintTarget}">Sprint 2</span>
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ARQUITECTURA Y STACK TECNOLÓGICO -->
+    <section id="arquitectura-stack" class="py-4 py-md-5" aria-labelledby="stack-heading">
+      <div class="container">
+        <div class="row mb-4">
+          <div class="col-12 col-lg-8">
+            <p class="text-uppercase text-primary fw-semibold small mb-1">Especificación Técnica Aprobada</p>
+            <h2 id="stack-heading" class="h2 mb-2">Arquitectura y stack tecnológico</h2>
+            <p class="text-secondary mb-0">
+              Monolito modular con Clean Architecture, frontera estricta entre módulos y coexistencia limpia entre vistas server-side (Thymeleaf) y aplicación clínica REST.
+            </p>
+          </div>
+        </div>
+
+        <div class="pc-stack-ledger mb-4">
+          <div class="row g-0 border-bottom pc-stack-row" th:each="item : ${technologyStack}">
+            <div class="col-12 col-md-3 p-3 pc-stack-layer">
+              <span class="small text-uppercase fw-semibold" th:text="${item.layer}">Capa</span>
+            </div>
+            <div class="col-12 col-md-4 p-3 pc-stack-tech">
+              <strong class="d-block" th:text="${item.technology}">Tecnología</strong>
+            </div>
+            <div class="col-12 col-md-5 p-3">
+              <span class="small text-secondary" th:text="${item.responsibility}">Responsabilidad en el sistema</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pc-cta-banner p-4 p-md-5 d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-4">
+          <div>
+            <p class="text-uppercase fw-semibold small mb-1 pc-cta-eyebrow">Entorno Clínico Operativo</p>
+            <h3 class="h4 mb-2 text-white">Accede al sistema con las credenciales de tu clínica</h3>
+            <p class="mb-0 pc-cta-subtext">
+              Inicia sesión en la consola clínica para gestionar usuarios, propietarios, pacientes y agenda por sede.
+            </p>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-light btn-lg fw-semibold pc-touch-target"
+               th:href="${valueProposition.loginUrl}">
+              Ingresar al sistema
+            </a>
+            <button type="button"
+                    class="btn btn-outline-light btn-lg pc-touch-target"
+                    data-bs-toggle="modal"
+                    data-bs-target="#mvpStatusModal">
+              Estado actual del MVP
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL BOOTSTRAP: ESTADO ACTUAL DEL MVP -->
+  <div class="modal fade" id="mvpStatusModal" tabindex="-1"
+       aria-labelledby="mvpStatusModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content pc-modal-surface">
+        <div class="modal-header border-bottom">
+          <div>
+            <p class="text-uppercase text-primary fw-semibold small mb-0" th:text="${productPhase.phaseCode}">
+              MVP Universitario
+            </p>
+            <h2 class="modal-title h4 mb-0" id="mvpStatusModalLabel">Estado actual del MVP</h2>
+          </div>
+          <button type="button" class="btn-close pc-touch-target" data-bs-dismiss="modal" aria-label="Cerrar ventana modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="fw-semibold mb-2" th:text="${productPhase.phaseTitle}">
+            Título de la fase actual
+          </p>
+          <p class="text-secondary small mb-4" th:text="${productPhase.summary}">
+            Descripción detallada de la fase actual del MVP.
+          </p>
+
+          <h3 class="h6 text-uppercase fw-semibold mb-2">Entregables verificados en esta versión</h3>
+          <ul class="small text-secondary mb-4 ps-3">
+            <li class="mb-2" th:each="deliverable : ${productPhase.modalDeliverables}" th:text="${deliverable}">
+              Entregable verificado.
+            </li>
+          </ul>
+
+          <h3 class="h6 text-uppercase fw-semibold mb-2">Límites transparentes del alcance actual</h3>
+          <ul class="small text-secondary mb-0 ps-3">
+            <li class="mb-2" th:each="boundary : ${productPhase.modalScopeBoundaries}" th:text="${boundary}">
+              Límite del alcance.
+            </li>
+          </ul>
+        </div>
+        <div class="modal-footer border-top d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-secondary pc-touch-target" data-bs-dismiss="modal">
+            Cerrar
+          </button>
+          <a class="btn btn-primary pc-touch-target" th:href="${valueProposition.loginUrl}">
+            Ingresar al sistema
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div th:replace="~{presentacion/fragments/footer :: siteFooter(${valueProposition}, ${productPhase}, ${navigationLinks})}"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

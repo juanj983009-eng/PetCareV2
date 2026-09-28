@@ -17,7 +17,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 
 @Configuration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-class SecurityConfiguration {
+public class SecurityConfiguration {
 
     @Bean
     SecurityFilterChain securityFilterChain(
@@ -30,6 +30,7 @@ class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/presentacion", "/presentacion/", "/presentacion-assets/**").permitAll()
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/platform/tenants").hasAuthority("PLATFORM_TENANT_CREATE")
                         .requestMatchers(HttpMethod.GET, "/api/v1/owners", "/api/v1/owners/**")

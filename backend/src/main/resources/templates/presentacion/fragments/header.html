@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<body>
+  <header th:fragment="siteHeader(valueProposition, productPhase, navigationLinks)"
+          class="pc-landing-header sticky-top border-bottom">
+    <a class="visually-hidden-focusable pc-skip-link" href="#contenido-principal">
+      Saltar al contenido principal
+    </a>
+    <nav class="navbar navbar-expand-lg py-2 py-lg-3" aria-label="Navegación principal de presentación">
+      <div class="container">
+        <a class="navbar-brand d-flex align-items-center gap-2 text-decoration-none py-1"
+           th:href="${valueProposition.presentationUrl}">
+          <span class="pc-brand-mark" aria-hidden="true">P</span>
+          <span>
+            <span class="d-block pc-brand-title h5 mb-0" th:text="${valueProposition.brandName}">PetCare Enterprise</span>
+            <span class="d-block pc-brand-subtitle" th:text="${valueProposition.folioCode}">FOLIO UI-002</span>
+          </span>
+        </a>
+
+        <button class="navbar-toggler pc-touch-target" type="button"
+                data-bs-toggle="collapse" data-bs-target="#landingNavbar"
+                aria-controls="landingNavbar" aria-expanded="false"
+                aria-label="Alternar menú de navegación">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="landingNavbar">
+          <ul class="navbar-nav mx-lg-auto my-2 my-lg-0 gap-lg-1">
+            <li class="nav-item" th:each="item : ${navigationLinks}">
+              <a class="nav-link pc-nav-link px-lg-3"
+                 th:href="${item.href}"
+                 th:text="${item.label}">Sección</a>
+            </li>
+          </ul>
+
+          <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-lg-center gap-2 pt-2 pt-lg-0">
+            <button type="button"
+                    class="btn btn-outline-primary pc-touch-target"
+                    data-bs-toggle="modal"
+                    data-bs-target="#mvpStatusModal">
+              Estado actual del MVP
+            </button>
+            <a class="btn btn-primary pc-touch-target"
+               th:href="${valueProposition.loginUrl}">
+              Ingresar al sistema
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+</body>
+</html>
