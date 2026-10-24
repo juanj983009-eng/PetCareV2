@@ -90,6 +90,15 @@ class ArchitectureTest {
             .allowEmptyShould(true)
             .because("tenancy must use the explicit audit application interface");
 
+    @ArchTest
+    static final ArchRule clinical_does_not_access_appointments_infrastructure_or_presentation = noClasses()
+            .that().resideInAPackage("..clinical..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..appointments.infrastructure..",
+                    "..appointments.presentation..")
+            .allowEmptyShould(true)
+            .because("clinical must coordinate with appointments only through explicit application interfaces");
+
     private ArchitectureTest() {
     }
 }

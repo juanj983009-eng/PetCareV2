@@ -382,8 +382,8 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
   let items = [
     {
       id: apptProgramada,
-      startsAt: "2026-09-28T14:00:00Z",
-      endsAt: "2026-09-28T14:30:00Z",
+      startsAt: "2099-09-28T14:00:00Z",
+      endsAt: "2099-09-28T14:30:00Z",
       appointmentType: "CONSULTA_GENERAL",
       status: "PROGRAMADA",
       patientId: "33333333-3333-4333-8333-333333333333",
@@ -395,8 +395,8 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
     },
     {
       id: apptConfirmada,
-      startsAt: "2026-09-28T15:00:00Z",
-      endsAt: "2026-09-28T15:30:00Z",
+      startsAt: "2099-09-28T15:00:00Z",
+      endsAt: "2099-09-28T15:30:00Z",
       appointmentType: "CONTROL",
       status: "CONFIRMADA",
       patientId: "44444444-4444-4444-8444-444444444444",
@@ -408,8 +408,8 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
     },
     {
       id: apptEnEspera,
-      startsAt: "2026-09-28T16:00:00Z",
-      endsAt: "2026-09-28T16:30:00Z",
+      startsAt: "2099-09-28T16:00:00Z",
+      endsAt: "2099-09-28T16:30:00Z",
       appointmentType: "VACUNACION",
       status: "EN_ESPERA",
       patientId: "55555555-5555-4555-8555-555555555555",
@@ -480,7 +480,7 @@ test("HU-017: oculta acciones sin APPOINTMENT_STATUS_UPDATE y muestra botones se
   // 2. Recepcionista con APPOINTMENT_STATUS_UPDATE: ve acciones según estado
   controller.sessionReady({ authorities: ["APPOINTMENT_READ", "APPOINTMENT_STATUS_UPDATE"] });
   await controller.openAppointmentsView();
-  document.querySelector("#appointment-date-filter").value = "2026-09-28";
+  document.querySelector("#appointment-date-filter").value = "2099-09-28";
   document.querySelector("#appointment-branch-filter").value = branchA;
   document.querySelector("#appointment-veterinarian-filter").value = vetAna;
   document.querySelector("#appointment-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
@@ -626,7 +626,7 @@ test("HU-019: marca inasistencia solo en citas vencidas sin atención y actualiz
   const noShowButton = rows[0].querySelector('[data-target-status="NO_ASISTIO"]');
   noShowButton.click();
   noShowButton.click();
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await new Promise((resolve) => setTimeout(resolve, 120));
   assert(patchCalls.length === 1, "El doble clic no debe enviar dos cambios de estado");
   assert(patchCalls[0].url === `/api/v1/appointments/${items[0].id}/status`, "Debe usar el endpoint existente");
   assert(patchCalls[0].body.status === "NO_ASISTIO", "Debe enviar el estado NO_ASISTIO");
@@ -804,12 +804,12 @@ test("HU-018: reprograma y cancela citas según permisos/estado, maneja 409 con 
   rows[1].querySelector('[data-action="reschedule-appointment"]').click();
   await new Promise((r) => setTimeout(r, 15));
 
-  document.querySelector("#appointment-reschedule-branch-id").value = branchB;
-  document.querySelector("#appointment-reschedule-branch-id").dispatchEvent(new Event("change"));
-  document.querySelector("#appointment-reschedule-veterinarian-id").value = vetCarlos;
-  document.querySelector("#appointment-reschedule-date").value = "2026-09-28";
-  document.querySelector("#appointment-reschedule-start-time").value = "11:00";
-  document.querySelector("#appointment-reschedule-end-time").value = "11:45";
+  document.querySelector("#reschedule-branch-id").value = branchB;
+  document.querySelector("#reschedule-branch-id").dispatchEvent(new Event("change"));
+  document.querySelector("#reschedule-veterinarian-id").value = vetCarlos;
+  document.querySelector("#reschedule-date").value = "2026-09-28";
+  document.querySelector("#reschedule-start-time").value = "11:00";
+  document.querySelector("#reschedule-end-time").value = "11:45";
 
   failNextReschedule = true;
   const reschedForm = document.querySelector("#appointment-reschedule-form");
@@ -823,7 +823,7 @@ test("HU-018: reprograma y cancela citas según permisos/estado, maneja 409 con 
   putCalls.length = 0;
   reschedForm.dispatchEvent(new Event("submit", { cancelable: true }));
   reschedForm.dispatchEvent(new Event("submit", { cancelable: true }));
-  assert(document.querySelector("#save-reschedule-appointment-button").disabled === true, "Debe deshabilitar botón Guardar reprogramación mientras envía");
+  assert(document.querySelector("#save-reschedule-button").disabled === true, "Debe deshabilitar botón Guardar reprogramación mientras envía");
   await new Promise((r) => setTimeout(r, 60));
 
   assert(putCalls.length === 1, `Doble submit en reprogramar debe enviar 1 PUT (enviados: ${putCalls.length})`);
@@ -854,6 +854,363 @@ test("HU-018: reprograma y cancela citas según permisos/estado, maneja 409 con 
   assert(document.querySelector("#appointments-status-indicators").textContent.includes("En espera: 0"), "Tras cancelar EN_ESPERA debe actualizar En espera: 0");
   const lastSearchUrl = searchUrls[searchUrls.length - 1];
   assert(lastSearchUrl.includes(`branchId=${branchA}`), "Debe preservar filtro branchId al refrescar agenda");
+
+  controller.sessionEnded();
+});
+
+test("HU-020: muestra Iniciar consulta solo en EN_ESPERA para el veterinario con CONSULTATION_CREATE, maneja errores, bloquea doble envío y actualiza agenda", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const vet1 = "22222222-2222-4222-8222-222222222222";
+  const vet2 = "33333333-3333-4333-8333-333333333333";
+  const apptWaitingOwn = "aa000001-0000-4000-8000-000000000001";
+  const apptWaitingOtherVet = "aa000002-0000-4000-8000-000000000002";
+  const apptConfirmed = "aa000003-0000-4000-8000-000000000003";
+
+  let items = [
+    {
+      id: apptWaitingOwn,
+      startsAt: "2026-09-28T14:00:00Z",
+      endsAt: "2026-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "EN_ESPERA",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Thor",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet1,
+      veterinarianFullName: "Dra. Elena Rojas"
+    },
+    {
+      id: apptWaitingOtherVet,
+      startsAt: "2026-09-28T14:30:00Z",
+      endsAt: "2026-09-28T15:00:00Z",
+      appointmentType: "CONTROL",
+      status: "EN_ESPERA",
+      patientId: "66666666-6666-4666-8666-666666666666",
+      patientName: "Milo",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet2,
+      veterinarianFullName: "Dr. Marco Silva"
+    },
+    {
+      id: apptConfirmed,
+      startsAt: "2026-09-28T15:00:00Z",
+      endsAt: "2026-09-28T15:30:00Z",
+      appointmentType: "VACUNACION",
+      status: "CONFIRMADA",
+      patientId: "77777777-7777-4777-8777-777777777777",
+      patientName: "Luna",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet1,
+      veterinarianFullName: "Dra. Elena Rojas"
+    }
+  ];
+
+  const postCalls = [];
+  let failOnce = true;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      async requestJson(url, options = {}) {
+        if (options.method === "POST" && url.endsWith("/consultation")) {
+          postCalls.push({ url });
+          await new Promise((r) => setTimeout(r, 25));
+          if (failOnce) {
+            failOnce = false;
+            throw new ApiRequestError({
+              kind: "HTTP",
+              status: 409,
+              code: "INVALID_APPOINTMENT_STATUS_TRANSITION",
+              message: "La cita cambió de estado concurrentemente.",
+              correlationId: "corr-hu020-409"
+            });
+          }
+          items = items.map((item) => item.id === apptWaitingOwn ? { ...item, status: "EN_ATENCION" } : item);
+          return {
+            id: "cc000001-0000-4000-8000-000000000001",
+            appointmentId: apptWaitingOwn,
+            appointmentStatus: "EN_ATENCION",
+            patientId: "55555555-5555-4555-8555-555555555555",
+            patientName: "Thor",
+            medicalRecordId: "dd000001-0000-4000-8000-000000000001",
+            branchId: branchA,
+            branchName: "Sede Principal",
+            veterinarianId: vet1,
+            veterinarianFullName: "Dra. Elena Rojas",
+            status: "BORRADOR",
+            startedAt: "2026-09-28T14:05:00Z"
+          };
+        }
+        if (url.startsWith("/api/v1/appointments/options")) {
+          return {
+            branches: [{ id: branchA, name: "Sede Principal", timeZone: "America/Lima" }],
+            veterinarians: [
+              { id: vet1, fullName: "Dra. Elena Rojas", branchIds: [branchA] },
+              { id: vet2, fullName: "Dr. Marco Silva", branchIds: [branchA] }
+            ]
+          };
+        }
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: items.length,
+          totalPages: 1,
+          scheduledCount: items.filter((item) => item.status === "PROGRAMADA").length,
+          confirmedCount: items.filter((item) => item.status === "CONFIRMADA").length,
+          waitingCount: items.filter((item) => item.status === "EN_ESPERA").length,
+          noShowCount: items.filter((item) => item.status === "NO_ASISTIO").length
+        };
+      }
+    }
+  });
+
+  // 1. Sin CONSULTATION_CREATE (ej. RECEPCIONISTA) no se muestra "Iniciar consulta"
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "APPOINTMENT_STATUS_UPDATE"]
+  });
+  await controller.openAppointmentsView();
+  assert(document.querySelectorAll('[data-action="start-consultation"]').length === 0,
+    "Sin CONSULTATION_CREATE no debe renderizar botón Iniciar consulta");
+
+  // 2. Con CONSULTATION_CREATE (VETERINARIO vet1) solo aparece en EN_ESPERA asignada a vet1 (escritorio y móvil)
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_CREATE"]
+  });
+  await controller.openAppointmentsView();
+
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  const initialStartBtn = rows[0].querySelector('[data-action="start-consultation"]');
+  assert(initialStartBtn !== null,
+    "Fila EN_ESPERA asignada al veterinario autenticado debe mostrar Iniciar atención");
+  assert(initialStartBtn.textContent.trim() === "Iniciar atención",
+    "El botón debe mostrar exactamente el texto 'Iniciar atención'");
+  assert(rows[1].querySelector('[data-action="start-consultation"]') === null,
+    "Fila EN_ESPERA asignada a otro veterinario no debe mostrar Iniciar consulta");
+  assert(rows[2].querySelector('[data-action="start-consultation"]') === null,
+    "Fila CONFIRMADA no debe mostrar Iniciar consulta");
+
+  const mobileStartButtons = document.querySelectorAll('#appointments-cards [data-action="start-consultation"]');
+  assert(mobileStartButtons.length === 1,
+    "Las tarjetas móviles deben mostrar exactamente 1 botón Iniciar consulta para la cita EN_ESPERA propia");
+
+  // 3. Primer clic falla con 409: muestra error accesible con correlationId y restaura botón
+  const startBtn = rows[0].querySelector('[data-action="start-consultation"]');
+  startBtn.click();
+  await new Promise((r) => setTimeout(r, 40));
+  const statusErrorEl = document.querySelector("#appointments-status-error");
+  assert(statusErrorEl.hidden === false, "Debe mostrar error accesible al fallar inicio de consulta");
+  assert(statusErrorEl.textContent.includes("corr-hu020-409"), "Error debe incluir correlationId");
+
+  // 4. Doble clic envía una sola solicitud POST, muestra confirmación accesible y pasa cita a EN_ATENCION
+  postCalls.length = 0;
+  const retryBtn = document.querySelector('#appointments-table-body [data-action="start-consultation"]');
+  retryBtn.click();
+  retryBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert(postCalls.length === 1, `Doble clic debe enviar 1 POST (enviados: ${postCalls.length})`);
+  assert(postCalls[0].url === `/api/v1/appointments/${apptWaitingOwn}/consultation`,
+    "Debe invocar POST /api/v1/appointments/{id}/consultation");
+
+  const noticeEl = document.querySelector("#appointments-notice");
+  assert(noticeEl.hidden === false, "Debe mostrar confirmación accesible tras iniciar consulta");
+  assert(noticeEl.textContent.includes("Thor") && noticeEl.textContent.includes("borrador"),
+    "Confirmación debe indicar que la consulta en borrador fue iniciada para el paciente");
+  assert(document.querySelector("#appointments-table-body").textContent.includes("En atención"),
+    "La agenda debe actualizar el estado de la cita a En atención");
+  assert(document.querySelector("#appointments-status-indicators").textContent.includes("En espera: 1"),
+    "El indicador En espera debe disminuir tras pasar la cita a En atención");
+
+  controller.sessionEnded();
+});
+
+test("HU-020: oculta Iniciar consulta si falta userId en sesión o veterinarianId en la cita", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const vet1 = "22222222-2222-4222-8222-222222222222";
+  const apptWithVet = "aa000001-0000-4000-8000-000000000001";
+  const apptWithoutVet = "aa000002-0000-4000-8000-000000000002";
+
+  const items = [
+    {
+      id: apptWithVet,
+      startsAt: "2099-09-28T14:00:00Z",
+      endsAt: "2099-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "EN_ESPERA",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Thor",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet1,
+      veterinarianFullName: "Dra. Elena Rojas"
+    },
+    {
+      id: apptWithoutVet,
+      startsAt: "2099-09-28T14:30:00Z",
+      endsAt: "2099-09-28T15:00:00Z",
+      appointmentType: "CONTROL",
+      status: "EN_ESPERA",
+      patientId: "66666666-6666-4666-8666-666666666666",
+      patientName: "Milo",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: null,
+      veterinarianFullName: "Sin asignar"
+    }
+  ];
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      async requestJson(url) {
+        if (url.startsWith("/api/v1/appointments/options")) {
+          return {
+            branches: [{ id: branchA, name: "Sede Principal", timeZone: "America/Lima" }],
+            veterinarians: [{ id: vet1, fullName: "Dra. Elena Rojas", branchIds: [branchA] }]
+          };
+        }
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: items.length,
+          totalPages: 1,
+          scheduledCount: 0,
+          confirmedCount: 0,
+          waitingCount: 2,
+          noShowCount: 0
+        };
+      }
+    }
+  });
+
+  // 1. Sesión con CONSULTATION_CREATE pero sin userId: no muestra Iniciar consulta en ninguna cita
+  controller.sessionReady({
+    userId: null,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_CREATE"]
+  });
+  await controller.openAppointmentsView();
+  assert(document.querySelectorAll('[data-action="start-consultation"]').length === 0,
+    "Sin userId en sesión no debe renderizar Iniciar consulta aunque tenga CONSULTATION_CREATE");
+
+  // 2. Sesión con userId pero cita sin veterinarianId: no muestra Iniciar consulta en la cita sin vet
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_CREATE"]
+  });
+  await controller.openAppointmentsView();
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  assert(rows[0].querySelector('[data-action="start-consultation"]') !== null,
+    "Cita con veterinarianId coincidente debe mostrar Iniciar consulta");
+  assert(rows[1].querySelector('[data-action="start-consultation"]') === null,
+    "Cita sin veterinarianId no debe mostrar Iniciar consulta");
+
+  controller.sessionEnded();
+});
+
+test("HU-020: conserva confirmación de consulta y muestra error de agenda por separado si falla la recarga tras 201", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const vet1 = "22222222-2222-4222-8222-222222222222";
+  const apptId = "aa000001-0000-4000-8000-000000000001";
+
+  const items = [
+    {
+      id: apptId,
+      startsAt: "2099-09-28T14:00:00Z",
+      endsAt: "2099-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "EN_ESPERA",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Thor",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet1,
+      veterinarianFullName: "Dra. Elena Rojas"
+    }
+  ];
+
+  let postSucceeded = false;
+  let failReload = false;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      async requestJson(url, options = {}) {
+        if (options.method === "POST" && url.endsWith("/consultation")) {
+          postSucceeded = true;
+          failReload = true;
+          return {
+            id: "cc000001-0000-4000-8000-000000000001",
+            appointmentId: apptId,
+            appointmentStatus: "EN_ATENCION",
+            patientId: "55555555-5555-4555-8555-555555555555",
+            patientName: "Thor",
+            status: "BORRADOR"
+          };
+        }
+        if (url.startsWith("/api/v1/appointments/options")) {
+          return {
+            branches: [{ id: branchA, name: "Sede Principal", timeZone: "America/Lima" }],
+            veterinarians: [{ id: vet1, fullName: "Dra. Elena Rojas", branchIds: [branchA] }]
+          };
+        }
+        if (failReload) {
+          throw new ApiRequestError({
+            kind: "HTTP",
+            status: 500,
+            code: "SCHEDULE_LOAD_ERROR",
+            message: "Error de conexión al recargar agenda.",
+            correlationId: "corr-reload-500"
+          });
+        }
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: 1,
+          totalPages: 1,
+          scheduledCount: 0,
+          confirmedCount: 0,
+          waitingCount: 1,
+          noShowCount: 0
+        };
+      }
+    }
+  });
+
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_CREATE"]
+  });
+  await controller.openAppointmentsView();
+
+  const startBtn = document.querySelector('#appointments-table-body [data-action="start-consultation"]');
+  assert(startBtn !== null, "Debe existir botón Iniciar consulta");
+
+  startBtn.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert(postSucceeded, "El POST debió ejecutarse y responder 201/éxito");
+
+  const noticeEl = document.querySelector("#appointments-notice");
+  assert(noticeEl.hidden === false, "El mensaje de éxito de creación debe conservarse visible");
+  assert(noticeEl.textContent.includes("Thor") && noticeEl.textContent.includes("borrador"),
+    "El mensaje de éxito debe indicar que la consulta en borrador fue iniciada");
+
+  const statusErrorEl = document.querySelector("#appointments-status-error");
+  assert(statusErrorEl.hidden === false, "Debe mostrar error informando que falló la actualización de agenda");
+  assert(statusErrorEl.textContent.includes("no se pudo actualizar la agenda"),
+    "Debe indicar específicamente que la agenda no pudo actualizarse");
+  assert(!statusErrorEl.textContent.includes("No fue posible iniciar la consulta"),
+    "Nunca debe informar que falló el inicio de consulta tras un POST exitoso");
+  assert(statusErrorEl.textContent.includes("corr-reload-500"),
+    "El error de recarga debe incluir el correlationId");
 
   controller.sessionEnded();
 });

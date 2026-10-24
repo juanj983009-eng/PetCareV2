@@ -23,13 +23,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AppointmentScheduleService implements AppointmentScheduleUseCase {
+public class AppointmentScheduleService implements AppointmentScheduleUseCase, AppointmentConsultationGateway {
 
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_REASON_LENGTH = 500;
@@ -818,6 +819,85 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase {
                 query.page(),
                 query.size(),
                 "asc".equals(normalizedDirection));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AppointmentConsultationContext> findForConsultation(UUID tenantId, UUID appointmentId) {
+        Objects.requireNonNull(tenantId, "tenantId is required");
+        Objects.requireNonNull(appointmentId, "appointmentId is required");
+
+        Optional<AppointmentSummary> found = repository.findById(tenantId, appointmentId);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        AppointmentSummary current = found.get();
+        boolean branchActive = repository.findActiveBranchById(tenantId, current.branchId()).isPresent();
+        Optional<VeterinarianEligibility> vetEligibility = repository.findActiveUserEligibility(
+                tenantId,
+                current.veterinarianId(),
+                current.branchId());
+        boolean vetActiveAndAssigned = vetEligibility
+                .map(e -> e.hasVeterinarianRole() && e.assignedToBranch())
+                .orElse(false);
+
+        return Optional.of(new AppointmentConsultationContext(
+                current.id(),
+                tenantId,
+                current.branchId(),
+                current.branchName(),
+                branchActive,
+                current.patientId(),
+                current.veterinarianId(),
+                current.veterinarianFullName(),
+                vetActiveAndAssigned,
+                current.status(),
+                current.startsAt(),
+                current.endsAt()));
+    }
+
+    @Override
+    @Transactional
+    public boolean startAttention(StartAppointmentAttentionCommand command) {
+        Objects.requireNonNull(command, "command is required");
+        boolean updated = repository.updateStatusConditionally(
+                command.tenantId(),
+                command.appointmentId(),
+                AppointmentStatus.EN_ESPERA.name(),
+                AppointmentStatus.EN_ATENCION.name(),
+                command.occurredAt());
+        if (!updated) {
+            return false;
+        }
+
+        repository.insertStatusHistory(new AppointmentStatusHistoryRecord(
+                UUID.randomUUID(),
+                command.tenantId(),
+                command.appointmentId(),
+                AppointmentStatus.EN_ESPERA.name(),
+                AppointmentStatus.EN_ATENCION.name(),
+                command.actorUserId(),
+                command.occurredAt(),
+                command.correlationId()));
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                command.tenantId(),
+                command.actorUserId(),
+                command.branchId(),
+                "APPOINTMENT",
+                command.appointmentId(),
+                "APPOINTMENT_STATUS_CHANGED",
+                command.occurredAt(),
+                null,
+                command.correlationId(),
+                Map.of("status", AppointmentStatus.EN_ESPERA.name()),
+                Map.of(
+                        "appointmentId", command.appointmentId().toString(),
+                        "branchId", command.branchId().toString(),
+                        "previousStatus", AppointmentStatus.EN_ESPERA.name(),
+                        "newStatus", AppointmentStatus.EN_ATENCION.name())));
+        return true;
     }
 
     private static UUID parseOptionalUuid(String value, String field, String errorMessage) {

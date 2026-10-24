@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pruebas de arranque con HTML real de producción — PetCare Enterprise</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    .text-success { color: #196944; }
+    .text-danger { color: #9B2424; font-weight: 600; }
+    #test-summary { font-weight: bold; margin-bottom: 1rem; }
+    #iframe-container { border: 1px solid #ddd; margin-top: 1rem; }
+    iframe { width: 100%; height: 300px; border: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pruebas de arranque con HTML real de producción</h1>
+    <p id="test-summary" role="status">Ejecutando pruebas…</p>
+    <ol id="test-results"></ol>
+    <div id="iframe-container">
+      <iframe id="prod-iframe" src="../index.html"></iframe>
+    </div>
+  </main>
+  <script type="module" src="./app-startup.test.js"></script>
+</body>
+</html>

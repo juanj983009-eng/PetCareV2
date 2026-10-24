@@ -57,6 +57,8 @@ public class SecurityConfiguration {
                             .hasAuthority("APPOINTMENT_RESCHEDULE")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/appointments/*/cancellation")
                             .hasAuthority("APPOINTMENT_CANCEL")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/appointments/*/consultation")
+                            .hasAuthority("CONSULTATION_CREATE")
                         .requestMatchers("/api/v1/appointments", "/api/v1/appointments/**")
                             .hasAuthority("APPOINTMENT_CREATE")
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/roles", "/api/v1/roles/**")

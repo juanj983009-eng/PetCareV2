@@ -5,6 +5,7 @@ const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
 const APPOINTMENT_STATUS_UPDATE = "APPOINTMENT_STATUS_UPDATE";
 const APPOINTMENT_RESCHEDULE = "APPOINTMENT_RESCHEDULE";
 const APPOINTMENT_CANCEL = "APPOINTMENT_CANCEL";
+const CONSULTATION_CREATE = "CONSULTATION_CREATE";
 const PATIENT_READ = "PATIENT_READ";
 
 const APPOINTMENT_TYPE_LABELS = Object.freeze({
@@ -69,7 +70,9 @@ export function createAppointmentsController({
   let canUpdateStatus = false;
   let canReschedule = false;
   let canCancel = false;
+  let canStartConsultation = false;
   let canReadPatient = false;
+  let currentUserId = null;
   let searching = false;
   let savingAppointment = false;
   let reschedulingAppointment = false;
@@ -111,7 +114,7 @@ export function createAppointmentsController({
     d.form.addEventListener("submit", submitCreateAppointment);
   }
 
-  if (r) {
+  if (r && r.cancelButton && r.branchSelect && r.form) {
     r.cancelButton.addEventListener("click", closeRescheduleDialog);
     r.branchSelect.addEventListener("change", handleRescheduleBranchChange);
     r.form.addEventListener("submit", (event) => {
@@ -136,7 +139,11 @@ export function createAppointmentsController({
       canUpdateStatus = authorities.has(APPOINTMENT_STATUS_UPDATE);
       canReschedule = authorities.has(APPOINTMENT_RESCHEDULE);
       canCancel = authorities.has(APPOINTMENT_CANCEL);
+      canStartConsultation = authorities.has(CONSULTATION_CREATE);
       canReadPatient = authorities.has(PATIENT_READ);
+      currentUserId = typeof identity?.userId === "string" && identity.userId.trim()
+        ? identity.userId.trim()
+        : null;
       updatingAppointmentIds.clear();
       renderedItemsById.clear();
       reschedulingAppointmentId = null;
@@ -174,7 +181,9 @@ export function createAppointmentsController({
       canUpdateStatus = false;
       canReschedule = false;
       canCancel = false;
+      canStartConsultation = false;
       canReadPatient = false;
+      currentUserId = null;
       updatingAppointmentIds.clear();
       renderedItemsById.clear();
       reschedulingAppointmentId = null;
@@ -602,18 +611,18 @@ export function createAppointmentsController({
     await executeSearch(0);
   }
 
-  async function executeSearch(targetPage) {
-    if (!s || searching) return;
+  async function executeSearch(targetPage, options = {}) {
+    if (!s || searching) return false;
     if (!canRead) {
       setViewState("forbidden");
-      return;
+      return false;
     }
     const dateValue = s.dateFilter.value.trim();
     if (!isValidIsoDate(dateValue)) {
       s.dateFilter.setAttribute("aria-invalid", "true");
       s.validation.textContent = "Selecciona una fecha válida en formato YYYY-MM-DD para consultar la agenda.";
       setViewState("validation");
-      return;
+      return false;
     }
     s.dateFilter.removeAttribute("aria-invalid");
 
@@ -639,6 +648,7 @@ export function createAppointmentsController({
 
       const response = await client.requestJson(`/api/v1/appointments?${params.toString()}`);
       renderResults(response, dateValue);
+      return true;
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 403) {
         setViewState("forbidden");
@@ -653,6 +663,10 @@ export function createAppointmentsController({
         setViewState("error");
         s.error.focus({ preventScroll: true });
       }
+      if (options?.throwOnError) {
+        throw error;
+      }
+      return false;
     } finally {
       searching = false;
       s.submitButton.disabled = false;
@@ -762,6 +776,23 @@ export function createAppointmentsController({
       btn.disabled = isBusy;
       btn.textContent = action.label;
       buttons.push(btn);
+    }
+
+    if (
+      canStartConsultation
+      && item.status === "EN_ESPERA"
+      && currentUserId
+      && item.veterinarianId
+      && currentUserId === item.veterinarianId
+    ) {
+      const startConsultationBtn = document.createElement("button");
+      startConsultationBtn.type = "button";
+      startConsultationBtn.className = "btn btn-success btn-sm";
+      startConsultationBtn.dataset.action = "start-consultation";
+      startConsultationBtn.dataset.appointmentId = item.id;
+      startConsultationBtn.disabled = isBusy;
+      startConsultationBtn.textContent = "Iniciar atención";
+      buttons.push(startConsultationBtn);
     }
 
     if (canReschedule && (item.status === "PROGRAMADA" || item.status === "CONFIRMADA")) {
@@ -912,6 +943,12 @@ export function createAppointmentsController({
   }
 
   async function handleDelegatedClick(event) {
+    const startConsultationButton = event.target?.closest?.("[data-action='start-consultation']");
+    if (startConsultationButton) {
+      await handleStartConsultationClick(startConsultationButton);
+      return;
+    }
+
     const statusButton = event.target?.closest?.("[data-action='change-appointment-status']");
     if (statusButton) {
       await handleStatusChangeClick(statusButton);
@@ -1276,6 +1313,100 @@ export function createAppointmentsController({
     }
   }
 
+  async function handleStartConsultationClick(clickedButton) {
+    if (!s || !canStartConsultation) return;
+    const appointmentId = clickedButton.dataset.appointmentId;
+    if (!appointmentId || updatingAppointmentIds.has(appointmentId)) {
+      return;
+    }
+
+    updatingAppointmentIds.add(appointmentId);
+    if (s.notice) {
+      s.notice.hidden = true;
+    }
+    if (s.statusError) {
+      s.statusError.hidden = true;
+      s.statusError.textContent = "";
+    }
+
+    const item = renderedItemsById.get(appointmentId);
+    const relatedButtons = Array.from(
+      s.view.querySelectorAll(`[data-appointment-id="${appointmentId}"]`)
+    );
+    const originalLabels = new Map();
+    for (const btn of relatedButtons) {
+      originalLabels.set(btn, btn.textContent);
+      btn.disabled = true;
+      if (btn.dataset.action === "start-consultation") {
+        btn.setAttribute("aria-busy", "true");
+        btn.textContent = "Iniciando consulta...";
+      }
+    }
+
+    let consultation = null;
+    try {
+      consultation = await client.requestJson(`/api/v1/appointments/${appointmentId}/consultation`, {
+        method: "POST"
+      });
+    } catch (error) {
+      updatingAppointmentIds.delete(appointmentId);
+      for (const [btn, label] of originalLabels.entries()) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+        btn.textContent = label;
+      }
+      const baseMessage = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible iniciar la consulta.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+      if (s.statusError) {
+        s.statusError.textContent = `${baseMessage}${correlationSuffix}`;
+        s.statusError.hidden = false;
+        s.statusError.focus({ preventScroll: true });
+      }
+      return;
+    } finally {
+      updatingAppointmentIds.delete(appointmentId);
+    }
+
+    if (s.notice) {
+      const patientLabel = consultation?.patientName || item?.patientName || "el paciente";
+      s.notice.textContent = `Consulta en borrador iniciada para ${patientLabel}. Cita en atención.`;
+      s.notice.hidden = false;
+    }
+
+    if (canRead) {
+      try {
+        const refreshed = await executeSearch(page, { throwOnError: true });
+        if (!refreshed && s.statusError && s.statusError.hidden) {
+          const detail = s.errorMessage?.textContent || "No fue posible actualizar la agenda de citas.";
+          s.statusError.textContent = `La consulta se inició correctamente, pero no se pudo actualizar la agenda: ${detail}`;
+          s.statusError.hidden = false;
+          s.statusError.focus({ preventScroll: true });
+        }
+      } catch (reloadError) {
+        for (const [btn, label] of originalLabels.entries()) {
+          btn.disabled = false;
+          btn.removeAttribute("aria-busy");
+          btn.textContent = label;
+        }
+        const reloadMessage = (reloadError instanceof ApiRequestError && reloadError.message)
+          ? reloadError.message
+          : (reloadError?.message || "No fue posible actualizar la agenda de citas.");
+        const correlationSuffix = (reloadError instanceof ApiRequestError && reloadError.correlationId)
+          ? ` (ID de correlación: ${reloadError.correlationId})`
+          : "";
+        if (s.statusError) {
+          s.statusError.textContent = `La consulta se inició correctamente, pero no se pudo actualizar la agenda: ${reloadMessage}${correlationSuffix}`;
+          s.statusError.hidden = false;
+          s.statusError.focus({ preventScroll: true });
+        }
+      }
+    }
+  }
+
   function setViewState(activeState) {
     if (!s) return;
     s.initial.hidden = activeState !== "initial";
@@ -1435,20 +1566,46 @@ function findRescheduleDialogElements(document) {
   if (!dialog) {
     return null;
   }
+  const form = document.querySelector("#appointment-reschedule-form");
+  const branchSelect = document.querySelector("#reschedule-branch-id, #appointment-reschedule-branch-id");
+  const branchTimeZone = document.querySelector("#reschedule-branch-timezone, #appointment-reschedule-branch-timezone");
+  const veterinarianSelect = document.querySelector("#reschedule-veterinarian-id, #appointment-reschedule-veterinarian-id");
+  const dateInput = document.querySelector("#reschedule-date, #appointment-reschedule-date");
+  const startTimeInput = document.querySelector("#reschedule-start-time, #appointment-reschedule-start-time");
+  const endTimeInput = document.querySelector("#reschedule-end-time, #appointment-reschedule-end-time");
+  const cancelButton = document.querySelector("#cancel-reschedule-button, #cancel-reschedule-appointment-button");
+  const saveButton = document.querySelector("#save-reschedule-button, #save-reschedule-appointment-button");
+  const summary = document.querySelector("#appointment-reschedule-summary");
+  const errorAlert = document.querySelector("#appointment-reschedule-error");
+  const validationAlert = document.querySelector("#appointment-reschedule-validation");
+
+  if (
+    !form
+    || !cancelButton
+    || !saveButton
+    || !branchSelect
+    || !veterinarianSelect
+    || !dateInput
+    || !startTimeInput
+    || !endTimeInput
+  ) {
+    return null;
+  }
+
   return {
     dialog,
-    form: document.querySelector("#appointment-reschedule-form"),
-    summary: document.querySelector("#appointment-reschedule-summary"),
-    errorAlert: document.querySelector("#appointment-reschedule-error"),
-    validationAlert: document.querySelector("#appointment-reschedule-validation"),
-    branchSelect: document.querySelector("#appointment-reschedule-branch-id"),
-    branchTimeZone: document.querySelector("#appointment-reschedule-branch-timezone"),
-    veterinarianSelect: document.querySelector("#appointment-reschedule-veterinarian-id"),
-    dateInput: document.querySelector("#appointment-reschedule-date"),
-    startTimeInput: document.querySelector("#appointment-reschedule-start-time"),
-    endTimeInput: document.querySelector("#appointment-reschedule-end-time"),
-    cancelButton: document.querySelector("#cancel-reschedule-appointment-button"),
-    saveButton: document.querySelector("#save-reschedule-appointment-button")
+    form,
+    summary,
+    errorAlert,
+    validationAlert,
+    branchSelect,
+    branchTimeZone,
+    veterinarianSelect,
+    dateInput,
+    startTimeInput,
+    endTimeInput,
+    cancelButton,
+    saveButton
   };
 }
 
