@@ -59,6 +59,9 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
     JdbcTemplate jdbc;
 
     @Autowired
+    javax.sql.DataSource dataSource;
+
+    @Autowired
     ObjectMapper objectMapper;
 
     @MockitoSpyBean
@@ -86,6 +89,7 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
             }
         }
         for (UUID tenantId : createdTenantIds) {
+            jdbc.update("DELETE FROM diagnoses WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM consultations WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM appointments WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM medical_records WHERE tenant_id = ?", tenantId);
@@ -1085,6 +1089,647 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 String.class,
                 consultationId);
         assertThat(rawDetails).contains("[1, 2, 3]");
+    }
+
+    // ==========================================
+    // HU-022: REGISTRAR DIAGNÓSTICOS
+    // ==========================================
+
+    @Test
+    void recordMultipleDiagnosesAndEditInDraftSuccessfully() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-ok");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // Start consultation
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 1. Add first diagnosis (PRESUNTIVO)
+        MvcResult addResult1 = mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Gastroenteritis aguda presuntiva",
+                                    "diagnosisType": "PRESUNTIVO",
+                                    "code": "K52.9",
+                                    "notes": "Requiere hemograma y coproparasitoscópico"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().exists("Location"))
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.consultationId").value(consultationId.toString()))
+                .andExpect(jsonPath("$.description").value("Gastroenteritis aguda presuntiva"))
+                .andExpect(jsonPath("$.diagnosisType").value("PRESUNTIVO"))
+                .andExpect(jsonPath("$.code").value("K52.9"))
+                .andExpect(jsonPath("$.notes").value("Requiere hemograma y coproparasitoscópico"))
+                .andReturn();
+
+        UUID diag1Id = UUID.fromString(objectMapper.readTree(
+                addResult1.getResponse().getContentAsString()).get("id").asText());
+
+        // 2. Add second diagnosis (DEFINITIVO)
+        MvcResult addResult2 = mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Deshidratación leve grado I",
+                                    "diagnosisType": "DEFINITIVO",
+                                    "code": null,
+                                    "notes": null
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.description").value("Deshidratación leve grado I"))
+                .andExpect(jsonPath("$.diagnosisType").value("DEFINITIVO"))
+                .andReturn();
+
+        UUID diag2Id = UUID.fromString(objectMapper.readTree(
+                addResult2.getResponse().getContentAsString()).get("id").asText());
+
+        // 3. List diagnoses of consultation (consultationId)
+        mvc.perform(get("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(diag1Id.toString()))
+                .andExpect(jsonPath("$[0].diagnosisType").value("PRESUNTIVO"))
+                .andExpect(jsonPath("$[1].id").value(diag2Id.toString()))
+                .andExpect(jsonPath("$[1].diagnosisType").value("DEFINITIVO"));
+
+        // 4. Edit first diagnosis while in BORRADOR
+        mvc.perform(put("/api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}", consultationId, diag1Id)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Gastroenteritis parasitaria confirmada",
+                                    "diagnosisType": "DEFINITIVO",
+                                    "code": "K52.9",
+                                    "notes": "Confirmado por coproparasitoscópico"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(diag1Id.toString()))
+                .andExpect(jsonPath("$.description").value("Gastroenteritis parasitaria confirmada"))
+                .andExpect(jsonPath("$.diagnosisType").value("DEFINITIVO"))
+                .andExpect(jsonPath("$.notes").value("Confirmado por coproparasitoscópico"));
+
+        // 5. Query diagnoses from patient history
+        mvc.perform(get("/api/v1/patients/{patientId}/diagnoses", patient.patientId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].consultationId").value(consultationId.toString()))
+                .andExpect(jsonPath("$[0].diagnosisType").isNotEmpty());
+
+        // 6. Verify audit logs
+        verify(auditLogWriter, org.mockito.Mockito.times(2)).append(argThat(record ->
+                "DIAGNOSIS_ADDED".equals(record.action())
+                        && "CONSULTATION".equals(record.entityType())
+                        && consultationId.equals(record.entityId())
+                        && tenant.tenantId.equals(record.tenantId())
+                        && record.newData() != null
+                        && !record.newData().containsKey("description") // No sensitive text in metadata
+        ));
+
+        verify(auditLogWriter).append(argThat(record ->
+                "DIAGNOSIS_UPDATED".equals(record.action())
+                        && "CONSULTATION".equals(record.entityType())
+                        && consultationId.equals(record.entityId())
+                        && tenant.tenantId.equals(record.tenantId())
+                        && record.newData() != null
+                        && !record.newData().containsKey("description")
+        ));
+    }
+
+    @Test
+    void fieldValidationRejectsInvalidDiagnoses() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-val");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Blank description
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "   ",
+                                    "diagnosisType": "PRESUNTIVO"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("description"));
+
+        // Description > 300 chars
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "%s",
+                                    "diagnosisType": "PRESUNTIVO"
+                                }
+                                """.formatted("A".repeat(301))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("description"));
+
+        // Invalid diagnosisType
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Diagnóstico de prueba",
+                                    "diagnosisType": "SOSPECHOSO"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("diagnosisType"));
+
+        // Code > 50 chars
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Diagnóstico de prueba",
+                                    "diagnosisType": "DEFINITIVO",
+                                    "code": "%s"
+                                }
+                                """.formatted("C".repeat(51))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("code"));
+
+        // Notes > 2000 chars
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Diagnóstico de prueba",
+                                    "diagnosisType": "DEFINITIVO",
+                                    "notes": "%s"
+                                }
+                                """.formatted("N".repeat(2001))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("notes"));
+    }
+
+    @Test
+    void securityAndAuthorizationChecks() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-sec");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID otherVetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dr. Carlos", "Vega", "carlos@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+        TenantFixture otherVetActor = new TenantFixture(tenant.tenantId, tenant.branchId, otherVetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 401 unauthenticated
+        mvc.perform(get("/api/v1/consultations/{consultationId}/diagnoses", consultationId))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Test\", \"diagnosisType\": \"PRESUNTIVO\"}"))
+                .andExpect(status().isUnauthorized());
+
+        // 403 without CONSULTATION_READ on GET
+        mvc.perform(get("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "PATIENT_READ"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/patients/{patientId}/diagnoses", patient.patientId)
+                        .with(authentication(auth(vetActor, "PATIENT_READ"))))
+                .andExpect(status().isForbidden());
+
+        // 403 without CONSULTATION_UPDATE on POST/PUT
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Test\", \"diagnosisType\": \"PRESUNTIVO\"}"))
+                .andExpect(status().isForbidden());
+
+        // 403 when different vet attempts to write
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(otherVetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Intento no autorizado\", \"diagnosisType\": \"PRESUNTIVO\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void tenantIsolationReturns404WithoutLeakingExistence() throws Exception {
+        TenantFixture tenantA = createTenantFixture("diag-iso-a");
+        TenantFixture tenantB = createTenantFixture("diag-iso-b");
+
+        UUID vetA = insertUserWithRoleAndBranch(
+                tenantA.tenantId, tenantA.branchId, "Dra. Lucia", "Mendez", "lucia@a.test", "VETERINARIO");
+        UUID vetB = insertUserWithRoleAndBranch(
+                tenantB.tenantId, tenantB.branchId, "Dr. Carlos", "Vega", "carlos@b.test", "VETERINARIO");
+
+        UUID ownerA = insertOwner(tenantA.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patientA = insertPatientWithMedicalRecord(
+                tenantA.tenantId, ownerA, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentA = insertAppointment(
+                tenantA.tenantId, tenantA.branchId, patientA.patientId, vetA,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+
+        TenantFixture vetActorA = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetA);
+        TenantFixture vetActorB = new TenantFixture(tenantB.tenantId, tenantB.branchId, vetB);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentA)
+                        .with(authentication(auth(vetActorA, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationAId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Vet A creates diagnosis
+        MvcResult addResult = mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationAId)
+                        .with(authentication(auth(vetActorA, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Diagnóstico A\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID diagAId = UUID.fromString(objectMapper.readTree(
+                addResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Vet B from tenant B attempts to list diagnoses of consultation A -> 404
+        mvc.perform(get("/api/v1/consultations/{consultationId}/diagnoses", consultationAId)
+                        .with(authentication(auth(vetActorB, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // Vet B attempts to add diagnosis to consultation A -> 404
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationAId)
+                        .with(authentication(auth(vetActorB, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Ataque cruzado\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isNotFound());
+
+        // Vet B attempts to update diagnosis in consultation A -> 404
+        mvc.perform(put("/api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}", consultationAId, diagAId)
+                        .with(authentication(auth(vetActorB, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Modificación cruzada\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isNotFound());
+
+        // Vet B attempts to list patient A's diagnoses -> 404
+        mvc.perform(get("/api/v1/patients/{patientId}/diagnoses", patientA.patientId)
+                        .with(authentication(auth(vetActorB, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectsWritingWhenConsultationIsNotDraft() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-non-draft");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Add a diagnosis in BORRADOR
+        MvcResult addResult = mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Diagnóstico inicial\", \"diagnosisType\": \"PRESUNTIVO\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID diagnosisId = UUID.fromString(objectMapper.readTree(
+                addResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Change consultation status to FINALIZADA
+        jdbc.update("UPDATE consultations SET status = 'FINALIZADA' WHERE id = ?", consultationId);
+
+        // Attempting to add diagnosis to FINALIZADA consultation -> 409 Conflict
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Diagnóstico tardío\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_CONSULTATION_STATUS"));
+
+        // Attempting to update diagnosis in FINALIZADA consultation -> 409 Conflict
+        mvc.perform(put("/api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}", consultationId, diagnosisId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Edición tardía\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_CONSULTATION_STATUS"));
+    }
+
+    @Test
+    void rollbackWhenAuditFails() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-audit-fail");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Make auditLogWriter throw on append
+        doThrow(new RuntimeException("Simulated audit failure"))
+                .when(auditLogWriter)
+                .append(argThat(rec -> "DIAGNOSIS_ADDED".equals(rec.action())));
+
+        mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"Diagnóstico rollback\", \"diagnosisType\": \"PRESUNTIVO\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        // Verify that NO diagnosis was committed to the DB
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM diagnoses WHERE consultation_id = ?",
+                Integer.class,
+                consultationId);
+        assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    void concurrentDiagnosisWriteSerializedWithConsultationStatusChange() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-conc");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        CountDownLatch t1LockAcquired = new CountDownLatch(1);
+        CountDownLatch t2Started = new CountDownLatch(1);
+        CountDownLatch t1ProceedToCommit = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        // Transaction 1: acquires row lock with FOR UPDATE on the consultation
+        Future<Void> t1Future = pool.submit(() -> {
+            try (java.sql.Connection conn = dataSource.getConnection()) {
+                conn.setAutoCommit(false);
+                try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "SELECT status FROM consultations WHERE tenant_id = ? AND id = ? FOR UPDATE")) {
+                    ps.setObject(1, tenant.tenantId);
+                    ps.setObject(2, consultationId);
+                    try (java.sql.ResultSet rs = ps.executeQuery()) {
+                        assertThat(rs.next()).isTrue();
+                        assertThat(rs.getString("status")).isEqualTo("BORRADOR");
+                    }
+                }
+                t1LockAcquired.countDown();
+                assertThat(t1ProceedToCommit.await(5, TimeUnit.SECONDS)).isTrue();
+
+                try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE consultations SET status = 'FINALIZADA', updated_at = now() WHERE tenant_id = ? AND id = ?")) {
+                    ps.setObject(1, tenant.tenantId);
+                    ps.setObject(2, consultationId);
+                    ps.executeUpdate();
+                }
+                conn.commit();
+            }
+            return null;
+        });
+
+        assertThat(t1LockAcquired.await(5, TimeUnit.SECONDS)).isTrue();
+
+        // Transaction 2: attempts to add diagnosis via REST API (coordinates via lockConsultationForUpdate)
+        Future<Integer> t2Future = pool.submit(() -> {
+            t2Started.countDown();
+            return mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                            .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                        "description": "Diagnóstico durante carrera",
+                                        "diagnosisType": "PRESUNTIVO"
+                                    }
+                                    """))
+                    .andReturn()
+                    .getResponse()
+                    .getStatus();
+        });
+
+        assertThat(t2Started.await(5, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(250);
+
+        // Transaction 2 must be blocked waiting for Transaction 1's lock in PostgreSQL
+        assertThat(t2Future.isDone()).isFalse();
+
+        // Transaction 1 commits the status update
+        t1ProceedToCommit.countDown();
+        t1Future.get(5, TimeUnit.SECONDS);
+
+        // Transaction 2 unblocks, acquires lock, sees non-BORRADOR status, and is rejected with 409 Conflict
+        Integer t2Status = t2Future.get(5, TimeUnit.SECONDS);
+        pool.shutdownNow();
+
+        assertThat(t2Status).isEqualTo(409);
+
+        // Verify NO diagnosis was inserted in the database
+        Integer diagCount = jdbc.queryForObject(
+                "SELECT count(*) FROM diagnoses WHERE consultation_id = ?",
+                Integer.class,
+                consultationId);
+        assertThat(diagCount).isEqualTo(0);
+    }
+
+    @Test
+    void concurrentDiagnosisUpdateSerializedWithConsultationStatusChange() throws Exception {
+        TenantFixture tenant = createTenantFixture("diag-up-conc");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-04T10:00:00Z"), Instant.parse("2026-10-04T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Add a diagnosis in BORRADOR
+        MvcResult addResult = mvc.perform(post("/api/v1/consultations/{consultationId}/diagnoses", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "description": "Diagnóstico inicial",
+                                    "diagnosisType": "PRESUNTIVO"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID diagnosisId = UUID.fromString(objectMapper.readTree(
+                addResult.getResponse().getContentAsString()).get("id").asText());
+
+        CountDownLatch t1LockAcquired = new CountDownLatch(1);
+        CountDownLatch t2Started = new CountDownLatch(1);
+        CountDownLatch t1ProceedToCommit = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        // Transaction 1: locks consultation row and changes status to FINALIZADA
+        Future<Void> t1Future = pool.submit(() -> {
+            try (java.sql.Connection conn = dataSource.getConnection()) {
+                conn.setAutoCommit(false);
+                try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "SELECT status FROM consultations WHERE tenant_id = ? AND id = ? FOR UPDATE")) {
+                    ps.setObject(1, tenant.tenantId);
+                    ps.setObject(2, consultationId);
+                    try (java.sql.ResultSet rs = ps.executeQuery()) {
+                        assertThat(rs.next()).isTrue();
+                        assertThat(rs.getString("status")).isEqualTo("BORRADOR");
+                    }
+                }
+                t1LockAcquired.countDown();
+                assertThat(t1ProceedToCommit.await(5, TimeUnit.SECONDS)).isTrue();
+
+                try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE consultations SET status = 'FINALIZADA', updated_at = now() WHERE tenant_id = ? AND id = ?")) {
+                    ps.setObject(1, tenant.tenantId);
+                    ps.setObject(2, consultationId);
+                    ps.executeUpdate();
+                }
+                conn.commit();
+            }
+            return null;
+        });
+
+        assertThat(t1LockAcquired.await(5, TimeUnit.SECONDS)).isTrue();
+
+        // Transaction 2: attempts to update diagnosis via REST API
+        Future<Integer> t2Future = pool.submit(() -> {
+            t2Started.countDown();
+            return mvc.perform(put("/api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}", consultationId, diagnosisId)
+                            .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                        "description": "Edición durante carrera concurrente",
+                                        "diagnosisType": "DEFINITIVO"
+                                    }
+                                    """))
+                    .andReturn()
+                    .getResponse()
+                    .getStatus();
+        });
+
+        assertThat(t2Started.await(5, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(250);
+
+        // Transaction 2 must be blocked waiting for Transaction 1's lock in PostgreSQL
+        assertThat(t2Future.isDone()).isFalse();
+
+        // Transaction 1 commits the status update
+        t1ProceedToCommit.countDown();
+        t1Future.get(5, TimeUnit.SECONDS);
+
+        // Transaction 2 unblocks, acquires lock, sees non-BORRADOR status, and is rejected with 409 Conflict
+        Integer t2Status = t2Future.get(5, TimeUnit.SECONDS);
+        pool.shutdownNow();
+
+        assertThat(t2Status).isEqualTo(409);
+
+        // Verify diagnosis was NOT updated in PostgreSQL
+        String currentDesc = jdbc.queryForObject(
+                "SELECT description FROM diagnoses WHERE id = ?",
+                String.class,
+                diagnosisId);
+        assertThat(currentDesc).isEqualTo("Diagnóstico inicial");
     }
 
     private TenantFixture createTenantFixture(String slugPrefix) {

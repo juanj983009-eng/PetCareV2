@@ -51,6 +51,7 @@ test("carga exitosa vía GET: puebla contexto, valores previos de evaluación y 
           reason: "Control postquirúrgico y revisión de sutura",
           anamnesis: "Paciente con apetito normal y buen ánimo.",
           physicalExam: "Herida quirúrgica limpia sin signos de infección.",
+          diagnoses: [],
           clinicalDetails: {
             vitalSigns: {
               temperatureCelsius: 38.6,
@@ -163,7 +164,8 @@ test("guardado exitoso vía PUT: envía payload estructurado y muestra alerta ac
         return {
           id: CONSULTATION_ID,
           status: "BORRADOR",
-          reason: "Motivo inicial"
+          reason: "Motivo inicial",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_ID}/evaluation` && options.method === "PUT") {
@@ -239,7 +241,8 @@ test("conservación de datos del formulario en caso de error del servidor o rech
         return {
           id: CONSULTATION_ID,
           status: "BORRADOR",
-          reason: "Motivo inicial"
+          reason: "Motivo inicial",
+          diagnoses: []
         };
       }
       if (options.method === "PUT") {
@@ -767,7 +770,8 @@ test("cruce de guardado: PUT de A exitoso después de abrir B no altera estado, 
           status: "BORRADOR",
           patientName: "Paciente A",
           veterinarianFullName: "Dr. Veterinario A",
-          reason: "Motivo Consulta A"
+          reason: "Motivo Consulta A",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_B}` && (!options.method || options.method === "GET")) {
@@ -776,7 +780,8 @@ test("cruce de guardado: PUT de A exitoso después de abrir B no altera estado, 
           status: "BORRADOR",
           patientName: "Paciente B",
           veterinarianFullName: "Dra. Veterinaria B",
-          reason: "Motivo Consulta B"
+          reason: "Motivo Consulta B",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_A}/evaluation` && options.method === "PUT") {
@@ -847,7 +852,8 @@ test("cruce de guardado: PUT de A fallido (409 conflicto o error) después de ab
           id: CONSULTATION_A,
           status: "BORRADOR",
           patientName: "Paciente A",
-          reason: "Motivo A"
+          reason: "Motivo A",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_B}` && (!options.method || options.method === "GET")) {
@@ -855,7 +861,8 @@ test("cruce de guardado: PUT de A fallido (409 conflicto o error) después de ab
           id: CONSULTATION_B,
           status: "BORRADOR",
           patientName: "Paciente B",
-          reason: "Motivo B"
+          reason: "Motivo B",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_A}/evaluation` && options.method === "PUT") {
@@ -917,7 +924,8 @@ test("cruce de guardado: respuesta de PUT tardía después de cerrar sesión no 
           id: CONSULTATION_ID,
           status: "BORRADOR",
           patientName: "Paciente Sesión",
-          reason: "Motivo Sesión"
+          reason: "Motivo Sesión",
+          diagnoses: []
         };
       }
       if (url === `/api/v1/consultations/${CONSULTATION_ID}/evaluation` && options.method === "PUT") {
@@ -983,6 +991,7 @@ test("cruce de guardado: los datos variables de A nunca se envían al guardar B 
           status: "BORRADOR",
           patientName: "Paciente A",
           reason: "Motivo A",
+          diagnoses: [],
           clinicalDetails: {
             variableDetails: {
               "claveExclusivaA": "VALOR_SECRETO_A",
@@ -997,6 +1006,7 @@ test("cruce de guardado: los datos variables de A nunca se envían al guardar B 
           status: "BORRADOR",
           patientName: "Paciente B",
           reason: "Motivo B",
+          diagnoses: [],
           clinicalDetails: {
             variableDetails: {
               "claveExclusivaB": "VALOR_PROPIO_B"
@@ -1068,6 +1078,343 @@ test("cruce de guardado: los datos variables de A nunca se envían al guardar B 
   equal(putBCallPayload.variableDetails["claveExclusivaB"], "VALOR_PROPIO_B");
   assert(putBCallPayload.variableDetails["claveExclusivaA"] === undefined, "Los datos de A nunca deben enviarse en B");
   assert(putBCallPayload.variableDetails["temperamentoA"] === undefined, "Los datos de A nunca deben enviarse en B");
+
+  controller.destroy();
+});
+
+test("HU-022: carga de diagnósticos existentes y renderizado accesible de badges (DEFINITIVO, PRESUNTIVO) y código", async () => {
+  const calls = [];
+  const client = {
+    requestJson: async (url) => {
+      calls.push(url);
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          status: "BORRADOR",
+          reason: "Consulta general",
+          diagnoses: [
+            {
+              id: "diag-1",
+              consultationId: CONSULTATION_ID,
+              description: "Gastroenteritis presuntiva",
+              diagnosisType: "PRESUNTIVO",
+              code: "K52.9",
+              notes: "Esperar analítica"
+            },
+            {
+              id: "diag-2",
+              consultationId: CONSULTATION_ID,
+              description: "Deshidratación grado I",
+              diagnosisType: "DEFINITIVO",
+              code: null,
+              notes: null
+            }
+          ]
+        };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+  await flushPromises();
+
+  equal(document.querySelector("#evaluation-diagnoses-counter").textContent, "2");
+  const list = document.querySelector("#evaluation-diagnoses-list");
+  assert(!list.hidden, "La lista de diagnósticos debe estar visible");
+  assert(document.querySelector("#evaluation-diagnoses-empty").hidden, "Empty-state debe estar oculto");
+  equal(list.children.length, 2);
+
+  assert(list.children[0].textContent.includes("PRESUNTIVO"), "Debe mostrar badge PRESUNTIVO");
+  assert(list.children[0].textContent.includes("K52.9"), "Debe mostrar código K52.9");
+  assert(list.children[0].textContent.includes("Gastroenteritis presuntiva"), "Debe mostrar descripción");
+  assert(list.children[0].textContent.includes("Esperar analítica"), "Debe mostrar notas");
+
+  assert(list.children[1].textContent.includes("DEFINITIVO"), "Debe mostrar badge DEFINITIVO");
+  assert(list.children[1].textContent.includes("Deshidratación grado I"), "Debe mostrar descripción");
+
+  // Botón añadir diagnóstico debe ser visible en BORRADOR con CONSULTATION_UPDATE
+  assert(!document.querySelector("#diagnosis-add-button").hidden, "Botón añadir debe estar visible");
+
+  controller.destroy();
+});
+
+test("HU-022: validación en cliente para nuevo diagnóstico: campos requeridos y longitud máxima", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return { id: CONSULTATION_ID, status: "BORRADOR", reason: "Consulta general", diagnoses: [] };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  // Abrir formulario de diagnóstico
+  document.querySelector("#diagnosis-add-button").click();
+  assert(!document.querySelector("#diagnosis-form").hidden, "El formulario de diagnóstico debe abrirse");
+
+  // Intento de envío vacío
+  document.querySelector("#diagnosis-description").value = "";
+  document.querySelector("#diagnosis-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+
+  assert(!document.querySelector("#diagnosis-validation").hidden, "Debe mostrar alerta de validación");
+  equal(document.querySelector("#diagnosis-description").getAttribute("aria-invalid"), "true");
+
+  controller.destroy();
+});
+
+test("HU-022: añadir diagnóstico vía POST envía datos correctos, limpia formulario y conserva intactos los datos de evaluación", async () => {
+  let postPayload = null;
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          status: "BORRADOR",
+          reason: "Evaluación en curso no guardada aún",
+          anamnesis: "Anamnesis previa intacta",
+          diagnoses: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses` && options.method === "POST") {
+        postPayload = JSON.parse(options.body);
+        return {
+          id: "diag-new-1",
+          consultationId: CONSULTATION_ID,
+          description: postPayload.description,
+          diagnosisType: postPayload.diagnosisType,
+          code: postPayload.code,
+          notes: postPayload.notes
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses` && (!options.method || options.method === "GET")) {
+        return [
+          {
+            id: "diag-new-1",
+            consultationId: CONSULTATION_ID,
+            description: "Nuevo diagnóstico clínico",
+            diagnosisType: "DEFINITIVO",
+            code: "A00.1",
+            notes: "Notas del diagnóstico"
+          }
+        ];
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  // El usuario escribió algo en el formulario de evaluación que aún no ha guardado
+  document.querySelector("#evaluation-reason").value = "Motivo modificado en borrador";
+  document.querySelector("#evaluation-temperature").value = "39.1";
+
+  // Abre el formulario de diagnóstico
+  document.querySelector("#diagnosis-add-button").click();
+  document.querySelector("#diagnosis-description").value = "Nuevo diagnóstico clínico";
+  document.querySelector("#diagnosis-type").value = "DEFINITIVO";
+  document.querySelector("#diagnosis-code").value = "A00.1";
+  document.querySelector("#diagnosis-notes").value = "Notas del diagnóstico";
+
+  document.querySelector("#diagnosis-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  assert(postPayload !== null, "Debe enviar petición POST");
+  equal(postPayload.description, "Nuevo diagnóstico clínico");
+  equal(postPayload.diagnosisType, "DEFINITIVO");
+  equal(postPayload.code, "A00.1");
+
+  // El formulario de diagnóstico debe cerrarse y mostrar mensaje de éxito
+  assert(document.querySelector("#diagnosis-form").hidden, "El formulario de diagnóstico debe ocultarse");
+  assert(!document.querySelector("#diagnosis-notice").hidden, "Debe mostrar aviso de diagnóstico guardado");
+
+  // CONSERVACIÓN DE LA EVALUACIÓN: los campos de la evaluación permanecen intactos
+  equal(document.querySelector("#evaluation-reason").value, "Motivo modificado en borrador", "El motivo de la evaluación no debe borrarse al guardar diagnóstico");
+  equal(document.querySelector("#evaluation-temperature").value, "39.1", "La temperatura no debe borrarse");
+
+  // Diagnósticos actualizados en lista
+  equal(document.querySelector("#evaluation-diagnoses-counter").textContent, "1");
+
+  controller.destroy();
+});
+
+test("HU-022: editar diagnóstico existente vía PUT puebla formulario, envía datos y actualiza lista", async () => {
+  let putPayload = null;
+  const initialDiags = [
+    {
+      id: "diag-edit-1",
+      consultationId: CONSULTATION_ID,
+      description: "Diagnóstico inicial",
+      diagnosisType: "PRESUNTIVO",
+      code: "B01",
+      notes: "Nota inicial"
+    }
+  ];
+
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return { id: CONSULTATION_ID, status: "BORRADOR", reason: "Consulta", diagnoses: initialDiags };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses/diag-edit-1` && options.method === "PUT") {
+        putPayload = JSON.parse(options.body);
+        return {
+          id: "diag-edit-1",
+          consultationId: CONSULTATION_ID,
+          description: putPayload.description,
+          diagnosisType: putPayload.diagnosisType,
+          code: putPayload.code,
+          notes: putPayload.notes
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses` && (!options.method || options.method === "GET")) {
+        return [
+          {
+            id: "diag-edit-1",
+            consultationId: CONSULTATION_ID,
+            description: "Diagnóstico modificado confirmado",
+            diagnosisType: "DEFINITIVO",
+            code: "B02",
+            notes: "Nota actualizada"
+          }
+        ];
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  // Clic en editar en el item de la lista
+  const editBtn = document.querySelector("button[data-action='edit-diagnosis']");
+  assert(editBtn !== null, "Debe existir botón Editar diagnóstico");
+  editBtn.click();
+
+  assert(!document.querySelector("#diagnosis-form").hidden, "El formulario debe abrirse");
+  equal(document.querySelector("#diagnosis-form-title").textContent, "Editar diagnóstico");
+  equal(document.querySelector("#diagnosis-description").value, "Diagnóstico inicial");
+  equal(document.querySelector("#diagnosis-type").value, "PRESUNTIVO");
+  equal(document.querySelector("#diagnosis-code").value, "B01");
+
+  // Modificar
+  document.querySelector("#diagnosis-description").value = "Diagnóstico modificado confirmado";
+  document.querySelector("#diagnosis-type").value = "DEFINITIVO";
+  document.querySelector("#diagnosis-code").value = "B02";
+  document.querySelector("#diagnosis-notes").value = "Nota actualizada";
+
+  document.querySelector("#diagnosis-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  assert(putPayload !== null, "Debe haber enviado PUT");
+  equal(putPayload.description, "Diagnóstico modificado confirmado");
+  equal(putPayload.diagnosisType, "DEFINITIVO");
+  equal(putPayload.code, "B02");
+
+  assert(document.querySelector("#diagnosis-form").hidden, "El formulario debe ocultarse tras edición");
+  assert(!document.querySelector("#diagnosis-notice").hidden, "Aviso de éxito visible");
+
+  controller.destroy();
+});
+
+test("HU-022: modo de solo lectura para diagnósticos si la consulta no es BORRADOR o falta CONSULTATION_UPDATE", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          status: "FINALIZADA",
+          reason: "Consulta cerrada",
+          diagnoses: [
+            {
+              id: "diag-fin-1",
+              consultationId: CONSULTATION_ID,
+              description: "Diagnóstico finalizado",
+              diagnosisType: "DEFINITIVO",
+              code: "K01",
+              notes: null
+            }
+          ]
+        };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón añadir debe estar oculto en FINALIZADA");
+  assert(document.querySelector("button[data-action='edit-diagnosis']") === null, "No debe renderizar botones de edición en FINALIZADA");
+
+  controller.destroy();
+});
+
+test("HU-022: fallo al cargar diagnósticos distingue error de lista vacía, muestra error accesible con correlation ID y permite reintentar", async () => {
+  let failDiagnoses = true;
+  let retryCount = 0;
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          status: "BORRADOR",
+          reason: "Evaluación clínica",
+          diagnoses: null // Fuerza llamada a GET /diagnoses
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses`) {
+        if (failDiagnoses) {
+          throw new ApiRequestError({
+            status: 500,
+            kind: "HTTP_ERROR",
+            code: "SERVER_ERROR",
+            message: "Fallo temporal de base de datos",
+            correlationId: "CID-EVAL-DIAG-500"
+          });
+        }
+        retryCount++;
+        return []; // Retorna lista vacía en el reintento
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const errorBox = document.querySelector("#evaluation-diagnoses-load-error");
+  const emptyState = document.querySelector("#evaluation-diagnoses-empty");
+  const list = document.querySelector("#evaluation-diagnoses-list");
+
+  // No debe mostrar "sin diagnósticos" si falló
+  assert(emptyState.hidden, "No debe mostrar 'sin diagnósticos' cuando falló la carga");
+  assert(!errorBox.hidden, "Debe mostrar el contenedor de error accesible");
+  equal(errorBox.getAttribute("role"), "alert");
+  assert(document.querySelector("#evaluation-diagnoses-load-error-message").textContent.includes("Fallo temporal"), "Debe mostrar mensaje de error");
+  assert(document.querySelector("#evaluation-diagnoses-load-error-correlation").textContent.includes("CID-EVAL-DIAG-500"), "Debe mostrar correlation ID");
+
+  // Ejecutar reintento
+  failDiagnoses = false;
+  document.querySelector("#evaluation-diagnoses-retry-button").click();
+  await flushPromises();
+
+  equal(retryCount, 1, "Debe ejecutar nueva llamada en reintento");
+  assert(errorBox.hidden, "Error debe ocultarse tras reintento exitoso");
+  assert(!emptyState.hidden, "Debe mostrar 'sin diagnósticos' tras respuesta vacía válida");
+  assert(list.hidden, "La lista debe permanecer oculta con 0 diagnósticos");
 
   controller.destroy();
 });

@@ -3,6 +3,7 @@ package com.petcare.enterprise.clinical.presentation;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.StartConsultationResult;
 import java.net.URI;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -31,7 +32,11 @@ class ConsultationController {
     @GetMapping("/api/v1/consultations/{consultationId}")
     ResponseEntity<ConsultationResponse> getById(
             @PathVariable("consultationId") UUID consultationId) {
-        return ResponseEntity.ok(ConsultationResponse.from(consultations.getById(consultationId)));
+        var summary = consultations.getById(consultationId);
+        var diagList = consultations.listDiagnoses(consultationId).stream()
+                .map(DiagnosisResponse::from)
+                .toList();
+        return ResponseEntity.ok(ConsultationResponse.from(summary, diagList));
     }
 
     @PutMapping("/api/v1/consultations/{consultationId}/evaluation")
@@ -40,6 +45,40 @@ class ConsultationController {
             @RequestBody SaveEvaluationRequest request) {
         return ResponseEntity.ok(ConsultationResponse.from(
                 consultations.saveEvaluation(consultationId, request != null ? request.toCommand() : null)));
+    }
+
+    @GetMapping("/api/v1/consultations/{consultationId}/diagnoses")
+    ResponseEntity<List<DiagnosisResponse>> listDiagnoses(
+            @PathVariable("consultationId") UUID consultationId) {
+        return ResponseEntity.ok(consultations.listDiagnoses(consultationId).stream()
+                .map(DiagnosisResponse::from)
+                .toList());
+    }
+
+    @PostMapping("/api/v1/consultations/{consultationId}/diagnoses")
+    ResponseEntity<DiagnosisResponse> addDiagnosis(
+            @PathVariable("consultationId") UUID consultationId,
+            @RequestBody CreateDiagnosisRequest request) {
+        var created = consultations.addDiagnosis(consultationId, request != null ? request.toCommand() : null);
+        URI location = URI.create("/api/v1/consultations/" + consultationId + "/diagnoses/" + created.id());
+        return ResponseEntity.created(location).body(DiagnosisResponse.from(created));
+    }
+
+    @PutMapping("/api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}")
+    ResponseEntity<DiagnosisResponse> updateDiagnosis(
+            @PathVariable("consultationId") UUID consultationId,
+            @PathVariable("diagnosisId") UUID diagnosisId,
+            @RequestBody UpdateDiagnosisRequest request) {
+        var updated = consultations.updateDiagnosis(consultationId, diagnosisId, request != null ? request.toCommand() : null);
+        return ResponseEntity.ok(DiagnosisResponse.from(updated));
+    }
+
+    @GetMapping("/api/v1/patients/{patientId}/diagnoses")
+    ResponseEntity<List<PatientDiagnosisResponse>> listPatientDiagnoses(
+            @PathVariable("patientId") UUID patientId) {
+        return ResponseEntity.ok(consultations.listPatientDiagnoses(patientId).stream()
+                .map(PatientDiagnosisResponse::from)
+                .toList());
     }
 
     private static ResponseEntity<ConsultationResponse> toResponse(StartConsultationResult result) {

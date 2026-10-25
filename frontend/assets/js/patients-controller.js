@@ -4,6 +4,7 @@ const PATIENT_CREATE = "PATIENT_CREATE";
 const PATIENT_READ = "PATIENT_READ";
 const PATIENT_UPDATE = "PATIENT_UPDATE";
 const APPOINTMENT_CREATE = "APPOINTMENT_CREATE";
+const CONSULTATION_READ = "CONSULTATION_READ";
 
 const SPECIES_LABELS = Object.freeze({
   CANINO: "Canino",
@@ -33,6 +34,7 @@ export function createPatientsController({ document, client, onCreateAppointment
   let canRead = false;
   let canUpdate = false;
   let canCreateAppointment = false;
+  let canReadConsultations = false;
   let loading = false;
   let searching = false;
   let loadingProfile = false;
@@ -41,6 +43,8 @@ export function createPatientsController({ document, client, onCreateAppointment
   let activeProfileId = null;
   let currentProfile = null;
   let editingPatientId = null;
+  let currentSessionId = 0;
+  let activeProfileRequestId = 0;
 
   e.open.addEventListener("click", openCreateDialog);
   e.cancel.addEventListener("click", () => {
@@ -82,13 +86,17 @@ export function createPatientsController({ document, client, onCreateAppointment
 
   return Object.freeze({
     sessionReady(identity) {
+      currentSessionId++;
+      activeProfileRequestId++;
       const authorities = new Set(identity?.authorities ?? []);
       canCreate = authorities.has(PATIENT_CREATE);
       canRead = authorities.has(PATIENT_READ);
       canUpdate = authorities.has(PATIENT_UPDATE);
       canCreateAppointment = authorities.has(APPOINTMENT_CREATE);
+      canReadConsultations = authorities.has(CONSULTATION_READ);
       currentProfile = null;
       editingPatientId = null;
+      clearPatientDiagnoses();
       e.open.hidden = !canCreate;
       if (s) {
         s.navButton.hidden = !canRead;
@@ -115,6 +123,8 @@ export function createPatientsController({ document, client, onCreateAppointment
       }
     },
     sessionEnded() {
+      currentSessionId++;
+      activeProfileRequestId++;
       canCreate = false;
       canRead = false;
       canUpdate = false;
@@ -122,6 +132,7 @@ export function createPatientsController({ document, client, onCreateAppointment
       activeProfileId = null;
       currentProfile = null;
       editingPatientId = null;
+      clearPatientDiagnoses();
       e.open.hidden = true;
       if (e.dialog.open) {
         e.dialog.close();
@@ -291,12 +302,28 @@ export function createPatientsController({ document, client, onCreateAppointment
     }
   }
 
+  function clearPatientDiagnoses() {
+    if (!p) return;
+    if (p.diagnosesList) {
+      p.diagnosesList.replaceChildren();
+      p.diagnosesList.hidden = true;
+    }
+    if (p.diagnosesLoading) p.diagnosesLoading.hidden = true;
+    if (p.diagnosesError) p.diagnosesError.hidden = true;
+    if (p.consultationsEmpty) p.consultationsEmpty.hidden = true;
+  }
+
   async function openPatientProfile(patientId, options = {}) {
-    if (!p || !patientId || loadingProfile) {
+    if (!p || !patientId) {
       return;
     }
+    const thisSession = currentSessionId;
+    const thisRequestId = ++activeProfileRequestId;
     activeProfileId = String(patientId);
     currentProfile = null;
+
+    clearPatientDiagnoses();
+
     if (s) {
       s.home.hidden = true;
       s.view.hidden = true;
@@ -323,6 +350,10 @@ export function createPatientsController({ document, client, onCreateAppointment
       const profile = validPatientProfile(
         await client.requestJson(`/api/v1/patients/${encodeURIComponent(activeProfileId)}`)
       );
+      if (thisSession !== currentSessionId || thisRequestId !== activeProfileRequestId) {
+        return;
+      }
+
       currentProfile = profile;
       renderPatientProfile(profile);
       if (p.editButton) {
@@ -338,7 +369,15 @@ export function createPatientsController({ document, client, onCreateAppointment
         p.newAppointmentButton.textContent = allowNewAppointment ? "Nueva cita" : "Nueva cita (HU-016)";
       }
       setProfileState("content");
+      if (canReadConsultations) {
+        loadPatientDiagnoses(activeProfileId, thisRequestId, thisSession);
+      } else {
+        renderPatientDiagnoses(null);
+      }
     } catch (error) {
+      if (thisSession !== currentSessionId || thisRequestId !== activeProfileRequestId) {
+        return;
+      }
       if (error instanceof ApiRequestError && error.status === 403) {
         setProfileState("forbidden");
         p.forbidden.focus({ preventScroll: true });
@@ -357,7 +396,77 @@ export function createPatientsController({ document, client, onCreateAppointment
         p.error.focus({ preventScroll: true });
       }
     } finally {
-      loadingProfile = false;
+      if (thisSession === currentSessionId && thisRequestId === activeProfileRequestId) {
+        loadingProfile = false;
+      }
+    }
+  }
+
+  async function loadPatientDiagnoses(patientId, requestId, sessionId) {
+    if (!p) return;
+    if (p.diagnosesLoading) p.diagnosesLoading.hidden = false;
+    if (p.diagnosesList) p.diagnosesList.hidden = true;
+    if (p.diagnosesError) p.diagnosesError.hidden = true;
+    if (p.consultationsEmpty) p.consultationsEmpty.hidden = true;
+
+    try {
+      const diagnoses = await client.requestJson(`/api/v1/patients/${encodeURIComponent(patientId)}/diagnoses`);
+      if (sessionId !== currentSessionId || requestId !== activeProfileRequestId || activeProfileId !== String(patientId)) {
+        return;
+      }
+
+      if (!Array.isArray(diagnoses)) {
+        throw new ApiRequestError({
+          kind: "INVALID_RESPONSE",
+          code: "INVALID_RESPONSE",
+          message: "La respuesta de diagnósticos clínicos no tiene un formato de lista válido."
+        });
+      }
+
+      renderPatientDiagnoses(diagnoses);
+    } catch (error) {
+      if (sessionId !== currentSessionId || requestId !== activeProfileRequestId || activeProfileId !== String(patientId)) {
+        return;
+      }
+      showPatientDiagnosesError(error, patientId, requestId, sessionId);
+    } finally {
+      if (sessionId === currentSessionId && requestId === activeProfileRequestId && activeProfileId === String(patientId)) {
+        if (p.diagnosesLoading) p.diagnosesLoading.hidden = true;
+      }
+    }
+  }
+
+  function showPatientDiagnosesError(error, patientId, requestId, sessionId) {
+    if (!p) return;
+    if (p.diagnosesList) {
+      p.diagnosesList.hidden = true;
+      p.diagnosesList.replaceChildren();
+    }
+    p.consultationsEmpty.hidden = true;
+
+    if (p.diagnosesError) {
+      p.diagnosesError.hidden = false;
+      if (p.diagnosesErrorMessage) {
+        p.diagnosesErrorMessage.textContent =
+          error instanceof ApiRequestError
+            ? error.message
+            : (error?.message || "No fue posible consultar los diagnósticos clínicos del paciente.");
+      }
+      if (p.diagnosesErrorCorrelation) {
+        const correlationId = error instanceof ApiRequestError ? error.correlationId : error?.correlationId;
+        p.diagnosesErrorCorrelation.textContent = correlationId
+          ? `Código de seguimiento: ${correlationId}`
+          : "";
+        p.diagnosesErrorCorrelation.hidden = !correlationId;
+      }
+      if (p.diagnosesRetry) {
+        p.diagnosesRetry.onclick = () => {
+          if (activeProfileId === String(patientId) && currentSessionId === sessionId) {
+            loadPatientDiagnoses(patientId, activeProfileRequestId, currentSessionId);
+          }
+        };
+      }
+      p.diagnosesError.focus?.({ preventScroll: true });
     }
   }
 
@@ -421,6 +530,63 @@ export function createPatientsController({ document, client, onCreateAppointment
       ? `Folio: ${recordId}${recordDate ? ` · Apertura: ${recordDate}` : ""}`
       : "Historia clínica base vinculada";
     p.recordHistory.textContent = profile.medicalRecord?.history?.trim() || "Sin antecedentes clínicos registrados.";
+  }
+
+  function renderPatientDiagnoses(diagnoses) {
+    if (!p) return;
+    if (p.diagnosesError) p.diagnosesError.hidden = true;
+    if (p.diagnosesLoading) p.diagnosesLoading.hidden = true;
+    if (diagnoses && diagnoses.length > 0) {
+      p.consultationsEmpty.hidden = true;
+      if (p.diagnosesList) {
+        p.diagnosesList.hidden = false;
+        p.diagnosesList.replaceChildren();
+        for (const diag of diagnoses) {
+          const item = document.createElement("div");
+          item.className = "list-group-item px-0 py-2 border-bottom";
+          const header = document.createElement("div");
+          header.className = "d-flex justify-content-between align-items-center mb-1";
+          const typeBadge = document.createElement("span");
+          typeBadge.className = diag.diagnosisType === "DEFINITIVO"
+            ? "badge text-bg-primary"
+            : "badge text-bg-warning text-dark";
+          typeBadge.textContent = diag.diagnosisType;
+          const dateSpan = document.createElement("span");
+          dateSpan.className = "small text-secondary pc-data-mono";
+          dateSpan.textContent = formatIsoDate(diag.consultationStartedAt || diag.createdAt);
+          header.append(typeBadge, dateSpan);
+
+          const desc = document.createElement("div");
+          desc.className = "fw-medium";
+          desc.textContent = diag.description;
+          if (diag.code) {
+            const codeBadge = document.createElement("span");
+            codeBadge.className = "badge text-bg-light border pc-data-mono ms-2";
+            codeBadge.textContent = diag.code;
+            desc.append(codeBadge);
+          }
+          item.append(header, desc);
+          if (diag.notes) {
+            const notes = document.createElement("div");
+            notes.className = "small text-secondary mt-1";
+            notes.textContent = diag.notes;
+            item.append(notes);
+          }
+          p.diagnosesList.append(item);
+        }
+      }
+    } else {
+      if (p.diagnosesList) {
+        p.diagnosesList.hidden = true;
+        p.diagnosesList.replaceChildren();
+      }
+      p.consultationsEmpty.hidden = false;
+      if (diagnoses === null) {
+        p.consultationsEmpty.textContent = "Permiso insuficiente para consultar diagnósticos clínicos (requiere CONSULTATION_READ).";
+      } else {
+        p.consultationsEmpty.textContent = "Sin consultas ni diagnósticos registrados.";
+      }
+    }
   }
 
   function renderPatients(patients) {
@@ -879,6 +1045,12 @@ function profileElements(document) {
   }
   resolved.editButton = document.querySelector("#patient-profile-edit-button");
   resolved.notice = document.querySelector("#patient-profile-notice");
+  resolved.diagnosesList = document.querySelector("#patient-profile-diagnoses-list");
+  resolved.diagnosesLoading = document.querySelector("#patient-profile-diagnoses-loading");
+  resolved.diagnosesError = document.querySelector("#patient-profile-diagnoses-error");
+  resolved.diagnosesErrorMessage = document.querySelector("#patient-profile-diagnoses-error-message");
+  resolved.diagnosesErrorCorrelation = document.querySelector("#patient-profile-diagnoses-error-correlation");
+  resolved.diagnosesRetry = document.querySelector("#patient-profile-diagnoses-retry");
   return resolved;
 }
 

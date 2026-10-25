@@ -24,12 +24,20 @@ export function createConsultationEvaluationController({
   let currentConsultation = null;
   let isSaving = false;
   let activeRequestId = 0;
+  let currentDiagnoses = [];
+  let isSavingDiagnosis = false;
+  let editingDiagnosisId = null;
 
   // Event Listeners
   elements.backButton?.addEventListener("click", handleBack);
   elements.cancelButton?.addEventListener("click", handleBack);
   elements.form?.addEventListener("submit", handleSubmit);
   elements.reasonInput?.addEventListener("input", updateReasonCounter);
+  elements.diagnosisAddButton?.addEventListener("click", handleOpenAddDiagnosis);
+  elements.diagnosisCancelButton?.addEventListener("click", handleCloseDiagnosisForm);
+  elements.diagnosisForm?.addEventListener("submit", handleDiagnosisSubmit);
+  elements.diagnosisDescriptionInput?.addEventListener("input", updateDiagnosisDescriptionCounter);
+  elements.diagnosesRetryButton?.addEventListener("click", handleRetryDiagnoses);
 
   function sessionReady(identity) {
     const authorities = new Set(Array.isArray(identity?.authorities) ? identity.authorities : []);
@@ -48,8 +56,14 @@ export function createConsultationEvaluationController({
     currentConsultationId = null;
     currentConsultation = null;
     setSavingState(false);
+    setSavingDiagnosisState(false);
     resetForm();
     resetContext();
+    resetDiagnosisForm();
+    resetDiagnosisAlerts();
+    currentDiagnoses = [];
+    editingDiagnosisId = null;
+    renderDiagnoses([]);
     setFormEditable(false);
     resetAlerts();
     if (elements.view) {
@@ -94,7 +108,13 @@ export function createConsultationEvaluationController({
     clearValidationErrors();
     resetForm();
     resetContext();
+    resetDiagnosisForm();
+    resetDiagnosisAlerts();
+    currentDiagnoses = [];
+    editingDiagnosisId = null;
+    if (elements.diagnosisAddButton) elements.diagnosisAddButton.hidden = true;
     setSavingState(false);
+    setSavingDiagnosisState(false);
     setFormEditable(false);
 
     if (!canRead) {
@@ -116,6 +136,15 @@ export function createConsultationEvaluationController({
       const isEditable = canUpdate && consultation.status === "BORRADOR";
       setFormEditable(isEditable);
       setViewState("content");
+      if (Array.isArray(consultation.diagnoses)) {
+        currentDiagnoses = consultation.diagnoses;
+        renderDiagnoses(currentDiagnoses);
+        if (elements.diagnosisAddButton) {
+          elements.diagnosisAddButton.hidden = !isEditable;
+        }
+      } else {
+        await loadDiagnoses(consultationId, requestId);
+      }
       if (isEditable) {
         elements.reasonInput?.focus({ preventScroll: true });
       }
@@ -547,6 +576,376 @@ export function createConsultationEvaluationController({
     elements.cancelButton?.removeEventListener("click", handleBack);
     elements.form?.removeEventListener("submit", handleSubmit);
     elements.reasonInput?.removeEventListener("input", updateReasonCounter);
+    elements.diagnosisAddButton?.removeEventListener("click", handleOpenAddDiagnosis);
+    elements.diagnosisCancelButton?.removeEventListener("click", handleCloseDiagnosisForm);
+    elements.diagnosisForm?.removeEventListener("submit", handleDiagnosisSubmit);
+    elements.diagnosisDescriptionInput?.removeEventListener("input", updateDiagnosisDescriptionCounter);
+    elements.diagnosesRetryButton?.removeEventListener("click", handleRetryDiagnoses);
+  }
+
+  function handleRetryDiagnoses() {
+    if (currentConsultationId) {
+      loadDiagnoses(currentConsultationId, activeRequestId);
+    }
+  }
+
+  // ==========================================
+  // HU-022: DIAGNÓSTICOS CLÍNICOS
+  // ==========================================
+
+  async function loadDiagnoses(consultationId, requestId) {
+    if (!elements.diagnosesSection) return;
+    if (elements.diagnosesLoading) elements.diagnosesLoading.hidden = false;
+    if (elements.diagnosesList) elements.diagnosesList.hidden = true;
+    if (elements.diagnosesEmpty) elements.diagnosesEmpty.hidden = true;
+    if (elements.diagnosesLoadError) elements.diagnosesLoadError.hidden = true;
+
+    try {
+      const list = await client.requestJson(`/api/v1/consultations/${encodeURIComponent(consultationId)}/diagnoses`);
+      if (requestId !== activeRequestId || consultationId !== currentConsultationId) return;
+
+      if (!Array.isArray(list)) {
+        throw new ApiRequestError({
+          kind: "INVALID_RESPONSE",
+          code: "INVALID_RESPONSE",
+          message: "La respuesta de diagnósticos clínicos no tiene un formato de lista válido."
+        });
+      }
+
+      currentDiagnoses = list;
+      renderDiagnoses(currentDiagnoses);
+      const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+      if (elements.diagnosisAddButton) {
+        elements.diagnosisAddButton.hidden = !isEditable;
+      }
+    } catch (err) {
+      if (requestId !== activeRequestId || consultationId !== currentConsultationId) return;
+      currentDiagnoses = [];
+      if (elements.diagnosesList) {
+        elements.diagnosesList.replaceChildren();
+        elements.diagnosesList.hidden = true;
+      }
+      if (elements.diagnosesEmpty) elements.diagnosesEmpty.hidden = true;
+      if (elements.diagnosesCounter) elements.diagnosesCounter.textContent = "0";
+
+      if (elements.diagnosesLoadError) {
+        elements.diagnosesLoadError.hidden = false;
+        if (elements.diagnosesLoadErrorMessage) {
+          elements.diagnosesLoadErrorMessage.textContent =
+            err instanceof ApiRequestError
+              ? err.message
+              : (err?.message || "No fue posible consultar los diagnósticos clínicos de la consulta.");
+        }
+        if (elements.diagnosesLoadErrorCorrelation) {
+          const correlationId = err instanceof ApiRequestError ? err.correlationId : err?.correlationId;
+          elements.diagnosesLoadErrorCorrelation.textContent = correlationId
+            ? `Código de seguimiento: ${correlationId}`
+            : "";
+          elements.diagnosesLoadErrorCorrelation.hidden = !correlationId;
+        }
+        elements.diagnosesLoadError.focus?.({ preventScroll: true });
+      }
+    } finally {
+      if (requestId === activeRequestId && consultationId === currentConsultationId) {
+        if (elements.diagnosesLoading) elements.diagnosesLoading.hidden = true;
+      }
+    }
+  }
+
+  function renderDiagnoses(list) {
+    if (!elements.diagnosesList) return;
+    if (elements.diagnosesLoadError) elements.diagnosesLoadError.hidden = true;
+    elements.diagnosesList.replaceChildren();
+    if (elements.diagnosesCounter) {
+      elements.diagnosesCounter.textContent = String(list.length);
+    }
+    if (list.length === 0) {
+      if (elements.diagnosesEmpty) elements.diagnosesEmpty.hidden = false;
+      elements.diagnosesList.hidden = true;
+      return;
+    }
+    if (elements.diagnosesEmpty) elements.diagnosesEmpty.hidden = true;
+    elements.diagnosesList.hidden = false;
+
+    const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+    for (const diag of list) {
+      const item = document.createElement("div");
+      item.className = "list-group-item d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 p-3";
+      item.dataset.diagnosisId = diag.id;
+
+      const infoCol = document.createElement("div");
+      infoCol.className = "flex-grow-1";
+
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "d-flex flex-wrap align-items-center gap-2 mb-1";
+
+      const typeBadge = document.createElement("span");
+      typeBadge.className = diag.diagnosisType === "DEFINITIVO"
+        ? "badge text-bg-primary"
+        : "badge text-bg-warning text-dark";
+      typeBadge.textContent = diag.diagnosisType;
+      headerDiv.append(typeBadge);
+
+      if (diag.code) {
+        const codeBadge = document.createElement("span");
+        codeBadge.className = "badge text-bg-light border pc-data-mono";
+        codeBadge.textContent = diag.code;
+        headerDiv.append(codeBadge);
+      }
+
+      infoCol.append(headerDiv);
+
+      const descP = document.createElement("p");
+      descP.className = "mb-1 fw-semibold text-break";
+      descP.textContent = diag.description;
+      infoCol.append(descP);
+
+      if (diag.notes) {
+        const notesP = document.createElement("p");
+        notesP.className = "mb-0 small text-secondary text-break";
+        notesP.textContent = diag.notes;
+        infoCol.append(notesP);
+      }
+
+      item.append(infoCol);
+
+      if (isEditable) {
+        const actionCol = document.createElement("div");
+        actionCol.className = "flex-shrink-0";
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn btn-sm btn-outline-secondary";
+        editBtn.textContent = "Editar";
+        editBtn.dataset.action = "edit-diagnosis";
+        editBtn.dataset.diagnosisId = diag.id;
+        editBtn.addEventListener("click", () => handleOpenEditDiagnosis(diag));
+        actionCol.append(editBtn);
+        item.append(actionCol);
+      }
+
+      elements.diagnosesList.append(item);
+    }
+  }
+
+  function handleOpenAddDiagnosis() {
+    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    resetDiagnosisAlerts();
+    clearDiagnosisValidationErrors();
+    editingDiagnosisId = null;
+    if (elements.diagnosisFormTitle) elements.diagnosisFormTitle.textContent = "Nuevo diagnóstico";
+    if (elements.diagnosisIdInput) elements.diagnosisIdInput.value = "";
+    if (elements.diagnosisTypeSelect) elements.diagnosisTypeSelect.value = "PRESUNTIVO";
+    if (elements.diagnosisCodeInput) elements.diagnosisCodeInput.value = "";
+    if (elements.diagnosisDescriptionInput) elements.diagnosisDescriptionInput.value = "";
+    if (elements.diagnosisDescriptionCounter) elements.diagnosisDescriptionCounter.textContent = "0 / 300";
+    if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = "";
+    if (elements.diagnosisForm) elements.diagnosisForm.hidden = false;
+    elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
+  }
+
+  function handleOpenEditDiagnosis(diag) {
+    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    resetDiagnosisAlerts();
+    clearDiagnosisValidationErrors();
+    editingDiagnosisId = diag.id;
+    if (elements.diagnosisFormTitle) elements.diagnosisFormTitle.textContent = "Editar diagnóstico";
+    if (elements.diagnosisIdInput) elements.diagnosisIdInput.value = diag.id;
+    if (elements.diagnosisTypeSelect) elements.diagnosisTypeSelect.value = diag.diagnosisType || "PRESUNTIVO";
+    if (elements.diagnosisCodeInput) elements.diagnosisCodeInput.value = diag.code || "";
+    if (elements.diagnosisDescriptionInput) {
+      elements.diagnosisDescriptionInput.value = diag.description || "";
+      if (elements.diagnosisDescriptionCounter) {
+        elements.diagnosisDescriptionCounter.textContent = `${(diag.description || "").length} / 300`;
+      }
+    }
+    if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = diag.notes || "";
+    if (elements.diagnosisForm) elements.diagnosisForm.hidden = false;
+    elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
+  }
+
+  function handleCloseDiagnosisForm() {
+    resetDiagnosisForm();
+    resetDiagnosisAlerts();
+  }
+
+  function resetDiagnosisForm() {
+    editingDiagnosisId = null;
+    if (elements.diagnosisIdInput) elements.diagnosisIdInput.value = "";
+    if (elements.diagnosisTypeSelect) elements.diagnosisTypeSelect.value = "PRESUNTIVO";
+    if (elements.diagnosisCodeInput) elements.diagnosisCodeInput.value = "";
+    if (elements.diagnosisDescriptionInput) elements.diagnosisDescriptionInput.value = "";
+    if (elements.diagnosisDescriptionCounter) elements.diagnosisDescriptionCounter.textContent = "0 / 300";
+    if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = "";
+    if (elements.diagnosisForm) elements.diagnosisForm.hidden = true;
+    clearDiagnosisValidationErrors();
+  }
+
+  function updateDiagnosisDescriptionCounter() {
+    const len = elements.diagnosisDescriptionInput?.value.length ?? 0;
+    if (elements.diagnosisDescriptionCounter) {
+      elements.diagnosisDescriptionCounter.textContent = `${len} / 300`;
+    }
+  }
+
+  async function handleDiagnosisSubmit(event) {
+    event.preventDefault();
+    if (!currentConsultationId || !currentConsultation || isSavingDiagnosis) return;
+    if (!canUpdate || currentConsultation.status !== "BORRADOR") return;
+
+    resetDiagnosisAlerts();
+    clearDiagnosisValidationErrors();
+
+    const descVal = elements.diagnosisDescriptionInput?.value.trim() ?? "";
+    const typeVal = elements.diagnosisTypeSelect?.value.trim() ?? "";
+    const codeVal = elements.diagnosisCodeInput?.value.trim() ?? "";
+    const notesVal = elements.diagnosisNotesInput?.value.trim() ?? "";
+
+    if (!descVal) {
+      elements.diagnosisDescriptionInput?.setAttribute("aria-invalid", "true");
+      showDiagnosisValidation("La descripción del diagnóstico es obligatoria.");
+      elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
+      return;
+    }
+    if (descVal.length > 300) {
+      elements.diagnosisDescriptionInput?.setAttribute("aria-invalid", "true");
+      showDiagnosisValidation("La descripción no debe exceder los 300 caracteres.");
+      elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
+      return;
+    }
+    if (!typeVal || (typeVal !== "PRESUNTIVO" && typeVal !== "DEFINITIVO")) {
+      elements.diagnosisTypeSelect?.setAttribute("aria-invalid", "true");
+      showDiagnosisValidation("El tipo de diagnóstico debe ser PRESUNTIVO o DEFINITIVO.");
+      elements.diagnosisTypeSelect?.focus({ preventScroll: true });
+      return;
+    }
+    if (codeVal.length > 50) {
+      elements.diagnosisCodeInput?.setAttribute("aria-invalid", "true");
+      showDiagnosisValidation("El código no debe exceder los 50 caracteres.");
+      elements.diagnosisCodeInput?.focus({ preventScroll: true });
+      return;
+    }
+    if (notesVal.length > 2000) {
+      elements.diagnosisNotesInput?.setAttribute("aria-invalid", "true");
+      showDiagnosisValidation("Las notas no deben exceder los 2000 caracteres.");
+      elements.diagnosisNotesInput?.focus({ preventScroll: true });
+      return;
+    }
+
+    const payload = {
+      description: descVal,
+      diagnosisType: typeVal,
+      code: codeVal || null,
+      notes: notesVal || null
+    };
+
+    const submissionRequestId = activeRequestId;
+    const targetConsultationId = currentConsultationId;
+    const targetDiagnosisId = editingDiagnosisId;
+    setSavingDiagnosisState(true);
+
+    try {
+      if (targetDiagnosisId) {
+        await client.requestJson(
+          `/api/v1/consultations/${encodeURIComponent(targetConsultationId)}/diagnoses/${encodeURIComponent(targetDiagnosisId)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
+      } else {
+        await client.requestJson(
+          `/api/v1/consultations/${encodeURIComponent(targetConsultationId)}/diagnoses`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
+      }
+
+      if (submissionRequestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+
+      resetDiagnosisForm();
+      showDiagnosisNotice(targetDiagnosisId ? "Diagnóstico actualizado correctamente en borrador." : "Diagnóstico registrado correctamente en borrador.");
+      await loadDiagnoses(targetConsultationId, submissionRequestId);
+      elements.diagnosisNotice?.focus({ preventScroll: true });
+    } catch (error) {
+      if (submissionRequestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+
+      const message = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible guardar el diagnóstico.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+
+      if (error instanceof ApiRequestError && error.status === 409) {
+        if (currentConsultation) {
+          currentConsultation.status = "CONFLICTO";
+        }
+        setFormEditable(false);
+        showDiagnosisError(message, correlationSuffix);
+        elements.diagnosisError?.focus({ preventScroll: true });
+        return;
+      }
+
+      showDiagnosisError(message, correlationSuffix);
+      elements.diagnosisError?.focus({ preventScroll: true });
+    } finally {
+      if (submissionRequestId === activeRequestId && targetConsultationId === currentConsultationId) {
+        setSavingDiagnosisState(false);
+      }
+    }
+  }
+
+  function setSavingDiagnosisState(saving) {
+    isSavingDiagnosis = saving;
+    if (elements.diagnosisSaveButton) elements.diagnosisSaveButton.disabled = saving;
+    if (elements.diagnosisSaveSpinner) elements.diagnosisSaveSpinner.hidden = !saving;
+    if (elements.diagnosisCancelButton) elements.diagnosisCancelButton.disabled = saving;
+    if (elements.diagnosisSaveLabel) {
+      elements.diagnosisSaveLabel.textContent = saving ? "Guardando..." : "Guardar diagnóstico";
+    }
+  }
+
+  function resetDiagnosisAlerts() {
+    if (elements.diagnosisNotice) elements.diagnosisNotice.hidden = true;
+    if (elements.diagnosisError) elements.diagnosisError.hidden = true;
+    if (elements.diagnosisValidation) elements.diagnosisValidation.hidden = true;
+    if (elements.diagnosesLoadError) elements.diagnosesLoadError.hidden = true;
+  }
+
+  function clearDiagnosisValidationErrors() {
+    elements.diagnosisDescriptionInput?.removeAttribute("aria-invalid");
+    elements.diagnosisTypeSelect?.removeAttribute("aria-invalid");
+    elements.diagnosisCodeInput?.removeAttribute("aria-invalid");
+    elements.diagnosisNotesInput?.removeAttribute("aria-invalid");
+  }
+
+  function showDiagnosisNotice(message) {
+    if (elements.diagnosisNotice) {
+      elements.diagnosisNotice.textContent = message;
+      elements.diagnosisNotice.hidden = false;
+    }
+  }
+
+  function showDiagnosisError(message, correlation) {
+    if (elements.diagnosisErrorMessage) elements.diagnosisErrorMessage.textContent = message;
+    if (elements.diagnosisErrorCorrelation) {
+      elements.diagnosisErrorCorrelation.textContent = correlation;
+      elements.diagnosisErrorCorrelation.hidden = !correlation;
+    }
+    if (elements.diagnosisError) elements.diagnosisError.hidden = false;
+  }
+
+  function showDiagnosisValidation(message) {
+    if (elements.diagnosisValidationMessage) elements.diagnosisValidationMessage.textContent = message;
+    if (elements.diagnosisValidation) elements.diagnosisValidation.hidden = false;
   }
 
   return {
@@ -594,6 +993,34 @@ function findElements(document) {
     respiratoryRateInput: document.querySelector("#evaluation-respiratory-rate"),
     crtInput: document.querySelector("#evaluation-crt"),
     mucousInput: document.querySelector("#evaluation-mucous-membranes"),
-    observationsInput: document.querySelector("#evaluation-observations")
+    observationsInput: document.querySelector("#evaluation-observations"),
+    diagnosesSection: document.querySelector("#evaluation-diagnoses-section"),
+    diagnosesCounter: document.querySelector("#evaluation-diagnoses-counter"),
+    diagnosesList: document.querySelector("#evaluation-diagnoses-list"),
+    diagnosesLoading: document.querySelector("#evaluation-diagnoses-loading"),
+    diagnosesLoadError: document.querySelector("#evaluation-diagnoses-load-error"),
+    diagnosesLoadErrorMessage: document.querySelector("#evaluation-diagnoses-load-error-message"),
+    diagnosesLoadErrorCorrelation: document.querySelector("#evaluation-diagnoses-load-error-correlation"),
+    diagnosesRetryButton: document.querySelector("#evaluation-diagnoses-retry-button"),
+    diagnosesEmpty: document.querySelector("#evaluation-diagnoses-empty"),
+    diagnosisAddButton: document.querySelector("#diagnosis-add-button"),
+    diagnosisForm: document.querySelector("#diagnosis-form"),
+    diagnosisFormTitle: document.querySelector("#diagnosis-form-title"),
+    diagnosisIdInput: document.querySelector("#diagnosis-id"),
+    diagnosisTypeSelect: document.querySelector("#diagnosis-type"),
+    diagnosisCodeInput: document.querySelector("#diagnosis-code"),
+    diagnosisDescriptionInput: document.querySelector("#diagnosis-description"),
+    diagnosisDescriptionCounter: document.querySelector("#diagnosis-description-counter"),
+    diagnosisNotesInput: document.querySelector("#diagnosis-notes"),
+    diagnosisCancelButton: document.querySelector("#diagnosis-cancel-button"),
+    diagnosisSaveButton: document.querySelector("#diagnosis-save-button"),
+    diagnosisSaveLabel: document.querySelector("#diagnosis-save-label"),
+    diagnosisSaveSpinner: document.querySelector("#diagnosis-save-spinner"),
+    diagnosisNotice: document.querySelector("#diagnosis-notice"),
+    diagnosisError: document.querySelector("#diagnosis-error"),
+    diagnosisErrorMessage: document.querySelector("#diagnosis-error-message"),
+    diagnosisErrorCorrelation: document.querySelector("#diagnosis-error-correlation"),
+    diagnosisValidation: document.querySelector("#diagnosis-validation"),
+    diagnosisValidationMessage: document.querySelector("#diagnosis-validation-message")
   };
 }

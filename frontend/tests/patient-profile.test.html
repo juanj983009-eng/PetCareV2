@@ -160,9 +160,16 @@
           <span id="patient-profile-record-meta"></span>
           <p id="patient-profile-record-history"></p>
 
+          <div id="patient-profile-diagnoses-loading" hidden>Cargando diagnósticos...</div>
+          <div id="patient-profile-diagnoses-error" role="alert" hidden>
+            <div id="patient-profile-diagnoses-error-message"></div>
+            <div id="patient-profile-diagnoses-error-correlation" hidden></div>
+            <button id="patient-profile-diagnoses-retry" type="button">Reintentar</button>
+          </div>
           <p id="patient-profile-consultations-empty">
             Sin consultas registradas (módulo de atención clínica pendiente en Sprint 2 — HU-019).
           </p>
+          <div id="patient-profile-diagnoses-list" hidden></div>
           <p id="patient-profile-appointments-empty">
             Sin citas registradas (módulo de agenda y citas pendiente en Sprint 2 — HU-015 / HU-016).
           </p>

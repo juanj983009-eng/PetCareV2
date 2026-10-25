@@ -11,11 +11,19 @@ import com.petcare.enterprise.audit.application.AuditMetadataProvider;
 import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.ActivePatientMedicalRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.NewConsultationRecord;
+import com.petcare.enterprise.clinical.application.ConsultationRepository.NewDiagnosisRecord;
+import com.petcare.enterprise.clinical.application.ConsultationRepository.UpdateDiagnosisRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.UpdateEvaluationRecord;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.AddDiagnosisCommand;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.UpdateDiagnosisCommand;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import com.petcare.enterprise.clinical.domain.ConsultationStatus;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -207,7 +215,7 @@ public class ConsultationService implements ConsultationUseCase {
         UUID tenantId = metadata.tenantId();
         UUID actorUserId = metadata.actorUserId();
 
-        ConsultationSummary consultation = consultationRepository.findById(tenantId, consultationId)
+        ConsultationSummary consultation = consultationRepository.lockConsultationForUpdate(tenantId, consultationId)
                 .orElseThrow(ConsultationResourceNotFoundException::new);
 
         if (!consultation.veterinarianId().equals(actorUserId)) {
@@ -265,5 +273,218 @@ public class ConsultationService implements ConsultationUseCase {
                         "status", consultation.status())));
 
         return updated;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DiagnosisSummary> listDiagnoses(UUID consultationId) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        consultationRepository.findById(metadata.tenantId(), consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+        return consultationRepository.findDiagnosesByConsultationId(metadata.tenantId(), consultationId);
+    }
+
+    @Override
+    @Transactional
+    public DiagnosisSummary addDiagnosis(UUID consultationId, AddDiagnosisCommand command) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        if (command == null) {
+            throw new InvalidConsultationDataException("command", "Los datos del diagnóstico son obligatorios.");
+        }
+
+        if (command.description() == null || command.description().isBlank()) {
+            throw new InvalidConsultationDataException("description", "La descripción del diagnóstico es obligatoria.");
+        }
+        String normalizedDescription = command.description().trim();
+        if (normalizedDescription.length() > 300) {
+            throw new InvalidConsultationDataException("description", "La descripción no debe exceder los 300 caracteres.");
+        }
+
+        if (command.diagnosisType() == null || command.diagnosisType().isBlank()) {
+            throw new InvalidConsultationDataException("diagnosisType", "El tipo de diagnóstico es obligatorio.");
+        }
+        String normalizedType = command.diagnosisType().trim().toUpperCase(Locale.ROOT);
+        if (!"PRESUNTIVO".equals(normalizedType) && !"DEFINITIVO".equals(normalizedType)) {
+            throw new InvalidConsultationDataException("diagnosisType", "El tipo de diagnóstico debe ser PRESUNTIVO o DEFINITIVO.");
+        }
+
+        String normalizedCode = null;
+        if (command.code() != null && !command.code().isBlank()) {
+            normalizedCode = command.code().trim();
+            if (normalizedCode.length() > 50) {
+                throw new InvalidConsultationDataException("code", "El código del diagnóstico no debe exceder los 50 caracteres.");
+            }
+        }
+
+        String normalizedNotes = null;
+        if (command.notes() != null && !command.notes().isBlank()) {
+            normalizedNotes = command.notes().trim();
+            if (normalizedNotes.length() > 2000) {
+                throw new InvalidConsultationDataException("notes", "Las notas del diagnóstico no deben exceder los 2000 caracteres.");
+            }
+        }
+
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+        UUID actorUserId = metadata.actorUserId();
+
+        ConsultationSummary consultation = consultationRepository.lockConsultationForUpdate(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+
+        if (!consultation.veterinarianId().equals(actorUserId)) {
+            throw new ConsultationAccessDeniedException(
+                    "Solo el veterinario asignado a la consulta puede registrar o modificar diagnósticos.");
+        }
+
+        if (!"BORRADOR".equals(consultation.status())) {
+            throw new InvalidConsultationStatusException(consultation.status(), "BORRADOR");
+        }
+
+        UUID diagnosisId = UUID.randomUUID();
+        Instant now = clock.instant();
+
+        DiagnosisSummary created = consultationRepository.insertDiagnosis(new NewDiagnosisRecord(
+                diagnosisId,
+                tenantId,
+                consultationId,
+                normalizedCode,
+                normalizedDescription,
+                normalizedType,
+                normalizedNotes,
+                now,
+                now));
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                actorUserId,
+                consultation.branchId(),
+                "CONSULTATION",
+                consultationId,
+                "DIAGNOSIS_ADDED",
+                now,
+                null,
+                metadata.correlationId(),
+                null,
+                Map.of(
+                        "consultationId", consultationId.toString(),
+                        "diagnosisId", diagnosisId.toString(),
+                        "diagnosisType", normalizedType,
+                        "hasCode", String.valueOf(normalizedCode != null),
+                        "patientId", consultation.patientId().toString(),
+                        "branchId", consultation.branchId().toString())));
+
+        return created;
+    }
+
+    @Override
+    @Transactional
+    public DiagnosisSummary updateDiagnosis(UUID consultationId, UUID diagnosisId, UpdateDiagnosisCommand command) {
+        if (consultationId == null || diagnosisId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        if (command == null) {
+            throw new InvalidConsultationDataException("command", "Los datos del diagnóstico son obligatorios.");
+        }
+
+        if (command.description() == null || command.description().isBlank()) {
+            throw new InvalidConsultationDataException("description", "La descripción del diagnóstico es obligatoria.");
+        }
+        String normalizedDescription = command.description().trim();
+        if (normalizedDescription.length() > 300) {
+            throw new InvalidConsultationDataException("description", "La descripción no debe exceder los 300 caracteres.");
+        }
+
+        if (command.diagnosisType() == null || command.diagnosisType().isBlank()) {
+            throw new InvalidConsultationDataException("diagnosisType", "El tipo de diagnóstico es obligatorio.");
+        }
+        String normalizedType = command.diagnosisType().trim().toUpperCase(Locale.ROOT);
+        if (!"PRESUNTIVO".equals(normalizedType) && !"DEFINITIVO".equals(normalizedType)) {
+            throw new InvalidConsultationDataException("diagnosisType", "El tipo de diagnóstico debe ser PRESUNTIVO o DEFINITIVO.");
+        }
+
+        String normalizedCode = null;
+        if (command.code() != null && !command.code().isBlank()) {
+            normalizedCode = command.code().trim();
+            if (normalizedCode.length() > 50) {
+                throw new InvalidConsultationDataException("code", "El código del diagnóstico no debe exceder los 50 caracteres.");
+            }
+        }
+
+        String normalizedNotes = null;
+        if (command.notes() != null && !command.notes().isBlank()) {
+            normalizedNotes = command.notes().trim();
+            if (normalizedNotes.length() > 2000) {
+                throw new InvalidConsultationDataException("notes", "Las notas del diagnóstico no deben exceder los 2000 caracteres.");
+            }
+        }
+
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+        UUID actorUserId = metadata.actorUserId();
+
+        ConsultationSummary consultation = consultationRepository.lockConsultationForUpdate(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+
+        if (!consultation.veterinarianId().equals(actorUserId)) {
+            throw new ConsultationAccessDeniedException(
+                    "Solo el veterinario asignado a la consulta puede registrar o modificar diagnósticos.");
+        }
+
+        if (!"BORRADOR".equals(consultation.status())) {
+            throw new InvalidConsultationStatusException(consultation.status(), "BORRADOR");
+        }
+
+        Instant now = clock.instant();
+
+        DiagnosisSummary updated = consultationRepository.updateDiagnosis(new UpdateDiagnosisRecord(
+                tenantId,
+                consultationId,
+                diagnosisId,
+                normalizedCode,
+                normalizedDescription,
+                normalizedType,
+                normalizedNotes,
+                now));
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                actorUserId,
+                consultation.branchId(),
+                "CONSULTATION",
+                consultationId,
+                "DIAGNOSIS_UPDATED",
+                now,
+                null,
+                metadata.correlationId(),
+                null,
+                Map.of(
+                        "consultationId", consultationId.toString(),
+                        "diagnosisId", diagnosisId.toString(),
+                        "diagnosisType", normalizedType,
+                        "hasCode", String.valueOf(normalizedCode != null),
+                        "patientId", consultation.patientId().toString(),
+                        "branchId", consultation.branchId().toString())));
+
+        return updated;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PatientDiagnosisSummary> listPatientDiagnoses(UUID patientId) {
+        if (patientId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        if (!consultationRepository.patientExists(metadata.tenantId(), patientId)) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        return consultationRepository.findDiagnosesByPatientId(metadata.tenantId(), patientId);
     }
 }

@@ -4,6 +4,7 @@ import com.petcare.enterprise.clinical.application.ConsultationUseCase.Consultat
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import com.petcare.enterprise.clinical.domain.VitalSigns;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 record ConsultationResponse(
@@ -24,10 +25,15 @@ record ConsultationResponse(
         String physicalExam,
         VitalSigns vitalSigns,
         ClinicalDetails clinicalDetails,
+        List<DiagnosisResponse> diagnoses,
         Instant createdAt,
         Instant updatedAt) {
 
     static ConsultationResponse from(ConsultationSummary summary) {
+        return from(summary, List.of());
+    }
+
+    static ConsultationResponse from(ConsultationSummary summary, List<DiagnosisResponse> diagnoses) {
         return new ConsultationResponse(
                 summary.id(),
                 summary.appointmentId(),
@@ -46,6 +52,7 @@ record ConsultationResponse(
                 summary.physicalExam(),
                 summary.vitalSigns(),
                 summary.clinicalDetails(),
+                diagnoses != null ? diagnoses : List.of(),
                 summary.createdAt(),
                 summary.updatedAt());
     }
