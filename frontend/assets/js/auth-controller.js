@@ -39,6 +39,31 @@ export function createAuthController({ document, window, client, errors, lifecyc
   ]) {
     backBtn?.addEventListener("click", () => markActiveNav(optional.dashboardNavButton));
   }
+  optional.homeActionAppointments?.addEventListener("click", () => optional.appointmentsNavButton?.click());
+  optional.homeActionPatients?.addEventListener("click", () => optional.patientsNavButton?.click());
+  optional.homeActionOwners?.addEventListener("click", () => optional.ownersNavButton?.click());
+  optional.homeActionUsers?.addEventListener("click", () => {
+    if (optional.usersNavButton && !optional.usersNavButton.hidden) {
+      optional.usersNavButton.click();
+    } else if (optional.rolesNavButton && !optional.rolesNavButton.hidden) {
+      optional.rolesNavButton.click();
+    }
+  });
+  optional.homeNewOwnerButton?.addEventListener("click", () => {
+    if (optional.ownersNavButton && !optional.ownersNavButton.hidden) {
+      optional.ownersNavButton.click();
+      document.querySelector("#new-owner-button")?.click();
+    }
+  });
+  optional.homeNewPatientButton?.addEventListener("click", () => {
+    if (optional.patientsNavButton && !optional.patientsNavButton.hidden) {
+      optional.patientsNavButton.click();
+      document.querySelector("#patients-new-patient-button")?.click();
+    } else if (optional.ownersNavButton && !optional.ownersNavButton.hidden) {
+      optional.ownersNavButton.click();
+      document.querySelector("#new-patient-button")?.click();
+    }
+  });
   document.addEventListener("keydown", handleKeydown);
   window.addEventListener("pageshow", synchronizeAfterNavigation);
   window.addEventListener("popstate", synchronizeAfterNavigation);
@@ -86,6 +111,14 @@ export function createAuthController({ document, window, client, errors, lifecyc
         })
       });
       const login = validLoginResponse(response);
+      const clinicSlug = fields.get("clinicSlug");
+      const email = fields.get("email");
+      if (clinicSlug) {
+        window.sessionStorage?.setItem("petcare.sessionClinic", String(clinicSlug));
+      }
+      if (email) {
+        window.sessionStorage?.setItem("petcare.sessionEmail", String(email));
+      }
       client.setAccessToken(login.accessToken);
       sessionEpoch += 1;
       await restoreSession();
@@ -141,6 +174,10 @@ export function createAuthController({ document, window, client, errors, lifecyc
     sessionEpoch += 1;
     validationPromise = null;
     client.clearAccessToken();
+    window.sessionStorage?.removeItem("petcare.sessionClinic");
+    window.sessionStorage?.removeItem("petcare.sessionEmail");
+    if (optional.headerClinicName) optional.headerClinicName.textContent = "PetCare Enterprise";
+    if (optional.headerUserIdentity) optional.headerUserIdentity.textContent = "Sesión autenticada";
     authenticatedIdentity = null;
     resetPasswordInput();
     closeMobileNav();
@@ -153,6 +190,11 @@ export function createAuthController({ document, window, client, errors, lifecyc
   function handleSessionRejected(error) {
     sessionEpoch += 1;
     validationPromise = null;
+    client.clearAccessToken();
+    window.sessionStorage?.removeItem("petcare.sessionClinic");
+    window.sessionStorage?.removeItem("petcare.sessionEmail");
+    if (optional.headerClinicName) optional.headerClinicName.textContent = "PetCare Enterprise";
+    if (optional.headerUserIdentity) optional.headerUserIdentity.textContent = "Sesión autenticada";
     authenticatedIdentity = null;
     resetPasswordInput();
     closeMobileNav();
@@ -216,6 +258,14 @@ export function createAuthController({ document, window, client, errors, lifecyc
     showOnly(elements.dashboardView);
     closeMobileNav();
     markActiveNav(optional.dashboardNavButton);
+    const clinicName = window.sessionStorage?.getItem("petcare.sessionClinic");
+    const userEmail = window.sessionStorage?.getItem("petcare.sessionEmail");
+    if (optional.headerClinicName) {
+      optional.headerClinicName.textContent = clinicName ? clinicName : "PetCare Enterprise";
+    }
+    if (optional.headerUserIdentity) {
+      optional.headerUserIdentity.textContent = userEmail ? userEmail : "Sesión autenticada";
+    }
     elements.authorityList.replaceChildren();
     const authorities = authenticatedIdentity?.authorities ?? [];
     if (authorities.length === 0) {
@@ -232,7 +282,34 @@ export function createAuthController({ document, window, client, errors, lifecyc
       }
     }
     lifecycle.authenticated?.(authenticatedIdentity);
+    syncHomeCards();
     elements.dashboardTitle.focus({ preventScroll: true });
+  }
+
+  function syncHomeCards() {
+    if (optional.homeCardAppointments) {
+      optional.homeCardAppointments.hidden = !optional.appointmentsNavButton || optional.appointmentsNavButton.hidden;
+    }
+    if (optional.homeCardPatients) {
+      optional.homeCardPatients.hidden = !optional.patientsNavButton || optional.patientsNavButton.hidden;
+    }
+    if (optional.homeCardOwners) {
+      optional.homeCardOwners.hidden = !optional.ownersNavButton || optional.ownersNavButton.hidden;
+    }
+    if (optional.homeCardUsers) {
+      const hasUserOrRole = Boolean(
+        (optional.usersNavButton && !optional.usersNavButton.hidden) ||
+        (optional.rolesNavButton && !optional.rolesNavButton.hidden)
+      );
+      optional.homeCardUsers.hidden = !hasUserOrRole;
+    }
+    const authorities = new Set(authenticatedIdentity?.authorities ?? []);
+    if (optional.homeNewOwnerButton) {
+      optional.homeNewOwnerButton.hidden = !authorities.has("OWNER_CREATE");
+    }
+    if (optional.homeNewPatientButton) {
+      optional.homeNewPatientButton.hidden = !authorities.has("PATIENT_CREATE");
+    }
   }
 
   function showOnly(view) {
@@ -430,7 +507,19 @@ function findOptionalElements(document) {
     patientsView: document.querySelector("#patients-view"),
     patientProfileView: document.querySelector("#patient-profile-view"),
     appointmentsView: document.querySelector("#appointments-view"),
-    consultationEvaluationView: document.querySelector("#consultation-evaluation-view")
+    consultationEvaluationView: document.querySelector("#consultation-evaluation-view"),
+    homeActionAppointments: document.querySelector("#home-action-appointments"),
+    homeActionPatients: document.querySelector("#home-action-patients"),
+    homeActionOwners: document.querySelector("#home-action-owners"),
+    homeActionUsers: document.querySelector("#home-action-users"),
+    homeCardAppointments: document.querySelector("#home-card-appointments"),
+    homeCardPatients: document.querySelector("#home-card-patients"),
+    homeCardOwners: document.querySelector("#home-card-owners"),
+    homeCardUsers: document.querySelector("#home-card-users"),
+    headerClinicName: document.querySelector("#header-clinic-name"),
+    headerUserIdentity: document.querySelector("#header-user-identity"),
+    homeNewOwnerButton: document.querySelector("#home-new-owner-button"),
+    homeNewPatientButton: document.querySelector("#home-new-patient-button")
   };
 }
 

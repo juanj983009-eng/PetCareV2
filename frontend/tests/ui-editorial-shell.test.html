@@ -57,6 +57,8 @@
       <section id="dashboard-view" hidden>
         <header>
           <button id="mobile-nav-toggle" type="button" aria-controls="editorial-offcanvas-nav" aria-expanded="false">Menú</button>
+          <span id="header-clinic-name">PetCare Enterprise</span>
+          <span id="header-user-identity">Sesión autenticada</span>
           <h1 id="dashboard-title" tabindex="-1">Dashboard inicial</h1>
         </header>
         <div id="mobile-nav-backdrop" hidden></div>
@@ -70,7 +72,23 @@
         </nav>
 
         <div id="dashboard-home">
+          <div id="home-quick-actions">
+            <button id="home-new-owner-button" type="button" hidden>+ Registrar propietario</button>
+            <button id="home-new-patient-button" type="button" hidden>+ Registrar paciente</button>
+          </div>
           <div id="authority-list"></div>
+          <div id="home-card-appointments">
+            <button id="home-action-appointments" type="button">Abrir agenda</button>
+          </div>
+          <div id="home-card-patients">
+            <button id="home-action-patients" type="button">Ver pacientes</button>
+          </div>
+          <div id="home-card-owners">
+            <button id="home-action-owners" type="button">Ver propietarios</button>
+          </div>
+          <div id="home-card-users">
+            <button id="home-action-users" type="button">Gestionar personal</button>
+          </div>
         </div>
 
         <section id="users-view" hidden>

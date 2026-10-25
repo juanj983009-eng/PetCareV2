@@ -99,7 +99,50 @@ test("visibilidad basada en permisos oculta módulos no autorizados", async () =
   assert(!document.querySelector("#owners-nav-button").hidden);
   assert(document.querySelector("#new-owner-button").hidden);
   assert(document.querySelector("#new-patient-button").hidden);
+  assert(document.querySelector("#home-new-owner-button").hidden, "Botón rápido nuevo propietario oculto sin OWNER_CREATE");
+  assert(document.querySelector("#home-new-patient-button").hidden, "Botón rápido nuevo paciente oculto sin PATIENT_CREATE");
+  assert(!document.querySelector("#home-card-owners").hidden, "Tarjeta de propietarios debe ser visible");
+  assert(document.querySelector("#home-card-users").hidden, "Tarjeta de personal debe estar oculta");
+  assert(document.querySelector("#home-card-patients").hidden, "Tarjeta de pacientes debe estar oculta");
+  assert(document.querySelector("#home-card-appointments").hidden, "Tarjeta de agenda debe estar oculta");
   restricted.auth.destroy();
+});
+
+test("permisos de creación habilitan botones rápidos operativos", async () => {
+  const creator = setupSuite({
+    token: "creator-token",
+    authorities: ["DASHBOARD_VIEW", "OWNER_READ", "OWNER_CREATE", "PATIENT_READ", "PATIENT_CREATE"]
+  });
+  await creator.auth.start();
+  assert(!document.querySelector("#owners-nav-button").hidden, "Navegación de propietarios visible");
+  assert(!document.querySelector("#home-card-owners").hidden, "Tarjeta de propietarios visible");
+  assert(!document.querySelector("#home-new-owner-button").hidden, "Botón rápido nuevo propietario visible");
+  assert(!document.querySelector("#home-new-patient-button").hidden, "Botón rápido nuevo paciente visible");
+  assert(!document.querySelector("#new-owner-button").hidden, "Botón nuevo propietario en vista visible");
+  assert(!document.querySelector("#new-patient-button").hidden, "Botón nuevo paciente en vista visible");
+  creator.auth.destroy();
+});
+
+test("accesos rápidos de inicio navegan a sus respectivas secciones", async () => {
+  const suite = setupSuite({
+    token: "all-access-token",
+    authorities: ["DASHBOARD_VIEW", "USER_READ", "ROLE_READ", "OWNER_READ", "PATIENT_READ", "APPOINTMENT_READ"]
+  });
+  await suite.auth.start();
+
+  document.querySelector("#home-action-users").click();
+  assert(!document.querySelector("#users-view").hidden, "Debe abrir la vista de usuarios");
+  assert(document.querySelector("#dashboard-home").hidden, "Dashboard home debe ocultarse");
+
+  document.querySelector("#dashboard-nav-button").click();
+  assert(!document.querySelector("#dashboard-home").hidden, "Debe volver a dashboard home");
+  assert(document.querySelector("#users-view").hidden, "Vista de usuarios debe ocultarse");
+
+  document.querySelector("#home-action-owners").click();
+  assert(!document.querySelector("#owners-view").hidden, "Debe abrir la vista de propietarios");
+  assert(document.querySelector("#dashboard-home").hidden, "Dashboard home debe ocultarse");
+
+  suite.auth.destroy();
 });
 
 test("preservación de sesión, logout seguro y estados de error correlacionados", async () => {
