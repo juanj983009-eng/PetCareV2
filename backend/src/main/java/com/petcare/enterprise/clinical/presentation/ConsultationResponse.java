@@ -28,7 +28,8 @@ record ConsultationResponse(
         List<DiagnosisResponse> diagnoses,
         List<PrescriptionResponse> prescriptions,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        Instant finalizedAt) {
 
     static ConsultationResponse from(ConsultationSummary summary) {
         return from(summary, List.of(), List.of());
@@ -63,6 +64,7 @@ record ConsultationResponse(
                 diagnoses != null ? diagnoses : List.of(),
                 prescriptions != null ? prescriptions : List.of(),
                 summary.createdAt(),
-                summary.updatedAt());
+                summary.updatedAt(),
+                summary.finalizedAt());
     }
 }

@@ -6,6 +6,7 @@ const APPOINTMENT_STATUS_UPDATE = "APPOINTMENT_STATUS_UPDATE";
 const APPOINTMENT_RESCHEDULE = "APPOINTMENT_RESCHEDULE";
 const APPOINTMENT_CANCEL = "APPOINTMENT_CANCEL";
 const CONSULTATION_CREATE = "CONSULTATION_CREATE";
+const CONSULTATION_READ = "CONSULTATION_READ";
 const PATIENT_READ = "PATIENT_READ";
 
 const APPOINTMENT_TYPE_LABELS = Object.freeze({
@@ -72,6 +73,7 @@ export function createAppointmentsController({
   let canReschedule = false;
   let canCancel = false;
   let canStartConsultation = false;
+  let canReadConsultation = false;
   let canReadPatient = false;
   let currentUserId = null;
   let searching = false;
@@ -141,6 +143,7 @@ export function createAppointmentsController({
       canReschedule = authorities.has(APPOINTMENT_RESCHEDULE);
       canCancel = authorities.has(APPOINTMENT_CANCEL);
       canStartConsultation = authorities.has(CONSULTATION_CREATE);
+      canReadConsultation = authorities.has(CONSULTATION_READ);
       canReadPatient = authorities.has(PATIENT_READ);
       currentUserId = typeof identity?.userId === "string" && identity.userId.trim()
         ? identity.userId.trim()
@@ -183,6 +186,7 @@ export function createAppointmentsController({
       canReschedule = false;
       canCancel = false;
       canStartConsultation = false;
+      canReadConsultation = false;
       canReadPatient = false;
       currentUserId = null;
       updatingAppointmentIds.clear();
@@ -797,6 +801,17 @@ export function createAppointmentsController({
       buttons.push(startConsultationBtn);
     }
 
+    if (canReadConsultation && item.status === "FINALIZADA") {
+      const viewConsultationBtn = document.createElement("button");
+      viewConsultationBtn.type = "button";
+      viewConsultationBtn.className = "btn btn-outline-secondary btn-sm";
+      viewConsultationBtn.dataset.action = "view-consultation";
+      viewConsultationBtn.dataset.appointmentId = item.id;
+      viewConsultationBtn.disabled = isBusy;
+      viewConsultationBtn.textContent = "Ver consulta";
+      buttons.push(viewConsultationBtn);
+    }
+
     if (canReschedule && (item.status === "PROGRAMADA" || item.status === "CONFIRMADA")) {
       const rescheduleBtn = document.createElement("button");
       rescheduleBtn.type = "button";
@@ -945,6 +960,12 @@ export function createAppointmentsController({
   }
 
   async function handleDelegatedClick(event) {
+    const viewConsultationButton = event.target?.closest?.("[data-action='view-consultation']");
+    if (viewConsultationButton) {
+      await handleViewConsultationClick(viewConsultationButton);
+      return;
+    }
+
     const startConsultationButton = event.target?.closest?.("[data-action='start-consultation']");
     if (startConsultationButton) {
       await handleStartConsultationClick(startConsultationButton);
@@ -1312,6 +1333,74 @@ export function createAppointmentsController({
       }
     } finally {
       updatingAppointmentIds.delete(appointmentId);
+    }
+  }
+
+  async function handleViewConsultationClick(clickedButton) {
+    if (!s || !canReadConsultation) return;
+    const appointmentId = clickedButton.dataset.appointmentId;
+    if (!appointmentId || updatingAppointmentIds.has(appointmentId)) {
+      return;
+    }
+
+    updatingAppointmentIds.add(appointmentId);
+    if (s.notice) {
+      s.notice.hidden = true;
+    }
+    if (s.statusError) {
+      s.statusError.hidden = true;
+      s.statusError.textContent = "";
+    }
+
+    const relatedButtons = Array.from(
+      s.view.querySelectorAll(`[data-appointment-id="${appointmentId}"]`)
+    );
+    const originalLabels = new Map();
+    for (const btn of relatedButtons) {
+      originalLabels.set(btn, btn.textContent);
+      btn.disabled = true;
+      if (btn.dataset.action === "view-consultation") {
+        btn.setAttribute("aria-busy", "true");
+        btn.textContent = "Abriendo consulta...";
+      }
+    }
+
+    let consultation = null;
+    try {
+      consultation = await client.requestJson(`/api/v1/appointments/${appointmentId}/consultation`, {
+        method: "GET"
+      });
+    } catch (error) {
+      updatingAppointmentIds.delete(appointmentId);
+      for (const [btn, label] of originalLabels.entries()) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+        btn.textContent = label;
+      }
+      const baseMessage = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible abrir la consulta.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+      if (s.statusError) {
+        s.statusError.textContent = `${baseMessage}${correlationSuffix}`;
+        s.statusError.hidden = false;
+        s.statusError.focus({ preventScroll: true });
+      }
+      return;
+    } finally {
+      updatingAppointmentIds.delete(appointmentId);
+    }
+
+    for (const [btn, label] of originalLabels.entries()) {
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+      btn.textContent = label;
+    }
+
+    if (typeof onStartConsultation === "function" && consultation) {
+      onStartConsultation(consultation);
     }
   }
 

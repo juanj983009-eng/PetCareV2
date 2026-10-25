@@ -900,6 +900,50 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase, A
         return true;
     }
 
+    @Override
+    @Transactional
+    public boolean finalizeAttention(FinalizeAppointmentAttentionCommand command) {
+        Objects.requireNonNull(command, "command is required");
+        boolean updated = repository.updateStatusConditionally(
+                command.tenantId(),
+                command.appointmentId(),
+                AppointmentStatus.EN_ATENCION.name(),
+                AppointmentStatus.FINALIZADA.name(),
+                command.occurredAt());
+        if (!updated) {
+            return false;
+        }
+
+        repository.insertStatusHistory(new AppointmentStatusHistoryRecord(
+                UUID.randomUUID(),
+                command.tenantId(),
+                command.appointmentId(),
+                AppointmentStatus.EN_ATENCION.name(),
+                AppointmentStatus.FINALIZADA.name(),
+                command.actorUserId(),
+                command.occurredAt(),
+                command.correlationId()));
+
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                command.tenantId(),
+                command.actorUserId(),
+                command.branchId(),
+                "APPOINTMENT",
+                command.appointmentId(),
+                "APPOINTMENT_STATUS_CHANGED",
+                command.occurredAt(),
+                null,
+                command.correlationId(),
+                Map.of("status", AppointmentStatus.EN_ATENCION.name()),
+                Map.of(
+                        "appointmentId", command.appointmentId().toString(),
+                        "branchId", command.branchId().toString(),
+                        "previousStatus", AppointmentStatus.EN_ATENCION.name(),
+                        "newStatus", AppointmentStatus.FINALIZADA.name())));
+        return true;
+    }
+
     private static UUID parseOptionalUuid(String value, String field, String errorMessage) {
         if (value == null || value.isBlank()) {
             return null;

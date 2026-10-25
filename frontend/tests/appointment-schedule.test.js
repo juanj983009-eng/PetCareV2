@@ -1331,6 +1331,84 @@ test("HU-021: muestra Retomar consulta para cita en EN_ATENCION asignada al vete
   controller.sessionEnded();
 });
 
+test("con CONSULTATION_READ muestra botón 'Ver consulta' en citas FINALIZADA y al hacer clic invoca GET y abre onStartConsultation", async () => {
+  const branchId = "11111111-1111-4111-8111-111111111111";
+  const vet1 = "22222222-2222-4222-8222-222222222222";
+  const apptId = "aaaa0001-0000-4000-8000-000000000001";
+  let getCalled = false;
+  let viewedConsultation = null;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      requestJson: async (url, options = {}) => {
+        if (url === "/api/v1/appointments/options") {
+          return {
+            branches: [{ id: branchId, name: "Sede Miraflores", timeZone: "America/Lima" }],
+            veterinarians: [{ id: vet1, fullName: "Dra. Ana Salazar", branchIds: [branchId] }]
+          };
+        }
+        if (url.startsWith("/api/v1/appointments?")) {
+          return {
+            content: [
+              {
+                id: apptId,
+                branchId,
+                veterinarianId: vet1,
+                patientId: "33333333-3333-4333-8333-333333333333",
+                patientName: "Thor",
+                species: "Canino",
+                ownerName: "Carlos Pérez",
+                appointmentType: "CONSULTA_GENERAL",
+                status: "FINALIZADA",
+                scheduledAt: "2026-08-25T14:00:00Z"
+              }
+            ],
+            page: { number: 0, size: 20, totalElements: 1, totalPages: 1 }
+          };
+        }
+        if (url === `/api/v1/appointments/${apptId}/consultation`) {
+          getCalled = true;
+          assert(options.method === "GET" || !options.method, "Debe ser método GET");
+          return {
+            id: "cc000001-0000-4000-8000-000000000001",
+            appointmentId: apptId,
+            status: "FINALIZADA",
+            reason: "Consulta completada"
+          };
+        }
+        return {};
+      }
+    },
+    onStartConsultation: (consultation) => {
+      viewedConsultation = consultation;
+    }
+  });
+
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_READ"]
+  });
+
+  await controller.openAppointmentsView();
+
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  assert(rows.length === 1, "Debe haber 1 fila renderizada");
+
+  const viewBtn = rows[0].querySelector('[data-action="view-consultation"]');
+  assert(viewBtn !== null, "Fila en FINALIZADA debe renderizar botón 'Ver consulta'");
+  assert(viewBtn.textContent.trim() === "Ver consulta", "El botón debe decir 'Ver consulta'");
+
+  viewBtn.click();
+  await new Promise((r) => setTimeout(r, 40));
+
+  assert(getCalled, "Debe invocar GET /api/v1/appointments/{id}/consultation");
+  assert(viewedConsultation !== null, "Debe invocar onStartConsultation");
+  assert(viewedConsultation.id === "cc000001-0000-4000-8000-000000000001", "La consulta abierta debe tener el ID correcto");
+
+  controller.sessionEnded();
+});
+
 async function run() {
   let passed = 0;
   for (const t of tests) {

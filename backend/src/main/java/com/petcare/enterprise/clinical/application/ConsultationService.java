@@ -2,6 +2,7 @@ package com.petcare.enterprise.clinical.application;
 
 import com.petcare.enterprise.appointments.application.AppointmentConsultationGateway;
 import com.petcare.enterprise.appointments.application.AppointmentConsultationGateway.AppointmentConsultationContext;
+import com.petcare.enterprise.appointments.application.AppointmentConsultationGateway.FinalizeAppointmentAttentionCommand;
 import com.petcare.enterprise.appointments.application.AppointmentConsultationGateway.StartAppointmentAttentionCommand;
 import com.petcare.enterprise.appointments.application.InvalidAppointmentScheduleQueryException;
 import com.petcare.enterprise.appointments.application.InvalidAppointmentStatusTransitionException;
@@ -24,6 +25,7 @@ import com.petcare.enterprise.clinical.application.ConsultationUseCase.Prescript
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.UpdateDiagnosisCommand;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
+import com.petcare.enterprise.clinical.domain.ConsultationFinalized;
 import com.petcare.enterprise.clinical.domain.ConsultationStatus;
 import java.time.Clock;
 import java.time.Instant;
@@ -43,6 +45,7 @@ public class ConsultationService implements ConsultationUseCase {
     private final ConsultationRepository consultationRepository;
     private final AuditMetadataProvider audit;
     private final AuditLogWriter auditWriter;
+    private final ConsultationEventPublisher eventPublisher;
     private final Clock clock;
 
     public ConsultationService(
@@ -50,11 +53,13 @@ public class ConsultationService implements ConsultationUseCase {
             ConsultationRepository consultationRepository,
             AuditMetadataProvider audit,
             AuditLogWriter auditWriter,
+            ConsultationEventPublisher eventPublisher,
             Clock clock) {
         this.appointmentGateway = Objects.requireNonNull(appointmentGateway, "appointmentGateway is required");
         this.consultationRepository = Objects.requireNonNull(consultationRepository, "consultationRepository is required");
         this.audit = Objects.requireNonNull(audit, "audit is required");
         this.auditWriter = Objects.requireNonNull(auditWriter, "auditWriter is required");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
@@ -181,6 +186,17 @@ public class ConsultationService implements ConsultationUseCase {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ConsultationSummary getByAppointmentId(UUID appointmentId) {
+        if (appointmentId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        return consultationRepository.findByAppointmentId(metadata.tenantId(), appointmentId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+    }
+
+    @Override
     @Transactional
     public ConsultationSummary saveEvaluation(UUID consultationId, SaveEvaluationCommand command) {
         if (consultationId == null) {
@@ -278,6 +294,98 @@ public class ConsultationService implements ConsultationUseCase {
                         "status", consultation.status())));
 
         return updated;
+    }
+
+    @Override
+    @Transactional
+    public ConsultationSummary finalizeConsultation(UUID consultationId) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+        UUID actorUserId = metadata.actorUserId();
+
+        // 1. Lock consultation row to serialize with other clinical writes and prevent deadlocks
+        ConsultationSummary consultation = consultationRepository.lockConsultationForUpdate(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+
+        // 2. Validate actor authorization (only assigned veterinarian can finalize)
+        if (!consultation.veterinarianId().equals(actorUserId)) {
+            throw new ConsultationAccessDeniedException("Solo el veterinario asignado a la consulta puede finalizarla.");
+        }
+
+        // 3. Idempotent check: if already finalized, return existing without duplicating audit or events
+        if (ConsultationStatus.FINALIZADA.name().equals(consultation.status())) {
+            return consultation;
+        }
+
+        // 4. Validate valid status: must be BORRADOR
+        if (!ConsultationStatus.BORRADOR.name().equals(consultation.status())) {
+            throw new InvalidConsultationStatusException("La consulta no se encuentra en estado borrador.");
+        }
+
+        // 5. Clinical minimum validation: reason must be present and not blank
+        if (consultation.reason() == null || consultation.reason().isBlank()) {
+            throw new InvalidConsultationDataException("reason", "El motivo de la consulta debe estar registrado para poder finalizarla.");
+        }
+
+        Instant now = clock.instant();
+
+        // 6. Transition appointment from EN_ATENCION to FINALIZADA via public gateway
+        boolean appointmentFinalized = appointmentGateway.finalizeAttention(new FinalizeAppointmentAttentionCommand(
+                tenantId,
+                consultation.appointmentId(),
+                consultation.branchId(),
+                actorUserId,
+                now,
+                metadata.correlationId()));
+
+        if (!appointmentFinalized) {
+            AppointmentConsultationContext reloaded = appointmentGateway.findForConsultation(tenantId, consultation.appointmentId())
+                    .orElseThrow(ConsultationResourceNotFoundException::new);
+            throw new InvalidAppointmentStatusTransitionException(reloaded.status(), "FINALIZADA");
+        }
+
+        // 7. Transition consultation status to FINALIZADA
+        ConsultationSummary finalized = consultationRepository.finalizeConsultation(tenantId, consultationId, now);
+
+        // 8. Transactional audit log
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                actorUserId,
+                finalized.branchId(),
+                "CONSULTATION",
+                finalized.id(),
+                "CONSULTATION_FINALIZED",
+                now,
+                null,
+                metadata.correlationId(),
+                Map.of("status", ConsultationStatus.BORRADOR.name()),
+                Map.of(
+                        "consultationId", finalized.id().toString(),
+                        "appointmentId", finalized.appointmentId().toString(),
+                        "patientId", finalized.patientId().toString(),
+                        "branchId", finalized.branchId().toString(),
+                        "veterinarianId", finalized.veterinarianId().toString(),
+                        "previousStatus", ConsultationStatus.BORRADOR.name(),
+                        "newStatus", ConsultationStatus.FINALIZADA.name(),
+                        "finalizedAt", now.toString())));
+
+        // 9. Publish domain event ConsultationFinalized (processed AFTER_COMMIT)
+        eventPublisher.publish(new ConsultationFinalized(
+                tenantId,
+                finalized.id(),
+                finalized.appointmentId(),
+                finalized.patientId(),
+                finalized.branchId(),
+                finalized.veterinarianId(),
+                now,
+                metadata.correlationId()));
+
+        return finalized;
     }
 
     @Override

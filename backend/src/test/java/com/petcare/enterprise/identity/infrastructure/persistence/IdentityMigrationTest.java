@@ -28,7 +28,7 @@ class IdentityMigrationTest extends PostgreSqlIntegrationTest {
     static void migrateEmptySchema() {
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .schemas(SCHEMA)
+                .schemas(SCHEMA, "public")
                 .defaultSchema(SCHEMA)
                 .createSchemas(true)
                 .locations("classpath:db/migration")
@@ -50,7 +50,7 @@ class IdentityMigrationTest extends PostgreSqlIntegrationTest {
             while (result.next()) {
                 versions.add(result.getString(1));
             }
-            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+            assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
         }
     }
 

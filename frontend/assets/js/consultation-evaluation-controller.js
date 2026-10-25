@@ -2,6 +2,7 @@ import { ApiRequestError } from "./api-client.js";
 
 const CONSULTATION_READ = "CONSULTATION_READ";
 const CONSULTATION_UPDATE = "CONSULTATION_UPDATE";
+const CONSULTATION_FINALIZE = "CONSULTATION_FINALIZE";
 
 export function createConsultationEvaluationController({
   document,
@@ -19,10 +20,13 @@ export function createConsultationEvaluationController({
 
   let canRead = false;
   let canUpdate = false;
+  let canFinalize = false;
   let currentUserId = null;
   let currentConsultationId = null;
   let currentConsultation = null;
   let isSaving = false;
+  let isFinalizing = false;
+  let initialFormSnapshot = null;
   let activeRequestId = 0;
   let currentDiagnoses = [];
   let isSavingDiagnosis = false;
@@ -34,8 +38,30 @@ export function createConsultationEvaluationController({
   // Event Listeners
   elements.backButton?.addEventListener("click", handleBack);
   elements.cancelButton?.addEventListener("click", handleBack);
+  elements.finalizeButton?.addEventListener("click", handleOpenFinalizeDialog);
+  elements.finalizeCancelButton?.addEventListener("click", handleCloseFinalizeDialog);
+  elements.finalizeConfirmButton?.addEventListener("click", handleFinalizeSubmit);
+  elements.finalizeDialog?.addEventListener("cancel", handleNativeDialogCancel);
   elements.form?.addEventListener("submit", handleSubmit);
   elements.reasonInput?.addEventListener("input", updateReasonCounter);
+
+  const evaluationInputs = [
+    elements.reasonInput,
+    elements.anamnesisInput,
+    elements.physicalExamInput,
+    elements.temperatureInput,
+    elements.weightInput,
+    elements.heartRateInput,
+    elements.respiratoryRateInput,
+    elements.crtInput,
+    elements.mucousInput,
+    elements.observationsInput
+  ];
+  for (const input of evaluationInputs) {
+    input?.addEventListener("input", handleEvaluationInputChange);
+    input?.addEventListener("change", handleEvaluationInputChange);
+  }
+
   elements.diagnosisAddButton?.addEventListener("click", handleOpenAddDiagnosis);
   elements.diagnosisCancelButton?.addEventListener("click", handleCloseDiagnosisForm);
   elements.diagnosisForm?.addEventListener("submit", handleDiagnosisSubmit);
@@ -48,10 +74,23 @@ export function createConsultationEvaluationController({
   elements.prescriptionGeneralInstructions?.addEventListener("input", updatePrescriptionInstructionsCounter);
   elements.prescriptionsRetryButton?.addEventListener("click", handleRetryPrescriptions);
 
+  function handleEvaluationInputChange() {
+    updateFinalizeButtonState();
+  }
+
+  function handleNativeDialogCancel(event) {
+    if (isFinalizing) {
+      event.preventDefault();
+      return;
+    }
+    handleCloseFinalizeDialog();
+  }
+
   function sessionReady(identity) {
     const authorities = new Set(Array.isArray(identity?.authorities) ? identity.authorities : []);
     canRead = authorities.has(CONSULTATION_READ);
     canUpdate = authorities.has(CONSULTATION_UPDATE);
+    canFinalize = authorities.has(CONSULTATION_FINALIZE);
     currentUserId = typeof identity?.userId === "string" && identity.userId.trim()
       ? identity.userId.trim()
       : null;
@@ -61,9 +100,13 @@ export function createConsultationEvaluationController({
     activeRequestId++;
     canRead = false;
     canUpdate = false;
+    canFinalize = false;
+    isFinalizing = false;
+    initialFormSnapshot = null;
     currentUserId = null;
     currentConsultationId = null;
     currentConsultation = null;
+    closeFinalizeDialog();
     setSavingState(false);
     setSavingDiagnosisState(false);
     setSavingPrescriptionState(false);
@@ -116,6 +159,10 @@ export function createConsultationEvaluationController({
     const requestId = ++activeRequestId;
     currentConsultationId = null;
     currentConsultation = null;
+    initialFormSnapshot = null;
+    isFinalizing = false;
+    closeFinalizeDialog();
+    setFinalizingState(false);
 
     showOnlyEvaluationView();
     resetAlerts();
@@ -131,6 +178,10 @@ export function createConsultationEvaluationController({
     currentPrescriptions = [];
     if (elements.diagnosisAddButton) elements.diagnosisAddButton.hidden = true;
     if (elements.prescriptionAddButton) elements.prescriptionAddButton.hidden = true;
+    if (elements.finalizeButton) {
+      elements.finalizeButton.hidden = true;
+      elements.finalizeButton.disabled = true;
+    }
     setSavingState(false);
     setSavingDiagnosisState(false);
     setSavingPrescriptionState(false);
@@ -151,9 +202,11 @@ export function createConsultationEvaluationController({
       currentConsultation = consultation;
       populateContext(consultation);
       populateForm(consultation);
+      initialFormSnapshot = buildSnapshotFromConsultation(consultation);
 
       const isEditable = canUpdate && consultation.status === "BORRADOR";
       setFormEditable(isEditable);
+      updateFinalizeButtonState();
       setViewState("content");
       if (Array.isArray(consultation.diagnoses)) {
         currentDiagnoses = consultation.diagnoses;
@@ -243,7 +296,9 @@ export function createConsultationEvaluationController({
         return;
       }
       currentConsultation = updated;
+      initialFormSnapshot = buildSnapshotFromConsultation(updated);
       populateContext(updated);
+      updateFinalizeButtonState();
       showNotice("Evaluación clínica guardada correctamente en borrador.");
       elements.notice?.focus({ preventScroll: true });
     } catch (error) {
@@ -287,6 +342,7 @@ export function createConsultationEvaluationController({
     } finally {
       if (submissionRequestId === activeRequestId && targetConsultationId === currentConsultationId) {
         setSavingState(false);
+        updateFinalizeButtonState();
       }
     }
   }
@@ -473,6 +529,7 @@ export function createConsultationEvaluationController({
       elements.saveButton.disabled = !isEditable;
       elements.saveButton.hidden = !isEditable;
     }
+    updateFinalizeButtonState();
     if (elements.diagnosisAddButton) {
       elements.diagnosisAddButton.hidden = !isEditable;
     }
@@ -480,6 +537,17 @@ export function createConsultationEvaluationController({
       const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
       elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
     }
+  }
+
+  function updateFinalizeButtonState() {
+    if (!elements.finalizeButton) return;
+    const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
+    const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+    const canFinalizeNow = isEditable && canFinalize && isVetAssigned;
+    elements.finalizeButton.hidden = !canFinalizeNow;
+    const hasUnsavedChanges = hasPendingChanges();
+    const isAnyOpBusy = isSaving || isFinalizing || isSavingDiagnosis || isSavingPrescription;
+    elements.finalizeButton.disabled = !canFinalizeNow || hasUnsavedChanges || isAnyOpBusy;
   }
 
   function setSavingState(saving) {
@@ -495,6 +563,223 @@ export function createConsultationEvaluationController({
     }
     if (elements.saveLabel) {
       elements.saveLabel.textContent = saving ? "Guardando..." : "Guardar evaluación";
+    }
+    updateFinalizeButtonState();
+  }
+
+  function setFinalizingState(finalizing) {
+    isFinalizing = finalizing;
+    updateFinalizeButtonState();
+    if (elements.finalizeSpinner) {
+      elements.finalizeSpinner.hidden = !finalizing;
+    }
+    if (elements.finalizeLabel) {
+      elements.finalizeLabel.textContent = finalizing ? "Finalizando..." : "Finalizar consulta";
+    }
+    if (elements.finalizeConfirmButton) {
+      elements.finalizeConfirmButton.disabled = finalizing;
+      elements.finalizeConfirmButton.setAttribute("aria-busy", String(finalizing));
+    }
+    if (elements.finalizeConfirmSpinner) {
+      elements.finalizeConfirmSpinner.hidden = !finalizing;
+    }
+    if (elements.finalizeConfirmLabel) {
+      elements.finalizeConfirmLabel.textContent = finalizing ? "Finalizando..." : "Confirmar y finalizar";
+    }
+    if (elements.finalizeCancelButton) {
+      elements.finalizeCancelButton.disabled = finalizing;
+    }
+    if (elements.saveButton) {
+      elements.saveButton.disabled = finalizing || isSaving || currentConsultation?.status !== "BORRADOR";
+    }
+  }
+
+  function buildSnapshotFromConsultation(consultation) {
+    if (!consultation) return null;
+    const signs = consultation.vitalSigns || consultation.clinicalDetails?.vitalSigns || {};
+    const obs = consultation.observations || consultation.clinicalDetails?.observations || "";
+    return JSON.stringify({
+      reason: (consultation.reason || "").trim(),
+      anamnesis: (consultation.anamnesis || "").trim(),
+      physicalExam: (consultation.physicalExam || "").trim(),
+      temperature: signs.temperatureCelsius != null && !isNaN(signs.temperatureCelsius) ? String(Number(signs.temperatureCelsius)) : "",
+      weight: signs.weightKg != null && !isNaN(signs.weightKg) ? String(Number(signs.weightKg)) : "",
+      heartRate: signs.heartRateBpm != null && !isNaN(signs.heartRateBpm) ? String(parseInt(signs.heartRateBpm, 10)) : "",
+      respiratoryRate: signs.respiratoryRateBpm != null && !isNaN(signs.respiratoryRateBpm) ? String(parseInt(signs.respiratoryRateBpm, 10)) : "",
+      crt: signs.capillaryRefillTimeSeconds != null && !isNaN(signs.capillaryRefillTimeSeconds) ? String(Number(signs.capillaryRefillTimeSeconds)) : "",
+      mucousMembranes: (signs.mucousMembranes || "").trim(),
+      observations: (obs || "").trim()
+    });
+  }
+
+  function getCurrentEvaluationFormSnapshot() {
+    const temp = (elements.temperatureInput?.value || "").trim();
+    const weight = (elements.weightInput?.value || "").trim();
+    const hr = (elements.heartRateInput?.value || "").trim();
+    const rr = (elements.respiratoryRateInput?.value || "").trim();
+    const crt = (elements.crtInput?.value || "").trim();
+
+    return JSON.stringify({
+      reason: (elements.reasonInput?.value || "").trim(),
+      anamnesis: (elements.anamnesisInput?.value || "").trim(),
+      physicalExam: (elements.physicalExamInput?.value || "").trim(),
+      temperature: temp && !isNaN(temp) ? String(Number(temp)) : "",
+      weight: weight && !isNaN(weight) ? String(Number(weight)) : "",
+      heartRate: hr && !isNaN(hr) ? String(parseInt(hr, 10)) : "",
+      respiratoryRate: rr && !isNaN(rr) ? String(parseInt(rr, 10)) : "",
+      crt: crt && !isNaN(crt) ? String(Number(crt)) : "",
+      mucousMembranes: (elements.mucousInput?.value || "").trim(),
+      observations: (elements.observationsInput?.value || "").trim()
+    });
+  }
+
+  function hasPendingChanges() {
+    if (initialFormSnapshot !== null && getCurrentEvaluationFormSnapshot() !== initialFormSnapshot) {
+      return true;
+    }
+    if (elements.diagnosisForm && !elements.diagnosisForm.hidden) {
+      return true;
+    }
+    if (elements.prescriptionForm && !elements.prescriptionForm.hidden) {
+      return true;
+    }
+    return false;
+  }
+
+  function handleOpenFinalizeDialog() {
+    if (!canFinalize || !currentConsultationId || isFinalizing) return;
+    if (currentConsultation?.status !== "BORRADOR") return;
+
+    resetAlerts();
+    if (isSaving || isSavingDiagnosis || isSavingPrescription) {
+      showValidationSummary("Hay una operación clínica en curso. Por favor espera a que finalice antes de cerrar la consulta.");
+      elements.validationSummary?.focus({ preventScroll: true });
+      return;
+    }
+    if (hasPendingChanges()) {
+      showValidationSummary(
+        "Tienes modificaciones clínicas sin guardar en la evaluación, diagnósticos o prescripción. Por favor guarda o descarta los cambios pendientes antes de finalizar la consulta."
+      );
+      elements.validationSummary?.focus({ preventScroll: true });
+      return;
+    }
+
+    hideFinalizeDialogError();
+    if (typeof elements.finalizeDialog?.showModal === "function") {
+      try {
+        elements.finalizeDialog.showModal();
+      } catch (_) {
+        if (elements.finalizeDialog) {
+          elements.finalizeDialog.hidden = false;
+          elements.finalizeDialog.setAttribute("open", "");
+        }
+      }
+    } else if (elements.finalizeDialog) {
+      elements.finalizeDialog.hidden = false;
+      elements.finalizeDialog.setAttribute("open", "");
+    }
+  }
+
+  function handleCloseFinalizeDialog() {
+    if (isFinalizing) return;
+    closeFinalizeDialog();
+    elements.finalizeButton?.focus({ preventScroll: true });
+  }
+
+  function closeFinalizeDialog() {
+    hideFinalizeDialogError();
+    if (typeof elements.finalizeDialog?.close === "function") {
+      try {
+        elements.finalizeDialog.close();
+      } catch (_) {}
+    } else if (elements.finalizeDialog) {
+      elements.finalizeDialog.hidden = true;
+      elements.finalizeDialog.removeAttribute("open");
+    }
+  }
+
+  function hideFinalizeDialogError() {
+    if (elements.finalizeDialogError) {
+      elements.finalizeDialogError.hidden = true;
+    }
+    if (elements.finalizeDialogErrorMessage) {
+      elements.finalizeDialogErrorMessage.textContent = "";
+    }
+  }
+
+  function showFinalizeDialogError(error) {
+    if (!elements.finalizeDialogError) return;
+    const message = (error instanceof ApiRequestError && error.message)
+      ? error.message
+      : "No fue posible finalizar la consulta clínica.";
+    const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+      ? ` (ID de correlación: ${error.correlationId})`
+      : "";
+    if (elements.finalizeDialogErrorMessage) {
+      elements.finalizeDialogErrorMessage.textContent = `${message}${correlationSuffix}`;
+    }
+    elements.finalizeDialogError.hidden = false;
+    elements.finalizeDialogError.focus({ preventScroll: true });
+  }
+
+  async function handleFinalizeSubmit() {
+    if (isFinalizing || !currentConsultationId || !currentConsultation) return;
+    if (!canFinalize || currentConsultation.status !== "BORRADOR") return;
+
+    if (isSaving || isSavingDiagnosis || isSavingPrescription) {
+      showFinalizeDialogError(new ApiRequestError({
+        message: "Hay una operación clínica en curso. Por favor espera a que finalice.",
+        status: 400
+      }));
+      return;
+    }
+
+    if (hasPendingChanges()) {
+      showFinalizeDialogError(new ApiRequestError({
+        message: "Tienes modificaciones clínicas sin guardar en la evaluación, diagnósticos o prescripción. Por favor guarda o descarta los cambios pendientes antes de finalizar la consulta.",
+        status: 400
+      }));
+      return;
+    }
+
+    const requestId = activeRequestId;
+    const targetConsultationId = currentConsultationId;
+    setFinalizingState(true);
+    hideFinalizeDialogError();
+
+    try {
+      const updated = await client.requestJson(
+        `/api/v1/consultations/${encodeURIComponent(targetConsultationId)}/finalize`,
+        { method: "POST" }
+      );
+      if (requestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+      currentConsultation = updated;
+      closeFinalizeDialog();
+      populateContext(updated);
+      populateForm(updated);
+      initialFormSnapshot = buildSnapshotFromConsultation(updated);
+      setFormEditable(false);
+      if (Array.isArray(updated.diagnoses)) {
+        currentDiagnoses = updated.diagnoses;
+        renderDiagnoses(currentDiagnoses);
+      }
+      if (Array.isArray(updated.prescriptions)) {
+        currentPrescriptions = updated.prescriptions;
+        renderPrescriptions(currentPrescriptions);
+      }
+      showNotice("Consulta finalizada correctamente. El expediente clínico se encuentra en modo de solo lectura.");
+      elements.notice?.focus({ preventScroll: true });
+    } catch (error) {
+      if (requestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+      showFinalizeDialogError(error);
+    } finally {
+      if (requestId === activeRequestId && targetConsultationId === currentConsultationId) {
+        setFinalizingState(false);
+      }
     }
   }
 
@@ -617,8 +902,16 @@ export function createConsultationEvaluationController({
     sessionEnded();
     elements.backButton?.removeEventListener("click", handleBack);
     elements.cancelButton?.removeEventListener("click", handleBack);
+    elements.finalizeButton?.removeEventListener("click", handleOpenFinalizeDialog);
+    elements.finalizeCancelButton?.removeEventListener("click", handleCloseFinalizeDialog);
+    elements.finalizeConfirmButton?.removeEventListener("click", handleFinalizeSubmit);
+    elements.finalizeDialog?.removeEventListener("cancel", handleNativeDialogCancel);
     elements.form?.removeEventListener("submit", handleSubmit);
     elements.reasonInput?.removeEventListener("input", updateReasonCounter);
+    for (const input of evaluationInputs) {
+      input?.removeEventListener("input", handleEvaluationInputChange);
+      input?.removeEventListener("change", handleEvaluationInputChange);
+    }
     elements.diagnosisAddButton?.removeEventListener("click", handleOpenAddDiagnosis);
     elements.diagnosisCancelButton?.removeEventListener("click", handleCloseDiagnosisForm);
     elements.diagnosisForm?.removeEventListener("submit", handleDiagnosisSubmit);
@@ -789,6 +1082,7 @@ export function createConsultationEvaluationController({
     if (elements.diagnosisDescriptionCounter) elements.diagnosisDescriptionCounter.textContent = "0 / 300";
     if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = "";
     if (elements.diagnosisForm) elements.diagnosisForm.hidden = false;
+    updateFinalizeButtonState();
     elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
   }
 
@@ -809,6 +1103,7 @@ export function createConsultationEvaluationController({
     }
     if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = diag.notes || "";
     if (elements.diagnosisForm) elements.diagnosisForm.hidden = false;
+    updateFinalizeButtonState();
     elements.diagnosisDescriptionInput?.focus({ preventScroll: true });
   }
 
@@ -827,6 +1122,7 @@ export function createConsultationEvaluationController({
     if (elements.diagnosisNotesInput) elements.diagnosisNotesInput.value = "";
     if (elements.diagnosisForm) elements.diagnosisForm.hidden = true;
     clearDiagnosisValidationErrors();
+    updateFinalizeButtonState();
   }
 
   function updateDiagnosisDescriptionCounter() {
@@ -960,6 +1256,7 @@ export function createConsultationEvaluationController({
     if (elements.diagnosisSaveLabel) {
       elements.diagnosisSaveLabel.textContent = saving ? "Guardando..." : "Guardar diagnóstico";
     }
+    updateFinalizeButtonState();
   }
 
   function resetDiagnosisAlerts() {
@@ -1251,6 +1548,7 @@ export function createConsultationEvaluationController({
     if (elements.prescriptionForm) {
       elements.prescriptionForm.hidden = false;
     }
+    updateFinalizeButtonState();
     const firstInput = elements.prescriptionItemsContainer?.querySelector(".pc-prescription-item-name");
     firstInput?.focus({ preventScroll: true });
   }
@@ -1275,6 +1573,7 @@ export function createConsultationEvaluationController({
       elements.prescriptionForm.hidden = true;
     }
     clearPrescriptionValidationErrors();
+    updateFinalizeButtonState();
   }
 
   function addPrescriptionItemRow(initialData = {}) {
@@ -1602,6 +1901,7 @@ export function createConsultationEvaluationController({
     if (elements.prescriptionSubmitLabel) {
       elements.prescriptionSubmitLabel.textContent = saving ? "Emitiendo..." : "Emitir prescripción";
     }
+    updateFinalizeButtonState();
   }
 
   function resetPrescriptionAlerts() {
@@ -1657,6 +1957,16 @@ function findElements(document) {
     view,
     backButton: document.querySelector("#consultation-evaluation-back-button"),
     cancelButton: document.querySelector("#evaluation-cancel-button"),
+    finalizeButton: document.querySelector("#evaluation-finalize-button"),
+    finalizeLabel: document.querySelector("#evaluation-finalize-label"),
+    finalizeSpinner: document.querySelector("#evaluation-finalize-spinner"),
+    finalizeDialog: document.querySelector("#evaluation-finalize-dialog"),
+    finalizeDialogError: document.querySelector("#evaluation-finalize-dialog-error"),
+    finalizeDialogErrorMessage: document.querySelector("#evaluation-finalize-dialog-error-message"),
+    finalizeCancelButton: document.querySelector("#evaluation-finalize-cancel-button"),
+    finalizeConfirmButton: document.querySelector("#evaluation-finalize-confirm-button"),
+    finalizeConfirmLabel: document.querySelector("#evaluation-finalize-confirm-label"),
+    finalizeConfirmSpinner: document.querySelector("#evaluation-finalize-confirm-spinner"),
     saveButton: document.querySelector("#evaluation-save-button"),
     saveLabel: document.querySelector("#evaluation-save-label"),
     saveSpinner: document.querySelector("#evaluation-save-spinner"),

@@ -97,7 +97,8 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                     c.physical_exam,
                     c.clinical_details,
                     c.created_at,
-                    c.updated_at
+                    c.updated_at,
+                    c.finalized_at
                 FROM consultations c
                 JOIN patients p
                     ON p.tenant_id = c.tenant_id
@@ -140,7 +141,8 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                     c.physical_exam,
                     c.clinical_details,
                     c.created_at,
-                    c.updated_at
+                    c.updated_at,
+                    c.finalized_at
                 FROM consultations c
                 JOIN patients p
                     ON p.tenant_id = c.tenant_id
@@ -184,7 +186,8 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                     c.physical_exam,
                     c.clinical_details,
                     c.created_at,
-                    c.updated_at
+                    c.updated_at,
+                    c.finalized_at
                 FROM consultations c
                 JOIN patients p
                     ON p.tenant_id = c.tenant_id
@@ -273,7 +276,8 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                 null,
                 null,
                 record.createdAt(),
-                record.updatedAt());
+                record.updatedAt(),
+                null);
     }
 
     @Override
@@ -310,9 +314,33 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                 .orElseThrow(ConsultationResourceNotFoundException::new);
     }
 
+    @Override
+    public ConsultationSummary finalizeConsultation(UUID tenantId, UUID consultationId, Instant finalizedAt) {
+        String sql = """
+                UPDATE consultations
+                SET status = 'FINALIZADA',
+                    finalized_at = :finalized_at,
+                    updated_at = :updated_at
+                WHERE tenant_id = :tenant_id
+                  AND id = :consultation_id
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenant_id", tenantId)
+                .addValue("consultation_id", consultationId)
+                .addValue("finalized_at", Timestamp.from(finalizedAt))
+                .addValue("updated_at", Timestamp.from(finalizedAt));
+        int rows = jdbc.update(sql, params);
+        if (rows == 0) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        return findById(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+    }
+
     private ConsultationSummary mapRow(ResultSet rs, int rowNum) throws SQLException {
         ClinicalDetails details = parseClinicalDetails(rs.getString("clinical_details"));
         VitalSigns signs = details != null ? details.vitalSigns() : null;
+        Timestamp finalizedTs = rs.getTimestamp("finalized_at");
         return new ConsultationSummary(
                 rs.getObject("id", UUID.class),
                 rs.getObject("appointment_id", UUID.class),
@@ -332,7 +360,8 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                 signs,
                 details,
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant());
+                rs.getTimestamp("updated_at").toInstant(),
+                finalizedTs != null ? finalizedTs.toInstant() : null);
     }
 
     private ClinicalDetails parseClinicalDetails(String json) {

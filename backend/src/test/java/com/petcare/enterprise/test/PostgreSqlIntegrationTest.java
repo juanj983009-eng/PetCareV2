@@ -13,6 +13,13 @@ public abstract class PostgreSqlIntegrationTest {
 
     static {
         POSTGRES.start();
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;");
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException("Failed to initialize test postgres extensions", e);
+        }
     }
 
     @DynamicPropertySource

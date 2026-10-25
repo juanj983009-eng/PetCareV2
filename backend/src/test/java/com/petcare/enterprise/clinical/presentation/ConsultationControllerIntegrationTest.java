@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,7 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petcare.enterprise.audit.application.AuditLogWriter;
 import com.petcare.enterprise.audit.application.AuditRecord;
+import com.petcare.enterprise.clinical.application.ConsultationEventPublisher;
 import com.petcare.enterprise.clinical.application.ConsultationRepository;
+import com.petcare.enterprise.clinical.domain.ConsultationFinalized;
 import com.petcare.enterprise.identity.infrastructure.security.PetCarePrincipal;
 import com.petcare.enterprise.test.PostgreSqlIntegrationTest;
 import java.sql.Timestamp;
@@ -70,11 +73,14 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
     @MockitoSpyBean
     ConsultationRepository consultationRepository;
 
+    @MockitoSpyBean
+    ConsultationEventPublisher consultationEventPublisher;
+
     private final List<UUID> createdTenantIds = new ArrayList<>();
 
     @AfterEach
     void cleanUpTenants() {
-        reset(auditLogWriter, consultationRepository);
+        reset(auditLogWriter, consultationRepository, consultationEventPublisher);
         if (!createdTenantIds.isEmpty()) {
             jdbc.execute("ALTER TABLE audit_entries DISABLE TRIGGER USER");
             jdbc.execute("ALTER TABLE appointment_status_history DISABLE TRIGGER USER");
@@ -113,7 +119,7 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
         TenantFixture tenant = createTenantFixture("consulta-rbac");
         jdbc.query("SELECT ensure_tenant_system_roles(?)", rs -> null, tenant.tenantId);
 
-        for (String permCode : List.of("CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE")) {
+        for (String permCode : List.of("CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE")) {
             Integer permCount = jdbc.queryForObject(
                     "SELECT count(*) FROM permissions WHERE code = ? AND module = 'CLINICAL'",
                     Integer.class,
@@ -3065,6 +3071,531 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
         assertThat(countInDb).isZero();
     }
 
+    @Test
+    void finalizesConsultationAndAppointmentAtomicallyWithAuditAndEvent() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-success");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-fin@example.test", "Dra. Patricia", "Vargas");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Toby");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Chequeo anual",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // 1. Iniciar consulta
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 2. Guardar evaluación con motivo clínico completo
+        String evalBody = """
+                {
+                    "reason": "Chequeo posoperatorio de esterilización",
+                    "anamnesis": "Paciente activo con apetito conservado",
+                    "physicalExam": "Herida quirúrgica limpia sin signos de infección"
+                }
+                """;
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(evalBody))
+                .andExpect(status().isOk());
+
+        // 3. Añadir diagnóstico
+        String diagBody = """
+                {
+                    "diagnosisType": "DEFINITIVO",
+                    "code": "Z48.0",
+                    "description": "Atención para retirada de suturas y control quirúrgico"
+                }
+                """;
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/diagnoses")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(diagBody))
+                .andExpect(status().isCreated());
+
+        // 4. Emitir prescripción
+        String prescBody = """
+                {
+                    "idempotencyKey": "%s",
+                    "items": [
+                        {
+                            "medicationName": "Antiséptico en spray",
+                            "dosage": "1 aplicación",
+                            "frequency": "Cada 12 horas",
+                            "duration": "3 días"
+                        }
+                    ]
+                }
+                """.formatted(UUID.randomUUID());
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(prescBody))
+                .andExpect(status().isCreated());
+
+        // 5. Finalizar consulta
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(consultationId.toString()))
+                .andExpect(jsonPath("$.status").value("FINALIZADA"))
+                .andExpect(jsonPath("$.reason").value("Chequeo posoperatorio de esterilización"))
+                .andExpect(jsonPath("$.diagnoses.length()").value(1))
+                .andExpect(jsonPath("$.prescriptions.length()").value(1))
+                .andExpect(jsonPath("$.finalizedAt").isNotEmpty());
+
+        // 6. Verificar persistencia atómica en base de datos
+        String consStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM consultations WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(consStatusInDb).isEqualTo("FINALIZADA");
+
+        Timestamp finalizedAtInDb = jdbc.queryForObject(
+                "SELECT finalized_at FROM consultations WHERE tenant_id = ? AND id = ?",
+                Timestamp.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(finalizedAtInDb).isNotNull();
+
+        String apptStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM appointments WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                apptId);
+        assertThat(apptStatusInDb).isEqualTo("FINALIZADA");
+
+        // Historial de estados de la cita
+        Integer historyCount = jdbc.queryForObject("""
+                SELECT count(*) FROM appointment_status_history
+                WHERE tenant_id = ? AND appointment_id = ? AND previous_status = 'EN_ATENCION' AND new_status = 'FINALIZADA'
+                """, Integer.class, tenant.tenantId, apptId);
+        assertThat(historyCount).isEqualTo(1);
+
+        // Auditoría transaccional
+        Integer auditCount = jdbc.queryForObject("""
+                SELECT count(*) FROM audit_entries
+                WHERE tenant_id = ? AND entity_id = ? AND action = 'CONSULTATION_FINALIZED'
+                """, Integer.class, tenant.tenantId, consultationId);
+        assertThat(auditCount).isEqualTo(1);
+
+        // Evento de dominio único
+        verify(consultationEventPublisher, times(1)).publish(any(ConsultationFinalized.class));
+
+        // 7. Apertura en modo lectura desde la agenda mediante GET
+        mvc.perform(get("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(consultationId.toString()))
+                .andExpect(jsonPath("$.status").value("FINALIZADA"))
+                .andExpect(jsonPath("$.diagnoses.length()").value(1))
+                .andExpect(jsonPath("$.prescriptions.length()").value(1));
+    }
+
+    @Test
+    void rejectsFinalizationWhenReasonIsMissing() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-no-reason");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-noreason@example.test", "Dr. Luis", "Mendez");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Simba");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control general",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // Iniciar consulta sin guardar motivo en evaluación
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Intentar finalizar sin motivo
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("reason"));
+
+        // Asegurar que la consulta sigue en BORRADOR y la cita en EN_ATENCION
+        String consStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM consultations WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(consStatusInDb).isEqualTo("BORRADOR");
+
+        String apptStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM appointments WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                apptId);
+        assertThat(apptStatusInDb).isEqualTo("EN_ATENCION");
+
+        verify(consultationEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    void enforcesSecurityAndAuthorizationOnFinalization() throws Exception {
+        TenantFixture tenantA = createTenantFixture("cons-fin-sec-a");
+        TenantFixture tenantB = createTenantFixture("cons-fin-sec-b");
+
+        UUID vetA = insertVeterinarian(tenantA.tenantId, tenantA.branchId, "vet-a@example.test", "Dr. A", "Alpha");
+        UUID otherVetA = insertVeterinarian(tenantA.tenantId, tenantA.branchId, "vet-other@example.test", "Dr. Other", "Beta");
+        PatientWithMedicalRecord patientA = createPatientWithMedicalRecord(tenantA.tenantId, "Rex");
+        Instant now = Instant.now();
+        UUID apptA = insertAppointment(
+                tenantA.tenantId,
+                tenantA.branchId,
+                patientA.patientId,
+                vetA,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Vacunación",
+                null);
+
+        TenantFixture vetActorA = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetA);
+        TenantFixture otherVetActorA = new TenantFixture(tenantA.tenantId, tenantA.branchId, otherVetA);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptA + "/consultation")
+                        .with(authentication(auth(vetActorA, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Guardar motivo
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActorA, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Vacunación antirrábica anual\"}"))
+                .andExpect(status().isOk());
+
+        // 1. Sin autenticación -> 401
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize"))
+                .andExpect(status().isUnauthorized());
+
+        // 2. Sin autoridad CONSULTATION_FINALIZE -> 403
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActorA, "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isForbidden());
+
+        // 3. Veterinario no asignado del mismo tenant -> 403
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(otherVetActorA, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 4. Veterinario de otro tenant -> 404 NOT_FOUND (aislamiento multi-tenant)
+        UUID vetB = insertVeterinarian(tenantB.tenantId, tenantB.branchId, "vet-b@example.test", "Dr. B", "Gamma");
+        TenantFixture vetActorB = new TenantFixture(tenantB.tenantId, tenantB.branchId, vetB);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActorB, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void idempotentRepeatFinalizationReturnsSameResultWithoutDuplicatingAuditOrEvents() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-idemp");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-idemp@example.test", "Dra. Laura", "Paredes");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Rocky");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Consulta de piel",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Dermatitis alérgica\"}"))
+                .andExpect(status().isOk());
+
+        // Primera finalización
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FINALIZADA"));
+
+        // Segunda llamada repetida con la misma autorización
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FINALIZADA"));
+
+        // No duplica auditoría
+        Integer auditCount = jdbc.queryForObject("""
+                SELECT count(*) FROM audit_entries
+                WHERE tenant_id = ? AND entity_id = ? AND action = 'CONSULTATION_FINALIZED'
+                """, Integer.class, tenant.tenantId, consultationId);
+        assertThat(auditCount).isEqualTo(1);
+
+        // No duplica evento de dominio
+        verify(consultationEventPublisher, times(1)).publish(any(ConsultationFinalized.class));
+    }
+
+    @Test
+    void rollsBackEntireTransactionIfAppointmentTransitionFailsOrAuditFails() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-rollback");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-rb@example.test", "Dr. Mario", "Castillo");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Bruno");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control general",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Control postratamiento\"}"))
+                .andExpect(status().isOk());
+
+        // Simular que el registro de auditoría falla con excepción
+        doThrow(new RuntimeException("Simulated audit write failure"))
+                .when(auditLogWriter).append(argThat(rec -> "CONSULTATION_FINALIZED".equals(rec.action())));
+
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isInternalServerError());
+
+        // Asegurar que la transacción se revirtió por completo
+        String consStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM consultations WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(consStatusInDb).isEqualTo("BORRADOR");
+
+        String apptStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM appointments WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                apptId);
+        assertThat(apptStatusInDb).isEqualTo("EN_ATENCION");
+
+        // Sin evento emitido tras rollback
+        verify(consultationEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    void subsequentWritesRejectedOnceFinalized() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-readonly");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-ro@example.test", "Dra. Carmen", "Rojas");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Luna");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Consulta general",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Vacunación y desparasitación\"}"))
+                .andExpect(status().isOk());
+
+        // Añadir diagnóstico previo a finalizar para probar actualización posterior
+        MvcResult diagResult = mvc.perform(post("/api/v1/consultations/" + consultationId + "/diagnoses")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"diagnosisType\": \"PRESUNTIVO\", \"description\": \"Gastroenteritis leve\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID diagnosisId = UUID.fromString(objectMapper.readTree(diagResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Finalizar
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isOk());
+
+        // 1. Intento de actualizar evaluación -> 409
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Intento de modificar cerrado\"}"))
+                .andExpect(status().isConflict());
+
+        // 2. Intento de añadir diagnóstico -> 409
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/diagnoses")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"diagnosisType\": \"DEFINITIVO\", \"description\": \"Nuevo diag posterior\"}"))
+                .andExpect(status().isConflict());
+
+        // 3. Intento de modificar diagnóstico existente -> 409
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/diagnoses/" + diagnosisId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"diagnosisType\": \"DEFINITIVO\", \"description\": \"Diag modificado posterior\"}"))
+                .andExpect(status().isConflict());
+
+        // 4. Intento de emitir nueva prescripción -> 409
+        String prescRequest = """
+                {
+                    "idempotencyKey": "%s",
+                    "items": [
+                        {
+                            "medicationName": "Amoxicilina 500",
+                            "dosage": "1 comprimido",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        }
+                    ]
+                }
+                """.formatted(UUID.randomUUID());
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(prescRequest))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void concurrentFinalizationAndClinicalWritesSerializedInPostgreSql() throws Exception {
+        TenantFixture tenant = createTenantFixture("cons-fin-concurrent");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet-conc-fin@example.test", "Dr. Victor", "Salas");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Coco");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.plusSeconds(300),
+                now.plusSeconds(2100),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Consulta de rutina",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Guardar motivo inicial
+        mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Chequeo preventivo semestral\"}"))
+                .andExpect(status().isOk());
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+
+        Callable<Integer> finalizeTask = () -> {
+            startLatch.await();
+            return mvc.perform(post("/api/v1/consultations/" + consultationId + "/finalize")
+                            .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                    .andReturn().getResponse().getStatus();
+        };
+
+        Callable<Integer> updateTask = () -> {
+            startLatch.await();
+            return mvc.perform(put("/api/v1/consultations/" + consultationId + "/evaluation")
+                            .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"reason\": \"Chequeo preventivo semestral\", \"anamnesis\": \"Modificación concurrente\"}"))
+                    .andReturn().getResponse().getStatus();
+        };
+
+        Future<Integer> finalizeFuture = executor.submit(finalizeTask);
+        Future<Integer> updateFuture = executor.submit(updateTask);
+
+        startLatch.countDown();
+
+        int finalizeStatus = finalizeFuture.get(10, TimeUnit.SECONDS);
+        int updateStatus = updateFuture.get(10, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // Finalize debe haber tenido éxito (200)
+        assertThat(finalizeStatus).isEqualTo(200);
+        // La actualización o bien entró antes (200) o bien entró después y fue rechazada de manera consistente con 409
+        assertThat(updateStatus).isIn(200, 409);
+
+        // Estado final en DB debe ser siempre FINALIZADA
+        String consStatusInDb = jdbc.queryForObject(
+                "SELECT status FROM consultations WHERE tenant_id = ? AND id = ?",
+                String.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(consStatusInDb).isEqualTo("FINALIZADA");
+    }
+
     private TenantFixture createTenantFixture(String slugPrefix) {
         UUID tenantId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
@@ -3090,6 +3621,15 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 """, userId, tenantId, "admin@" + slug + ".test");
 
         return new TenantFixture(tenantId, branchId, userId);
+    }
+
+    private UUID insertVeterinarian(UUID tenantId, UUID branchId, String email, String firstName, String lastName) {
+        return insertUserWithRoleAndBranch(tenantId, branchId, firstName, lastName, email, "VETERINARIO");
+    }
+
+    private PatientWithMedicalRecord createPatientWithMedicalRecord(UUID tenantId, String patientName) {
+        UUID ownerId = insertOwner(tenantId, "Propietario", "Test", "DNI", UUID.randomUUID().toString().substring(0, 8));
+        return insertPatientWithMedicalRecord(tenantId, ownerId, patientName, "CANINO", "Mestizo");
     }
 
     private UUID insertUserWithRoleAndBranch(

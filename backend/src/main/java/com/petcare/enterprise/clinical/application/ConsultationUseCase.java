@@ -13,7 +13,11 @@ public interface ConsultationUseCase {
 
     ConsultationSummary getById(UUID consultationId);
 
+    ConsultationSummary getByAppointmentId(UUID appointmentId);
+
     ConsultationSummary saveEvaluation(UUID consultationId, SaveEvaluationCommand command);
+
+    ConsultationSummary finalizeConsultation(UUID consultationId);
 
     List<DiagnosisSummary> listDiagnoses(UUID consultationId);
 
@@ -141,6 +145,7 @@ public interface ConsultationUseCase {
             VitalSigns vitalSigns,
             ClinicalDetails clinicalDetails,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            Instant finalizedAt) {
     }
 }

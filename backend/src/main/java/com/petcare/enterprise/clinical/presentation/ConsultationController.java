@@ -29,6 +29,32 @@ class ConsultationController {
         return toResponse(consultations.startFromAppointment(appointmentId));
     }
 
+    @GetMapping("/api/v1/appointments/{appointmentId}/consultation")
+    ResponseEntity<ConsultationResponse> getByAppointmentId(
+            @PathVariable("appointmentId") UUID appointmentId) {
+        var summary = consultations.getByAppointmentId(appointmentId);
+        var diagList = consultations.listDiagnoses(summary.id()).stream()
+                .map(DiagnosisResponse::from)
+                .toList();
+        var prescList = consultations.listPrescriptions(summary.id()).stream()
+                .map(PrescriptionResponse::from)
+                .toList();
+        return ResponseEntity.ok(ConsultationResponse.from(summary, diagList, prescList));
+    }
+
+    @PostMapping("/api/v1/consultations/{consultationId}/finalize")
+    ResponseEntity<ConsultationResponse> finalizeConsultation(
+            @PathVariable("consultationId") UUID consultationId) {
+        var finalized = consultations.finalizeConsultation(consultationId);
+        var diagList = consultations.listDiagnoses(finalized.id()).stream()
+                .map(DiagnosisResponse::from)
+                .toList();
+        var prescList = consultations.listPrescriptions(finalized.id()).stream()
+                .map(PrescriptionResponse::from)
+                .toList();
+        return ResponseEntity.ok(ConsultationResponse.from(finalized, diagList, prescList));
+    }
+
     @GetMapping("/api/v1/consultations/{consultationId}")
     ResponseEntity<ConsultationResponse> getById(
             @PathVariable("consultationId") UUID consultationId) {

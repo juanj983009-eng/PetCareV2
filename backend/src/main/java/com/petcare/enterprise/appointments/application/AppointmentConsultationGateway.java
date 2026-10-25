@@ -10,6 +10,8 @@ public interface AppointmentConsultationGateway {
 
     boolean startAttention(StartAppointmentAttentionCommand command);
 
+    boolean finalizeAttention(FinalizeAppointmentAttentionCommand command);
+
     record AppointmentConsultationContext(
             UUID id,
             UUID tenantId,
@@ -26,6 +28,15 @@ public interface AppointmentConsultationGateway {
     }
 
     record StartAppointmentAttentionCommand(
+            UUID tenantId,
+            UUID appointmentId,
+            UUID branchId,
+            UUID actorUserId,
+            Instant occurredAt,
+            UUID correlationId) {
+    }
+
+    record FinalizeAppointmentAttentionCommand(
             UUID tenantId,
             UUID appointmentId,
             UUID branchId,

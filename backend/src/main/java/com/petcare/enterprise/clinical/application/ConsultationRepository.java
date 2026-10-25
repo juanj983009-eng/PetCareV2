@@ -26,6 +26,8 @@ public interface ConsultationRepository {
 
     ConsultationSummary updateEvaluation(UpdateEvaluationRecord record);
 
+    ConsultationSummary finalizeConsultation(UUID tenantId, UUID consultationId, Instant finalizedAt);
+
     List<DiagnosisSummary> findDiagnosesByConsultationId(UUID tenantId, UUID consultationId);
 
     Optional<DiagnosisSummary> findDiagnosisById(UUID tenantId, UUID consultationId, UUID diagnosisId);

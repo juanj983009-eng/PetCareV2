@@ -183,7 +183,7 @@ V5 asegura idempotentemente, para tenants existentes y para cada tenant registra
 
 HU-022 habilita el registro y edición de múltiples diagnósticos dentro de una consulta clínica en estado `BORRADOR`, así como su consulta consolidada desde la historia clínica del paciente:
 
-- `GET /api/v1/consultations/{consultationId}/diagnoses`: lista los diagnósticos de una consulta (protegido por `CONSULTATION_READ` para `ADMINISTRADOR` y `VETERINARIO`).
+- `GET /api/v1/consultations/{consultationId}/diagnoses`: lista los diagnósticos de una consulta (protegido por `CONSULTATION_READ`, asignado al rol de sistema `VETERINARIO`).
 - `POST /api/v1/consultations/{consultationId}/diagnoses`: añade un diagnóstico a la consulta en borrador (protegido por `CONSULTATION_UPDATE`, restringido al veterinario asignado o administrador).
 - `PUT /api/v1/consultations/{consultationId}/diagnoses/{diagnosisId}`: actualiza un diagnóstico existente en borrador (protegido por `CONSULTATION_UPDATE`).
 - `GET /api/v1/patients/{patientId}/diagnoses`: lectura histórica de diagnósticos del paciente para el perfil clínico (protegido por `PATIENT_READ`).
@@ -203,7 +203,7 @@ UI-003 integra el sistema visual editorial en un shell clínico responsive y ope
 
 HU-023 habilita la emisión y consulta de prescripciones médicas con medicamentos externos al catálogo dentro de una consulta clínica en estado `BORRADOR`:
 
-- `GET /api/v1/consultations/{consultationId}/prescriptions`: lista las prescripciones emitidas en la consulta (protegido por `CONSULTATION_READ` para `ADMINISTRADOR` y `VETERINARIO`).
+- `GET /api/v1/consultations/{consultationId}/prescriptions`: lista las prescripciones emitidas en la consulta (protegido por `CONSULTATION_READ`, asignado al rol de sistema `VETERINARIO`).
 - `POST /api/v1/consultations/{consultationId}/prescriptions`: emite una nueva prescripción vinculada a la consulta (protegido por `CONSULTATION_UPDATE`, restringido al veterinario asignado a la consulta).
 
 ### Emisión y estructura de datos
@@ -236,6 +236,22 @@ Esta entrega implementa exclusivamente prescripciones con medicamentos externos 
 - Validación de existencias y reserva de stock por sede.
 - Asignación de lotes vigentes bajo política FEFO.
 - Generación de movimientos automáticos de consumo/salida en inventario.
+
+## Finalización de consultas de HU-024
+
+HU-024 habilita la finalización formal de la atención veterinaria vinculada a una consulta:
+
+- `POST /api/v1/consultations/{consultationId}/finalize`: finaliza una consulta en borrador (protegido por `CONSULTATION_FINALIZE`, restringido exclusivamente al veterinario asignado).
+- `GET /api/v1/appointments/{appointmentId}/consultation`: consulta la información clínica vinculada a una cita (protegido por `CONSULTATION_READ`, asignado al rol de sistema `VETERINARIO`), permitiendo abrir la consulta en modo de solo lectura desde la agenda cuando la cita se encuentra en estado `FINALIZADA`.
+
+### Reglas de negocio y consistencia transaccional
+
+- **Validación clínica mínima**: se valida que el motivo (`reason`) esté registrado y no quede en blanco antes de autorizar la finalización. No se imponen diagnósticos definitivos o recetas cuando no aplican al cuadro clínico.
+- **Transición atómica y aislamiento modular**: la consulta transiciona de `BORRADOR` a `FINALIZADA` y la cita vinculada pasa de `EN_ATENCION` a `FINALIZADA` dentro del mismo límite transaccional atómico mediante el puerto público `AppointmentConsultationGateway`.
+- **Coordinación de concurrencia**: se adquiere un bloqueo pesimista en base de datos (`lockConsultationForUpdate`) para serializar escrituras concurrentes (evaluación, diagnósticos, recetas y finalización). Una vez finalizada, cualquier intento de mutación clínica posterior es rechazado con error `409 INVALID_CONSULTATION_STATUS`.
+- **Idempotencia**: peticiones repetidas de finalización sobre una consulta ya finalizada devuelven el estado persistido de forma idempotente sin duplicar auditorías ni eventos.
+- **Auditoría y eventos de dominio**: se registra la entrada inmutable `CONSULTATION_FINALIZED` en la auditoría del tenant y se publica el evento de dominio `ConsultationFinalized` procesado de forma desacoplada y segura en la fase `AFTER_COMMIT`.
+- **Frontend y modo de solo lectura**: incluye diálogo accesible de confirmación, bloqueo estricto si existen modificaciones locales no guardadas en pantalla (evaluación, diagnósticos o prescripción), actualización inmediata del badge a `FINALIZADA` e inhabilitación completa de controles de edición.
 
 ## Entorno local con Docker Compose
 

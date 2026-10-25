@@ -2075,6 +2075,656 @@ test("HU-023: error 409 INVALID_CONSULTATION_STATUS bloquea evaluación general 
   controller.destroy();
 });
 
+test("HU-024: botón 'Finalizar consulta' solo es visible y editable para veterinario asignado con CONSULTATION_FINALIZE en BORRADOR", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta general",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  // Escenario 1: Sin CONSULTATION_FINALIZE
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Sin CONSULTATION_FINALIZE el botón debe estar oculto");
+
+  // Escenario 2: Otro veterinario asignado
+  controller.sessionReady({
+    userId: "other-vet-id",
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Veterinario no asignado no debe ver el botón de finalizar");
+
+  // Escenario 3: Veterinario asignado con CONSULTATION_FINALIZE
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+  assert(!document.querySelector("#evaluation-finalize-button").hidden, "Veterinario asignado y autorizado debe ver el botón de finalizar");
+  assert(!document.querySelector("#evaluation-finalize-button").disabled, "El botón no debe estar deshabilitado");
+
+  controller.destroy();
+});
+
+test("HU-024: bloquea finalización si existen cambios pendientes en evaluación, diagnóstico o prescripción", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Motivo original guardado",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+  const validationAlert = document.querySelector("#evaluation-validation");
+
+  // Caso A: Modificación en evaluación
+  document.querySelector("#evaluation-reason").value = "Motivo modificado no guardado";
+  finalizeBtn.click();
+  await flushPromises();
+
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "No debe abrir diálogo con cambios pendientes en evaluación");
+  assert(!validationAlert.hidden, "Debe mostrar alerta de validación advirtiendo cambios pendientes");
+  assert(validationAlert.textContent.includes("sin guardar"), "Alerta debe indicar cambios sin guardar");
+
+  // Restaurar valor para limpiar estado sucio de evaluación
+  document.querySelector("#evaluation-reason").value = "Motivo original guardado";
+
+  // Caso B: Formulario de diagnóstico abierto
+  document.querySelector("#diagnosis-add-button").click();
+  finalizeBtn.click();
+  await flushPromises();
+
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "No debe abrir diálogo con formulario de diagnóstico abierto");
+  assert(!validationAlert.hidden, "Debe advertir cambios pendientes cuando formulario diagnóstico está abierto");
+
+  // Cerrar formulario de diagnóstico
+  document.querySelector("#diagnosis-cancel-button").click();
+
+  // Caso C: Formulario de prescripción abierto
+  document.querySelector("#prescription-add-button").click();
+  finalizeBtn.click();
+  await flushPromises();
+
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "No debe abrir diálogo con formulario de prescripción abierto");
+  assert(!validationAlert.hidden, "Debe advertir cambios pendientes cuando formulario de receta está abierto");
+
+  document.querySelector("#prescription-cancel-button").click();
+
+  controller.destroy();
+});
+
+test("HU-024: finaliza consulta atómicamente, pasa a solo lectura y actualiza estado visual a FINALIZADA", async () => {
+  let finalizeCalled = false;
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Motivo completo",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/finalize`) {
+        finalizeCalled = true;
+        assert(options.method === "POST", "Debe ser método POST");
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Motivo completo",
+          finalizedAt: "2026-10-25T17:00:00Z",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+  const confirmBtn = document.querySelector("#evaluation-finalize-confirm-button");
+  const cancelBtn = document.querySelector("#evaluation-finalize-cancel-button");
+
+  // Abrir diálogo
+  finalizeBtn.click();
+  await flushPromises();
+  assert(!dialog.hidden || dialog.hasAttribute("open"), "Debe abrir diálogo de confirmación");
+
+  // Probar botón cancelar
+  cancelBtn.click();
+  await flushPromises();
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Debe cerrar diálogo al cancelar");
+
+  // Volver a abrir y confirmar
+  finalizeBtn.click();
+  await flushPromises();
+  confirmBtn.click();
+  await flushPromises();
+
+  assert(finalizeCalled, "Debe llamar al endpoint de finalización");
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Diálogo debe cerrarse tras finalizar");
+
+  // Validar estado de solo lectura y badge
+  assert(document.querySelector("#evaluation-reason").disabled, "Campos de evaluación deben quedar deshabilitados");
+  assert(document.querySelector("#evaluation-save-button").hidden, "Botón Guardar debe ocultarse");
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Botón Finalizar debe ocultarse");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón Añadir diagnóstico debe ocultarse");
+  assert(document.querySelector("#prescription-add-button").hidden, "Botón Añadir prescripción debe ocultarse");
+
+  const statusBadge = document.querySelector("#evaluation-context-status");
+  equal(statusBadge.textContent.trim(), "FINALIZADA");
+  assert(statusBadge.classList.contains("bg-success"), "Badge debe tener clase bg-success");
+
+  const notice = document.querySelector("#evaluation-notice");
+  assert(!notice.hidden, "Debe mostrar aviso de consulta finalizada");
+  assert(notice.textContent.includes("solo lectura"), "Aviso debe indicar modo de solo lectura");
+
+  controller.destroy();
+});
+
+test("HU-024: consulta abierta inicialmente en FINALIZADA carga en modo de solo lectura", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Motivo consulta previa",
+          finalizedAt: "2026-10-25T16:00:00Z",
+          diagnoses: [
+            {
+              id: "diag-1",
+              diagnosisType: "DEFINITIVO",
+              description: "Otitis externa bilateral"
+            }
+          ],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  assert(document.querySelector("#evaluation-reason").disabled, "Evaluación debe estar deshabilitada");
+  assert(document.querySelector("#evaluation-save-button").hidden, "Guardar debe estar oculto");
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Finalizar debe estar oculto");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Añadir diagnóstico debe estar oculto");
+  assert(document.querySelector("#prescription-add-button").hidden, "Añadir prescripción debe oculto");
+
+  const diagEditBtn = document.querySelector('[data-action="edit-diagnosis"]');
+  assert(diagEditBtn === null, "Diagnósticos no deben tener botón de edición en modo lectura");
+
+  const statusBadge = document.querySelector("#evaluation-context-status");
+  equal(statusBadge.textContent.trim(), "FINALIZADA");
+
+  controller.destroy();
+});
+
+test("HU-024: edición durante PUT pendiente conserva cambios posteriores y bloquea finalización al resolver", async () => {
+  let resolvePutPromise;
+  const putPromise = new Promise((resolve) => {
+    resolvePutPromise = resolve;
+  });
+
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Motivo inicial persistido",
+          anamnesis: "Anamnesis inicial",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/evaluation` && options.method === "PUT") {
+        await putPromise;
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Motivo modificado enviado",
+          anamnesis: "Anamnesis inicial",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const reasonInput = document.querySelector("#evaluation-reason");
+  const anamnesisInput = document.querySelector("#evaluation-anamnesis");
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const form = document.querySelector("#consultation-evaluation-form");
+
+  // Usuario modifica el motivo y guarda
+  reasonInput.value = "Motivo modificado enviado";
+  reasonInput.dispatchEvent(new Event("input"));
+  form.dispatchEvent(new Event("submit"));
+
+  // Mientras el PUT está pendiente en red, el usuario escribe en anamnesis
+  anamnesisInput.value = "Nueva anamnesis ingresada mientras se guardaba";
+  anamnesisInput.dispatchEvent(new Event("input"));
+
+  assert(finalizeBtn.disabled, "Botón finalizar debe estar deshabilitado mientras se guarda o hay cambios pendientes");
+
+  // Se resuelve el guardado en el servidor
+  resolvePutPromise();
+  await flushPromises();
+
+  // El texto modificado por el usuario durante la petición DEBE conservarse
+  equal(anamnesisInput.value, "Nueva anamnesis ingresada mientras se guardaba");
+  // Los cambios posteriores siguen pendientes y bloquean la finalización
+  assert(finalizeBtn.disabled, "Botón finalizar debe continuar deshabilitado por cambios pendientes no guardados");
+
+  // Incluso si se intenta forzar la apertura del diálogo, handleOpenFinalizeDialog valida y bloquea
+  finalizeBtn.disabled = false;
+  finalizeBtn.click();
+  await flushPromises();
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Diálogo no debe abrirse si hay cambios pendientes");
+  const validationAlert = document.querySelector("#evaluation-validation");
+  assert(!validationAlert.hidden, "Debe mostrar alerta de cambios pendientes");
+
+  controller.destroy();
+});
+
+test("HU-024: finalizar consulta A y abrir B antes de recibir respuesta descarta respuesta tardía de A", async () => {
+  const CONSULTATION_B_ID = "99999999-bbbb-4999-8999-999999999999";
+  let resolveFinalizeA;
+  const finalizeAPromise = new Promise((resolve) => {
+    resolveFinalizeA = resolve;
+  });
+
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta A",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_B_ID}`) {
+        return {
+          id: CONSULTATION_B_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta B",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/finalize`) {
+        await finalizeAPromise;
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Consulta A",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+
+  // Abrir consulta A
+  await controller.openEvaluation(CONSULTATION_ID);
+  equal(document.querySelector("#evaluation-reason").value, "Consulta A");
+
+  // Iniciar finalización de consulta A
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const confirmBtn = document.querySelector("#evaluation-finalize-confirm-button");
+  finalizeBtn.click();
+  await flushPromises();
+  confirmBtn.click();
+  await flushPromises();
+
+  // Antes de que responda A, se abre la consulta B
+  await controller.openEvaluation(CONSULTATION_B_ID);
+  equal(document.querySelector("#evaluation-reason").value, "Consulta B");
+  equal(document.querySelector("#evaluation-context-status").textContent.trim(), "BORRADOR");
+  assert(!document.querySelector("#evaluation-reason").disabled, "Consulta B debe estar en modo editable");
+
+  // Ahora responde la finalización tardía de A
+  resolveFinalizeA();
+  await flushPromises();
+
+  // Consulta B no debe haber sido afectada ni mutada a FINALIZADA
+  equal(document.querySelector("#evaluation-reason").value, "Consulta B");
+  equal(document.querySelector("#evaluation-context-status").textContent.trim(), "BORRADOR");
+  assert(!document.querySelector("#evaluation-reason").disabled, "Consulta B debe continuar editable");
+  assert(!document.querySelector("#evaluation-save-button").hidden, "Botón Guardar en B debe seguir visible");
+
+  controller.destroy();
+});
+
+test("HU-024: respuesta de finalización recibida tras logout se descarta limpiamente", async () => {
+  let resolveFinalize;
+  const finalizePromise = new Promise((resolve) => {
+    resolveFinalize = resolve;
+  });
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta en curso",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/finalize`) {
+        await finalizePromise;
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Consulta en curso",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  // Iniciar finalización
+  document.querySelector("#evaluation-finalize-button").click();
+  await flushPromises();
+  document.querySelector("#evaluation-finalize-confirm-button").click();
+  await flushPromises();
+
+  // Se cierra sesión antes de recibir la respuesta
+  controller.sessionEnded();
+
+  // Responde el backend
+  resolveFinalize();
+  await flushPromises();
+
+  // No debe fallar ni alterar la vista tras el cierre de sesión
+  assert(document.querySelector("#evaluation-notice").hidden, "Aviso de finalización no debe mostrarse tras cierre de sesión");
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Diálogo debe permanecer cerrado");
+
+  controller.destroy();
+});
+
+test("HU-024: fallo de finalización y reintento exitoso", async () => {
+  let attempts = 0;
+  const client = {
+    requestJson: async (url, options = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta con fallo transitorio",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/finalize`) {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new ApiRequestError({
+            message: "Error temporal del servidor al finalizar",
+            status: 500,
+            correlationId: "corr-err-500"
+          });
+        }
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Consulta con fallo transitorio",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const confirmBtn = document.querySelector("#evaluation-finalize-confirm-button");
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+  const dialogError = document.querySelector("#evaluation-finalize-dialog-error");
+  const dialogErrorMsg = document.querySelector("#evaluation-finalize-dialog-error-message");
+
+  // Abrir diálogo y primer intento (falla)
+  finalizeBtn.click();
+  await flushPromises();
+  confirmBtn.click();
+  await flushPromises();
+
+  equal(attempts, 1);
+  assert(!dialog.hidden && (dialog.open || dialog.hasAttribute("open")), "Diálogo debe permanecer abierto tras error");
+  assert(!dialogError.hidden, "Debe mostrar contenedor de error en el diálogo");
+  assert(dialogErrorMsg.textContent.includes("Error temporal del servidor al finalizar"), "Debe mostrar mensaje de error");
+  assert(dialogErrorMsg.textContent.includes("corr-err-500"), "Debe incluir ID de correlación");
+  assert(!confirmBtn.disabled, "Botón de confirmación debe rehabilitarse para permitir reintento");
+
+  // Segundo intento: reintento exitoso
+  confirmBtn.click();
+  await flushPromises();
+
+  equal(attempts, 2);
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Diálogo debe cerrarse tras reintento exitoso");
+  equal(document.querySelector("#evaluation-context-status").textContent.trim(), "FINALIZADA");
+  assert(document.querySelector("#evaluation-reason").disabled, "Campos deben quedar en solo lectura");
+
+  controller.destroy();
+});
+
+test("HU-024: cancelación nativa del diálogo (evento cancel / tecla Esc): cancelable en reposo, evitada en curso", async () => {
+  let resolveFinalize;
+  const finalizePromise = new Promise((resolve) => {
+    resolveFinalize = resolve;
+  });
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Prueba cancelación diálogo",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/finalize`) {
+        await finalizePromise;
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "FINALIZADA",
+          reason: "Prueba cancelación diálogo",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const finalizeBtn = document.querySelector("#evaluation-finalize-button");
+  const dialog = document.querySelector("#evaluation-finalize-dialog");
+
+  // 1. En reposo: evento cancel nativo cierra el diálogo sin preventDefault
+  finalizeBtn.click();
+  await flushPromises();
+  assert(!dialog.hidden && (dialog.open || dialog.hasAttribute("open")), "Diálogo debe estar abierto");
+
+  const cancelEvt1 = new Event("cancel", { cancelable: true });
+  dialog.dispatchEvent(cancelEvt1);
+  assert(!cancelEvt1.defaultPrevented, "Evento cancel no debe ser prevenido cuando está en reposo");
+  assert(dialog.hidden || !dialog.hasAttribute("open"), "Diálogo debe cerrarse");
+
+  // 2. En curso: mientras se está finalizando, el evento cancel nativo debe ser prevenido
+  finalizeBtn.click();
+  await flushPromises();
+  const confirmBtn = document.querySelector("#evaluation-finalize-confirm-button");
+  confirmBtn.click();
+  await flushPromises();
+
+  const cancelEvt2 = new Event("cancel", { cancelable: true });
+  dialog.dispatchEvent(cancelEvt2);
+  assert(cancelEvt2.defaultPrevented, "Evento cancel DEBE ser prevenido mientras la finalización está en curso");
+
+  // Resolver la finalización pendiente
+  resolveFinalize();
+  await flushPromises();
+
+  controller.destroy();
+});
+
 run();
 
 function test(name, fn) {

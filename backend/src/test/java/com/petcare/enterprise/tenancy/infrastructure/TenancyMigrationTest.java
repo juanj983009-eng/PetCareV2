@@ -29,7 +29,7 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
     static void migrateAnEmptySchema() {
         flyway = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .schemas(SCHEMA)
+                .schemas(SCHEMA, "public")
                 .defaultSchema(SCHEMA)
                 .createSchemas(true)
                 .locations("classpath:db/migration")
@@ -42,7 +42,7 @@ class TenancyMigrationTest extends PostgreSqlIntegrationTest {
         assertThat(flyway.info().applied())
                 .filteredOn(info -> info.getVersion() != null)
                 .extracting(info -> info.getVersion().toString())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
     }
 
     @Test
