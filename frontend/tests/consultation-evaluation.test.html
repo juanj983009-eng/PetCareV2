@@ -248,6 +248,89 @@
               <div id="evaluation-diagnoses-list" class="list-group list-group-flush" hidden></div>
             </div>
           </div>
+
+          <!-- SECCIÓN DE PRESCRIPCIONES MÉDICAS (HU-023) -->
+          <div id="evaluation-prescriptions-section" class="card border bg-white mt-4">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <h3 class="h6 mb-0 fw-semibold text-primary">Prescripciones médicas</h3>
+                <span id="evaluation-prescriptions-counter" class="badge text-bg-light border pc-data-mono">0</span>
+                <span class="badge text-bg-secondary-subtle text-secondary-emphasis border small">Medicamentos externos</span>
+              </div>
+              <button id="prescription-add-button" class="btn btn-sm btn-outline-primary" type="button" hidden>
+                + Emitir prescripción
+              </button>
+            </div>
+            <div class="card-body p-3">
+              <p class="text-secondary small mb-3">
+                Emisión de recetas y prescripciones con medicamentos externos al catálogo. Los ítems registrados no descuentan existencias de almacén.
+              </p>
+
+              <!-- ALERTAS DE PRESCRIPCIONES -->
+              <div id="prescription-notice" class="alert alert-success py-2 small mb-3" role="status" tabindex="-1" hidden></div>
+              <div id="prescription-error" class="alert alert-danger py-2 small mb-3" role="alert" tabindex="-1" hidden>
+                <div id="prescription-error-message"></div>
+                <div id="prescription-error-correlation" class="small pc-data-mono mt-1" hidden></div>
+              </div>
+              <div id="prescription-validation" class="alert alert-warning py-2 small mb-3" role="alert" tabindex="-1" hidden>
+                <div id="prescription-validation-message">Por favor completa todos los campos requeridos de la prescripción.</div>
+              </div>
+
+              <!-- FORMULARIO DE EMISIÓN DE PRESCRIPCIÓN -->
+              <form id="prescription-form" class="card border border-primary-subtle bg-light-subtle p-3 mb-4" novalidate hidden>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                  <h4 class="h6 mb-0 fw-semibold text-primary">Nueva prescripción médica</h4>
+                  <span class="badge text-bg-warning-subtle text-dark border small">Sin dispensación de stock</span>
+                </div>
+
+                <!-- LÍNEAS DE MEDICAMENTOS -->
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold mb-2">Medicamentos prescritos <span class="text-danger">*</span></label>
+                  <div id="prescription-items-container" class="d-flex flex-column gap-3"></div>
+                  <div class="mt-2">
+                    <button id="prescription-add-item-row-button" class="btn btn-sm btn-outline-secondary" type="button">
+                      + Añadir otro medicamento
+                    </button>
+                  </div>
+                </div>
+
+                <!-- INDICACIONES GENERALES -->
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold" for="prescription-general-instructions">
+                    Indicaciones generales para el propietario <span class="text-secondary fw-normal">(opcional)</span>
+                  </label>
+                  <textarea id="prescription-general-instructions" name="generalInstructions" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="Recomendaciones generales, cuidados en casa, signos de alarma o dieta"></textarea>
+                  <div class="d-flex justify-content-end mt-1">
+                    <span id="prescription-instructions-counter" class="form-text text-secondary small pc-data-mono">0 / 2000</span>
+                  </div>
+                </div>
+
+                <!-- ACCIONES DE EMISIÓN -->
+                <div class="d-flex justify-content-end gap-2 pt-2 border-top">
+                  <button id="prescription-cancel-button" class="btn btn-sm btn-outline-secondary" type="button">Cancelar</button>
+                  <button id="prescription-submit-button" class="btn btn-sm btn-primary" type="submit">
+                    <span id="prescription-submit-label">Emitir prescripción</span>
+                    <span id="prescription-submit-spinner" class="spinner-border spinner-border-sm ms-1" role="status" hidden></span>
+                  </button>
+                </div>
+              </form>
+
+              <!-- LISTADO DE PRESCRIPCIONES EMITIDAS -->
+              <div id="evaluation-prescriptions-loading" class="text-center py-3 text-secondary small" hidden>
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                Cargando prescripciones...
+              </div>
+              <div id="evaluation-prescriptions-load-error" class="alert alert-danger py-2 px-3 small mb-3" role="alert" tabindex="-1" hidden>
+                <div id="evaluation-prescriptions-load-error-message">No fue posible consultar las prescripciones de la consulta.</div>
+                <div id="evaluation-prescriptions-load-error-correlation" class="small pc-data-mono mt-1" hidden></div>
+                <button id="evaluation-prescriptions-retry-button" class="btn btn-sm btn-outline-danger mt-2" type="button">Reintentar</button>
+              </div>
+              <p id="evaluation-prescriptions-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
+                Sin prescripciones emitidas en esta consulta.
+              </p>
+              <div id="evaluation-prescriptions-list" class="d-flex flex-column gap-3" hidden></div>
+            </div>
+          </div>
         </div>
       </section>
     </main>

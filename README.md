@@ -199,6 +199,44 @@ UI-003 integra el sistema visual editorial en un shell clínico responsive y ope
 - **Inicio clínico operativo:** la pantalla principal prioriza el acceso directo a la agenda, padrón de pacientes y búsqueda de propietarios, incorporando botones rápidos de alta condicionada a permisos (`OWNER_CREATE` y `PATIENT_CREATE`). La lista técnica de códigos de autoridades RBAC se mantiene accesible en un bloque secundario colapsable (`<details>`).
 - **Identidad y honestidad de sesión:** el encabezado muestra el identificador de la clínica y el correo del usuario suministrados durante el inicio de sesión como información contextual visual en la sesión activa. La seguridad, autoridades efectivas y resolución tenant provienen estrictamente de los contratos del backend (`/api/v1/auth/session`). Los indicadores de estado reflejan con veracidad una sesión autenticada activa sin simular turnos hospitalarios ni disponibilidad ficticia.
 
+## Prescripciones médicas externas de HU-023 (Primera parte)
+
+HU-023 habilita la emisión y consulta de prescripciones médicas con medicamentos externos al catálogo dentro de una consulta clínica en estado `BORRADOR`:
+
+- `GET /api/v1/consultations/{consultationId}/prescriptions`: lista las prescripciones emitidas en la consulta (protegido por `CONSULTATION_READ` para `ADMINISTRADOR` y `VETERINARIO`).
+- `POST /api/v1/consultations/{consultationId}/prescriptions`: emite una nueva prescripción vinculada a la consulta (protegido por `CONSULTATION_UPDATE`, restringido al veterinario asignado a la consulta).
+
+### Emisión y estructura de datos
+
+La emisión admite una o múltiples líneas de medicamentos externos. Cada línea registra obligatoriamente:
+- Medicamento en texto libre (máx. 200 caracteres).
+- Dosis (máx. 100 caracteres).
+- Frecuencia (máx. 100 caracteres).
+- Duración (máx. 100 caracteres).
+- Vía de administración opcional (máx. 50 caracteres).
+- Indicaciones específicas opcionales por medicamento (máx. 2000 caracteres).
+
+A nivel de prescripción, se admiten indicaciones generales opcionales para el propietario (máx. 2000 caracteres).
+
+El modelo persistido en `prescriptions` y `prescription_items` (migración `V18__create_tenant_prescriptions.sql`) garantiza aislamiento tenant, folios secuenciales por tenant mediante UUID v4, y auditoría transaccional append-only (`PRESCRIPTION_ISSUED`).
+
+### Idempotencia y control de concurrencia
+
+El endpoint `POST /prescriptions` exige una clave de idempotencia (`idempotencyKey`, máx. 100 caracteres):
+- Si se envía la **misma clave con el mismo contenido** (medicamentos, dosis, pautas, vía, indicaciones y orden de líneas normalizados), el sistema recupera la emisión original sin duplicar registros en base de datos ni emitir nuevos eventos de auditoría.
+- Si se envía la **misma clave con contenido diferente**, el sistema rechaza la solicitud de manera estable con `409 CONFLICT` (`CONFLICT`).
+- El servicio valida el tenant y que el usuario actuante sea el veterinario asignado antes de resolver cualquier solicitud idempotente, evitando accesos no autorizados mediante reutilización de claves.
+- La concurrencia se coordina transaccionalmente mediante bloqueo pesimista tenant-aware (`SELECT ... FOR UPDATE`) sobre la consulta padre.
+- En el frontend, las respuestas perdidas o errores de red conservan la clave en el formulario para reintentar de forma segura; la edición posterior de campos no genera claves automáticas y los errores 409 por idempotencia no inhabilitan la evaluación general de la consulta.
+
+### Limitaciones de la entrega
+
+Esta entrega implementa exclusivamente prescripciones con medicamentos externos al catálogo, sin enlace a almacenes ni dispensación de stock. Quedan diferidos para las siguientes fases de HU-023 (junto al módulo de inventario):
+- Selección de productos desde el catálogo centralizado del tenant.
+- Validación de existencias y reserva de stock por sede.
+- Asignación de lotes vigentes bajo política FEFO.
+- Generación de movimientos automáticos de consumo/salida en inventario.
+
 ## Entorno local con Docker Compose
 
 La configuración levanta tres servicios:

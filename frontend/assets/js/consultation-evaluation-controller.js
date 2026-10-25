@@ -27,6 +27,9 @@ export function createConsultationEvaluationController({
   let currentDiagnoses = [];
   let isSavingDiagnosis = false;
   let editingDiagnosisId = null;
+  let currentPrescriptions = [];
+  let isSavingPrescription = false;
+  let currentPrescriptionIdempotencyKey = null;
 
   // Event Listeners
   elements.backButton?.addEventListener("click", handleBack);
@@ -38,6 +41,12 @@ export function createConsultationEvaluationController({
   elements.diagnosisForm?.addEventListener("submit", handleDiagnosisSubmit);
   elements.diagnosisDescriptionInput?.addEventListener("input", updateDiagnosisDescriptionCounter);
   elements.diagnosesRetryButton?.addEventListener("click", handleRetryDiagnoses);
+  elements.prescriptionAddButton?.addEventListener("click", handleOpenPrescriptionForm);
+  elements.prescriptionCancelButton?.addEventListener("click", handleClosePrescriptionForm);
+  elements.prescriptionForm?.addEventListener("submit", handlePrescriptionSubmit);
+  elements.prescriptionAddItemRowButton?.addEventListener("click", handleAddPrescriptionItemRow);
+  elements.prescriptionGeneralInstructions?.addEventListener("input", updatePrescriptionInstructionsCounter);
+  elements.prescriptionsRetryButton?.addEventListener("click", handleRetryPrescriptions);
 
   function sessionReady(identity) {
     const authorities = new Set(Array.isArray(identity?.authorities) ? identity.authorities : []);
@@ -57,13 +66,18 @@ export function createConsultationEvaluationController({
     currentConsultation = null;
     setSavingState(false);
     setSavingDiagnosisState(false);
+    setSavingPrescriptionState(false);
     resetForm();
     resetContext();
     resetDiagnosisForm();
     resetDiagnosisAlerts();
+    resetPrescriptionForm();
+    resetPrescriptionAlerts();
     currentDiagnoses = [];
     editingDiagnosisId = null;
+    currentPrescriptions = [];
     renderDiagnoses([]);
+    renderPrescriptions([]);
     setFormEditable(false);
     resetAlerts();
     if (elements.view) {
@@ -110,11 +124,16 @@ export function createConsultationEvaluationController({
     resetContext();
     resetDiagnosisForm();
     resetDiagnosisAlerts();
+    resetPrescriptionForm();
+    resetPrescriptionAlerts();
     currentDiagnoses = [];
     editingDiagnosisId = null;
+    currentPrescriptions = [];
     if (elements.diagnosisAddButton) elements.diagnosisAddButton.hidden = true;
+    if (elements.prescriptionAddButton) elements.prescriptionAddButton.hidden = true;
     setSavingState(false);
     setSavingDiagnosisState(false);
+    setSavingPrescriptionState(false);
     setFormEditable(false);
 
     if (!canRead) {
@@ -144,6 +163,23 @@ export function createConsultationEvaluationController({
         }
       } else {
         await loadDiagnoses(consultationId, requestId);
+      }
+
+      const isVetAssigned = !consultation.veterinarianId || !currentUserId || consultation.veterinarianId === currentUserId;
+      if (Array.isArray(consultation.prescriptions)) {
+        currentPrescriptions = consultation.prescriptions;
+        renderPrescriptions(currentPrescriptions);
+        if (elements.prescriptionAddButton) {
+          elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
+        }
+      } else if (consultation.prescriptions === null) {
+        await loadPrescriptions(consultationId, requestId);
+      } else {
+        currentPrescriptions = [];
+        renderPrescriptions([]);
+        if (elements.prescriptionAddButton) {
+          elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
+        }
       }
       if (isEditable) {
         elements.reasonInput?.focus({ preventScroll: true });
@@ -437,6 +473,13 @@ export function createConsultationEvaluationController({
       elements.saveButton.disabled = !isEditable;
       elements.saveButton.hidden = !isEditable;
     }
+    if (elements.diagnosisAddButton) {
+      elements.diagnosisAddButton.hidden = !isEditable;
+    }
+    if (elements.prescriptionAddButton) {
+      const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
+      elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
+    }
   }
 
   function setSavingState(saving) {
@@ -581,6 +624,12 @@ export function createConsultationEvaluationController({
     elements.diagnosisForm?.removeEventListener("submit", handleDiagnosisSubmit);
     elements.diagnosisDescriptionInput?.removeEventListener("input", updateDiagnosisDescriptionCounter);
     elements.diagnosesRetryButton?.removeEventListener("click", handleRetryDiagnoses);
+    elements.prescriptionAddButton?.removeEventListener("click", handleOpenPrescriptionForm);
+    elements.prescriptionCancelButton?.removeEventListener("click", handleClosePrescriptionForm);
+    elements.prescriptionForm?.removeEventListener("submit", handlePrescriptionSubmit);
+    elements.prescriptionAddItemRowButton?.removeEventListener("click", handleAddPrescriptionItemRow);
+    elements.prescriptionGeneralInstructions?.removeEventListener("input", updatePrescriptionInstructionsCounter);
+    elements.prescriptionsRetryButton?.removeEventListener("click", handleRetryPrescriptions);
   }
 
   function handleRetryDiagnoses() {
@@ -948,6 +997,650 @@ export function createConsultationEvaluationController({
     if (elements.diagnosisValidation) elements.diagnosisValidation.hidden = false;
   }
 
+  // ==========================================
+  // HU-023: PRESCRIPCIONES MÉDICAS EXTERNAS
+  // ==========================================
+
+  async function loadPrescriptions(consultationId, requestId) {
+    if (!elements.prescriptionsSection) return;
+    if (elements.prescriptionsLoading) elements.prescriptionsLoading.hidden = false;
+    if (elements.prescriptionsList) elements.prescriptionsList.hidden = true;
+    if (elements.prescriptionsEmpty) elements.prescriptionsEmpty.hidden = true;
+    if (elements.prescriptionsLoadError) elements.prescriptionsLoadError.hidden = true;
+
+    try {
+      const list = await client.requestJson(`/api/v1/consultations/${encodeURIComponent(consultationId)}/prescriptions`);
+      if (requestId !== activeRequestId || consultationId !== currentConsultationId) return;
+
+      if (!Array.isArray(list)) {
+        throw new ApiRequestError({
+          kind: "INVALID_RESPONSE",
+          code: "INVALID_RESPONSE",
+          message: "La respuesta de prescripciones no tiene un formato de lista válido."
+        });
+      }
+
+      currentPrescriptions = list;
+      renderPrescriptions(currentPrescriptions);
+      const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+      const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
+      if (elements.prescriptionAddButton) {
+        elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
+      }
+    } catch (err) {
+      if (requestId !== activeRequestId || consultationId !== currentConsultationId) return;
+      currentPrescriptions = [];
+      if (elements.prescriptionsList) {
+        elements.prescriptionsList.replaceChildren();
+        elements.prescriptionsList.hidden = true;
+      }
+      if (elements.prescriptionsEmpty) elements.prescriptionsEmpty.hidden = true;
+      if (elements.prescriptionsCounter) elements.prescriptionsCounter.textContent = "0";
+
+      if (elements.prescriptionsLoadError) {
+        elements.prescriptionsLoadError.hidden = false;
+        if (elements.prescriptionsLoadErrorMessage) {
+          elements.prescriptionsLoadErrorMessage.textContent =
+            err instanceof ApiRequestError
+              ? err.message
+              : (err?.message || "No fue posible consultar las prescripciones de la consulta.");
+        }
+        if (elements.prescriptionsLoadErrorCorrelation) {
+          const correlationId = err instanceof ApiRequestError ? err.correlationId : err?.correlationId;
+          elements.prescriptionsLoadErrorCorrelation.textContent = correlationId
+            ? `Código de seguimiento: ${correlationId}`
+            : "";
+          elements.prescriptionsLoadErrorCorrelation.hidden = !correlationId;
+        }
+        elements.prescriptionsLoadError.focus?.({ preventScroll: true });
+      }
+    } finally {
+      if (requestId === activeRequestId && consultationId === currentConsultationId) {
+        if (elements.prescriptionsLoading) elements.prescriptionsLoading.hidden = true;
+      }
+    }
+  }
+
+  function renderPrescriptions(list) {
+    if (!elements.prescriptionsList) return;
+    if (elements.prescriptionsLoadError) elements.prescriptionsLoadError.hidden = true;
+    elements.prescriptionsList.replaceChildren();
+    if (elements.prescriptionsCounter) {
+      elements.prescriptionsCounter.textContent = String(list.length);
+    }
+    if (list.length === 0) {
+      if (elements.prescriptionsEmpty) elements.prescriptionsEmpty.hidden = false;
+      elements.prescriptionsList.hidden = true;
+      return;
+    }
+    if (elements.prescriptionsEmpty) elements.prescriptionsEmpty.hidden = true;
+    elements.prescriptionsList.hidden = false;
+
+    for (const presc of list) {
+      const card = document.createElement("div");
+      card.className = "card border rounded p-3 bg-white mb-2 pc-prescription-card";
+      card.dataset.prescriptionId = presc.id;
+
+      // Header
+      const header = document.createElement("div");
+      header.className = "d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 pb-2 border-bottom";
+
+      const headerBadges = document.createElement("div");
+      headerBadges.className = "d-flex flex-wrap align-items-center gap-2";
+
+      const statusBadge = document.createElement("span");
+      statusBadge.className = "badge text-bg-success";
+      statusBadge.textContent = presc.status || "EMITIDA";
+      headerBadges.append(statusBadge);
+
+      const folioBadge = document.createElement("span");
+      folioBadge.className = "badge text-bg-light border pc-data-mono";
+      folioBadge.textContent = `Folio: ${(presc.id || "").substring(0, 8)}`;
+      headerBadges.append(folioBadge);
+
+      if (presc.issuedAt) {
+        const dateSpan = document.createElement("span");
+        dateSpan.className = "small text-secondary";
+        try {
+          const date = new Date(presc.issuedAt);
+          dateSpan.textContent = date.toLocaleString();
+        } catch {
+          dateSpan.textContent = presc.issuedAt;
+        }
+        headerBadges.append(dateSpan);
+      }
+      header.append(headerBadges);
+
+      const vetSpan = document.createElement("div");
+      vetSpan.className = "small text-secondary";
+      vetSpan.textContent = "Emitida por veterinario asignado";
+      header.append(vetSpan);
+
+      card.append(header);
+
+      // Items Table
+      if (Array.isArray(presc.items) && presc.items.length > 0) {
+        const tableResponsive = document.createElement("div");
+        tableResponsive.className = "table-responsive mb-2";
+
+        const table = document.createElement("table");
+        table.className = "table table-sm table-bordered align-middle mb-0 small";
+
+        const thead = document.createElement("thead");
+        thead.className = "table-light";
+        const trHead = document.createElement("tr");
+
+        const thMed = document.createElement("th");
+        thMed.scope = "col";
+        thMed.textContent = "Medicamento";
+        trHead.append(thMed);
+
+        const thDose = document.createElement("th");
+        thDose.scope = "col";
+        thDose.textContent = "Dosis";
+        trHead.append(thDose);
+
+        const thFreq = document.createElement("th");
+        thFreq.scope = "col";
+        thFreq.textContent = "Frecuencia";
+        trHead.append(thFreq);
+
+        const thDur = document.createElement("th");
+        thDur.scope = "col";
+        thDur.textContent = "Duración";
+        trHead.append(thDur);
+
+        const thRoute = document.createElement("th");
+        thRoute.scope = "col";
+        thRoute.textContent = "Vía";
+        trHead.append(thRoute);
+
+        const thInst = document.createElement("th");
+        thInst.scope = "col";
+        thInst.textContent = "Indicaciones específicas";
+        trHead.append(thInst);
+
+        thead.append(trHead);
+        table.append(thead);
+
+        const tbody = document.createElement("tbody");
+        for (const item of presc.items) {
+          const tr = document.createElement("tr");
+
+          const tdMed = document.createElement("td");
+          tdMed.className = "fw-semibold text-break";
+          tdMed.textContent = item.medicationName;
+          tr.append(tdMed);
+
+          const tdDose = document.createElement("td");
+          tdDose.textContent = item.dosage;
+          tr.append(tdDose);
+
+          const tdFreq = document.createElement("td");
+          tdFreq.textContent = item.frequency;
+          tr.append(tdFreq);
+
+          const tdDur = document.createElement("td");
+          tdDur.textContent = item.duration;
+          tr.append(tdDur);
+
+          const tdRoute = document.createElement("td");
+          tdRoute.textContent = item.route || "—";
+          tr.append(tdRoute);
+
+          const tdInst = document.createElement("td");
+          tdInst.className = "text-secondary text-break";
+          tdInst.textContent = item.instructions || item.specificInstructions || "—";
+          tr.append(tdInst);
+
+          tbody.append(tr);
+        }
+        table.append(tbody);
+        tableResponsive.append(table);
+        card.append(tableResponsive);
+      }
+
+      // General Instructions
+      if (presc.generalInstructions) {
+        const genInstDiv = document.createElement("div");
+        genInstDiv.className = "p-2 rounded bg-light border mb-2 small";
+        const genInstTitle = document.createElement("strong");
+        genInstTitle.className = "d-block text-dark mb-1";
+        genInstTitle.textContent = "Indicaciones generales:";
+        genInstDiv.append(genInstTitle);
+        const genInstText = document.createElement("span");
+        genInstText.className = "text-secondary text-break";
+        genInstText.textContent = presc.generalInstructions;
+        genInstDiv.append(genInstText);
+        card.append(genInstDiv);
+      }
+
+      // Footer
+      const footer = document.createElement("div");
+      footer.className = "d-flex align-items-center justify-content-between pt-2 border-top small text-secondary";
+      const footerDisclaimer = document.createElement("span");
+      footerDisclaimer.textContent = "Medicamentos externos al catálogo";
+      const footerBadge = document.createElement("span");
+      footerBadge.className = "badge text-bg-light border";
+      footerBadge.textContent = "Sin dispensación de almacén";
+      footer.append(footerDisclaimer, footerBadge);
+      card.append(footer);
+
+      elements.prescriptionsList.append(card);
+    }
+  }
+
+  function handleOpenPrescriptionForm() {
+    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    resetPrescriptionAlerts();
+    clearPrescriptionValidationErrors();
+    currentPrescriptionIdempotencyKey = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : `presc-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    if (elements.prescriptionGeneralInstructions) {
+      elements.prescriptionGeneralInstructions.value = "";
+    }
+    if (elements.prescriptionInstructionsCounter) {
+      elements.prescriptionInstructionsCounter.textContent = "0 / 2000";
+    }
+    if (elements.prescriptionItemsContainer) {
+      elements.prescriptionItemsContainer.replaceChildren();
+      addPrescriptionItemRow();
+    }
+    if (elements.prescriptionForm) {
+      elements.prescriptionForm.hidden = false;
+    }
+    const firstInput = elements.prescriptionItemsContainer?.querySelector(".pc-prescription-item-name");
+    firstInput?.focus({ preventScroll: true });
+  }
+
+  function handleClosePrescriptionForm() {
+    resetPrescriptionForm();
+    resetPrescriptionAlerts();
+  }
+
+  function resetPrescriptionForm() {
+    currentPrescriptionIdempotencyKey = null;
+    if (elements.prescriptionGeneralInstructions) {
+      elements.prescriptionGeneralInstructions.value = "";
+    }
+    if (elements.prescriptionInstructionsCounter) {
+      elements.prescriptionInstructionsCounter.textContent = "0 / 2000";
+    }
+    if (elements.prescriptionItemsContainer) {
+      elements.prescriptionItemsContainer.replaceChildren();
+    }
+    if (elements.prescriptionForm) {
+      elements.prescriptionForm.hidden = true;
+    }
+    clearPrescriptionValidationErrors();
+  }
+
+  function addPrescriptionItemRow(initialData = {}) {
+    if (!elements.prescriptionItemsContainer) return null;
+
+    const row = document.createElement("div");
+    row.className = "card border p-3 bg-white pc-prescription-item-row";
+
+    // Top bar: badge & remove button
+    const topBar = document.createElement("div");
+    topBar.className = "d-flex justify-content-between align-items-center mb-2";
+
+    const badge = document.createElement("span");
+    badge.className = "badge text-bg-secondary-subtle text-secondary-emphasis border pc-prescription-item-badge";
+    badge.textContent = "Medicamento";
+    topBar.append(badge);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm btn-outline-danger pc-prescription-item-remove-btn";
+    removeBtn.textContent = "Eliminar";
+    removeBtn.title = "Eliminar medicamento";
+    removeBtn.setAttribute("aria-label", "Eliminar medicamento");
+    removeBtn.addEventListener("click", () => {
+      row.remove();
+      updatePrescriptionItemRowsState();
+    });
+    topBar.append(removeBtn);
+    row.append(topBar);
+
+    // Form fields grid
+    const grid = document.createElement("div");
+    grid.className = "row g-2";
+
+    // 1. Medication name
+    const colName = document.createElement("div");
+    colName.className = "col-12 col-md-6";
+    const labelName = document.createElement("label");
+    labelName.className = "form-label small fw-semibold mb-1";
+    labelName.innerHTML = 'Medicamento <span class="text-danger">*</span>';
+    const inputName = document.createElement("input");
+    inputName.type = "text";
+    inputName.className = "form-control form-control-sm pc-prescription-item-name";
+    inputName.maxLength = 200;
+    inputName.placeholder = "Ej: Amoxicilina + Ác. Clavulánico 250 mg";
+    inputName.required = true;
+    inputName.value = initialData.medicationName || "";
+    colName.append(labelName, inputName);
+
+    // 2. Dosage
+    const colDose = document.createElement("div");
+    colDose.className = "col-12 col-md-6";
+    const labelDose = document.createElement("label");
+    labelDose.className = "form-label small fw-semibold mb-1";
+    labelDose.innerHTML = 'Dosis <span class="text-danger">*</span>';
+    const inputDose = document.createElement("input");
+    inputDose.type = "text";
+    inputDose.className = "form-control form-control-sm pc-prescription-item-dosage";
+    inputDose.maxLength = 100;
+    inputDose.placeholder = "Ej: 1 tableta";
+    inputDose.required = true;
+    inputDose.value = initialData.dosage || "";
+    colDose.append(labelDose, inputDose);
+
+    // 3. Frequency
+    const colFreq = document.createElement("div");
+    colFreq.className = "col-6 col-md-4";
+    const labelFreq = document.createElement("label");
+    labelFreq.className = "form-label small fw-semibold mb-1";
+    labelFreq.innerHTML = 'Frecuencia <span class="text-danger">*</span>';
+    const inputFreq = document.createElement("input");
+    inputFreq.type = "text";
+    inputFreq.className = "form-control form-control-sm pc-prescription-item-frequency";
+    inputFreq.maxLength = 100;
+    inputFreq.placeholder = "Ej: Cada 12 horas";
+    inputFreq.required = true;
+    inputFreq.value = initialData.frequency || "";
+    colFreq.append(labelFreq, inputFreq);
+
+    // 4. Duration
+    const colDur = document.createElement("div");
+    colDur.className = "col-6 col-md-4";
+    const labelDur = document.createElement("label");
+    labelDur.className = "form-label small fw-semibold mb-1";
+    labelDur.innerHTML = 'Duración <span class="text-danger">*</span>';
+    const inputDur = document.createElement("input");
+    inputDur.type = "text";
+    inputDur.className = "form-control form-control-sm pc-prescription-item-duration";
+    inputDur.maxLength = 100;
+    inputDur.placeholder = "Ej: 7 días";
+    inputDur.required = true;
+    inputDur.value = initialData.duration || "";
+    colDur.append(labelDur, inputDur);
+
+    // 5. Route
+    const colRoute = document.createElement("div");
+    colRoute.className = "col-12 col-md-4";
+    const labelRoute = document.createElement("label");
+    labelRoute.className = "form-label small fw-semibold mb-1";
+    labelRoute.innerHTML = 'Vía <span class="text-secondary fw-normal">(opcional)</span>';
+    const inputRoute = document.createElement("input");
+    inputRoute.type = "text";
+    inputRoute.className = "form-control form-control-sm pc-prescription-item-route";
+    inputRoute.maxLength = 50;
+    inputRoute.placeholder = "Ej: Oral, Subcutánea";
+    inputRoute.value = initialData.route || "";
+    colRoute.append(labelRoute, inputRoute);
+
+    // 6. Specific instructions
+    const colInst = document.createElement("div");
+    colInst.className = "col-12";
+    const labelInst = document.createElement("label");
+    labelInst.className = "form-label small fw-semibold mb-1";
+    labelInst.innerHTML = 'Indicaciones específicas <span class="text-secondary fw-normal">(opcional)</span>';
+    const inputInst = document.createElement("input");
+    inputInst.type = "text";
+    inputInst.className = "form-control form-control-sm pc-prescription-item-instructions";
+    inputInst.maxLength = 2000;
+    inputInst.placeholder = "Ej: Administrar con alimento";
+    inputInst.value = initialData.instructions || initialData.specificInstructions || "";
+    colInst.append(labelInst, inputInst);
+
+    grid.append(colName, colDose, colFreq, colDur, colRoute, colInst);
+    row.append(grid);
+
+    elements.prescriptionItemsContainer.append(row);
+    updatePrescriptionItemRowsState();
+    return row;
+  }
+
+  function updatePrescriptionItemRowsState() {
+    if (!elements.prescriptionItemsContainer) return;
+    const rows = elements.prescriptionItemsContainer.querySelectorAll(".pc-prescription-item-row");
+    const count = rows.length;
+    rows.forEach((row, index) => {
+      const badge = row.querySelector(".pc-prescription-item-badge");
+      if (badge) {
+        badge.textContent = `Medicamento #${index + 1}`;
+      }
+      const removeBtn = row.querySelector(".pc-prescription-item-remove-btn");
+      if (removeBtn) {
+        removeBtn.disabled = count <= 1;
+      }
+    });
+  }
+
+  function handleAddPrescriptionItemRow() {
+    const row = addPrescriptionItemRow();
+    const nameInput = row?.querySelector(".pc-prescription-item-name");
+    nameInput?.focus({ preventScroll: true });
+  }
+
+  function updatePrescriptionInstructionsCounter() {
+    const len = elements.prescriptionGeneralInstructions?.value.length ?? 0;
+    if (elements.prescriptionInstructionsCounter) {
+      elements.prescriptionInstructionsCounter.textContent = `${len} / 2000`;
+    }
+  }
+
+  function handleRetryPrescriptions() {
+    if (currentConsultationId) {
+      loadPrescriptions(currentConsultationId, activeRequestId);
+    }
+  }
+
+  async function handlePrescriptionSubmit(event) {
+    event.preventDefault();
+    if (!currentConsultationId || !currentConsultation || isSavingPrescription) return;
+    if (!canUpdate || currentConsultation.status !== "BORRADOR") return;
+
+    resetPrescriptionAlerts();
+    clearPrescriptionValidationErrors();
+
+    const rows = elements.prescriptionItemsContainer?.querySelectorAll(".pc-prescription-item-row") || [];
+    if (rows.length === 0) {
+      showPrescriptionValidation("Debe registrar al menos un medicamento en la prescripción.");
+      return;
+    }
+
+    const items = [];
+    let firstInvalidInput = null;
+
+    rows.forEach((row) => {
+      const nameInput = row.querySelector(".pc-prescription-item-name");
+      const doseInput = row.querySelector(".pc-prescription-item-dosage");
+      const freqInput = row.querySelector(".pc-prescription-item-frequency");
+      const durInput = row.querySelector(".pc-prescription-item-duration");
+      const routeInput = row.querySelector(".pc-prescription-item-route");
+      const instInput = row.querySelector(".pc-prescription-item-instructions");
+
+      const nameVal = nameInput?.value.trim() ?? "";
+      const doseVal = doseInput?.value.trim() ?? "";
+      const freqVal = freqInput?.value.trim() ?? "";
+      const durVal = durInput?.value.trim() ?? "";
+      const routeVal = routeInput?.value.trim() ?? "";
+      const instVal = instInput?.value.trim() ?? "";
+
+      let rowHasError = false;
+
+      if (!nameVal || nameVal.length > 200) {
+        nameInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = nameInput;
+      }
+      if (!doseVal || doseVal.length > 100) {
+        doseInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = doseInput;
+      }
+      if (!freqVal || freqVal.length > 100) {
+        freqInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = freqInput;
+      }
+      if (!durVal || durVal.length > 100) {
+        durInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = durInput;
+      }
+      if (routeVal.length > 50) {
+        routeInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = routeInput;
+      }
+      if (instVal.length > 2000) {
+        instInput?.setAttribute("aria-invalid", "true");
+        rowHasError = true;
+        if (!firstInvalidInput) firstInvalidInput = instInput;
+      }
+
+      if (!rowHasError) {
+        items.push({
+          medicationName: nameVal,
+          dosage: doseVal,
+          frequency: freqVal,
+          duration: durVal,
+          route: routeVal || null,
+          instructions: instVal || null
+        });
+      }
+    });
+
+    const genInstVal = elements.prescriptionGeneralInstructions?.value.trim() ?? "";
+    if (genInstVal.length > 2000) {
+      elements.prescriptionGeneralInstructions?.setAttribute("aria-invalid", "true");
+      if (!firstInvalidInput) firstInvalidInput = elements.prescriptionGeneralInstructions;
+      showPrescriptionValidation("Las indicaciones generales no deben exceder los 2000 caracteres.");
+      firstInvalidInput?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (firstInvalidInput || items.length !== rows.length) {
+      showPrescriptionValidation("Por favor completa todos los campos obligatorios de cada medicamento.");
+      firstInvalidInput?.focus({ preventScroll: true });
+      return;
+    }
+
+    const payload = {
+      idempotencyKey: currentPrescriptionIdempotencyKey,
+      generalInstructions: genInstVal || null,
+      items
+    };
+
+    const submissionRequestId = activeRequestId;
+    const targetConsultationId = currentConsultationId;
+    setSavingPrescriptionState(true);
+
+    try {
+      await client.requestJson(
+        `/api/v1/consultations/${encodeURIComponent(targetConsultationId)}/prescriptions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (submissionRequestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+
+      resetPrescriptionForm();
+      showPrescriptionNotice("Prescripción médica emitida correctamente.");
+      await loadPrescriptions(targetConsultationId, submissionRequestId);
+      elements.prescriptionNotice?.focus({ preventScroll: true });
+    } catch (error) {
+      if (submissionRequestId !== activeRequestId || targetConsultationId !== currentConsultationId) {
+        return;
+      }
+
+      const message = (error instanceof ApiRequestError && error.message)
+        ? error.message
+        : "No fue posible emitir la prescripción médica.";
+      const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
+        ? ` (ID de correlación: ${error.correlationId})`
+        : "";
+
+      if (error instanceof ApiRequestError && error.status === 409) {
+        if (error.code === "INVALID_CONSULTATION_STATUS") {
+          if (currentConsultation) {
+            currentConsultation.status = "CONFLICTO";
+          }
+          setFormEditable(false);
+        }
+        showPrescriptionError(message, correlationSuffix);
+        elements.prescriptionError?.focus({ preventScroll: true });
+        return;
+      }
+
+      showPrescriptionError(message, correlationSuffix);
+      elements.prescriptionError?.focus({ preventScroll: true });
+    } finally {
+      if (submissionRequestId === activeRequestId && targetConsultationId === currentConsultationId) {
+        setSavingPrescriptionState(false);
+      }
+    }
+  }
+
+  function setSavingPrescriptionState(saving) {
+    isSavingPrescription = saving;
+    if (elements.prescriptionSubmitButton) elements.prescriptionSubmitButton.disabled = saving;
+    if (elements.prescriptionSubmitSpinner) elements.prescriptionSubmitSpinner.hidden = !saving;
+    if (elements.prescriptionCancelButton) elements.prescriptionCancelButton.disabled = saving;
+    if (elements.prescriptionAddItemRowButton) elements.prescriptionAddItemRowButton.disabled = saving;
+    if (elements.prescriptionSubmitLabel) {
+      elements.prescriptionSubmitLabel.textContent = saving ? "Emitiendo..." : "Emitir prescripción";
+    }
+  }
+
+  function resetPrescriptionAlerts() {
+    if (elements.prescriptionNotice) elements.prescriptionNotice.hidden = true;
+    if (elements.prescriptionError) elements.prescriptionError.hidden = true;
+    if (elements.prescriptionValidation) elements.prescriptionValidation.hidden = true;
+    if (elements.prescriptionsLoadError) elements.prescriptionsLoadError.hidden = true;
+  }
+
+  function clearPrescriptionValidationErrors() {
+    const rows = elements.prescriptionItemsContainer?.querySelectorAll(".pc-prescription-item-row") || [];
+    rows.forEach(row => {
+      row.querySelectorAll("input").forEach(input => input.removeAttribute("aria-invalid"));
+    });
+    elements.prescriptionGeneralInstructions?.removeAttribute("aria-invalid");
+    if (elements.prescriptionValidation) elements.prescriptionValidation.hidden = true;
+  }
+
+  function showPrescriptionNotice(message) {
+    if (elements.prescriptionNotice) {
+      elements.prescriptionNotice.textContent = message;
+      elements.prescriptionNotice.hidden = false;
+    }
+  }
+
+  function showPrescriptionError(message, correlation) {
+    if (elements.prescriptionErrorMessage) elements.prescriptionErrorMessage.textContent = message;
+    if (elements.prescriptionErrorCorrelation) {
+      elements.prescriptionErrorCorrelation.textContent = correlation;
+      elements.prescriptionErrorCorrelation.hidden = !correlation;
+    }
+    if (elements.prescriptionError) elements.prescriptionError.hidden = false;
+  }
+
+  function showPrescriptionValidation(message) {
+    if (elements.prescriptionValidationMessage) elements.prescriptionValidationMessage.textContent = message;
+    if (elements.prescriptionValidation) elements.prescriptionValidation.hidden = false;
+  }
+
   return {
     sessionReady,
     sessionEnded,
@@ -1021,6 +1714,31 @@ function findElements(document) {
     diagnosisErrorMessage: document.querySelector("#diagnosis-error-message"),
     diagnosisErrorCorrelation: document.querySelector("#diagnosis-error-correlation"),
     diagnosisValidation: document.querySelector("#diagnosis-validation"),
-    diagnosisValidationMessage: document.querySelector("#diagnosis-validation-message")
+    diagnosisValidationMessage: document.querySelector("#diagnosis-validation-message"),
+    prescriptionsSection: document.querySelector("#evaluation-prescriptions-section"),
+    prescriptionsCounter: document.querySelector("#evaluation-prescriptions-counter"),
+    prescriptionAddButton: document.querySelector("#prescription-add-button"),
+    prescriptionNotice: document.querySelector("#prescription-notice"),
+    prescriptionError: document.querySelector("#prescription-error"),
+    prescriptionErrorMessage: document.querySelector("#prescription-error-message"),
+    prescriptionErrorCorrelation: document.querySelector("#prescription-error-correlation"),
+    prescriptionValidation: document.querySelector("#prescription-validation"),
+    prescriptionValidationMessage: document.querySelector("#prescription-validation-message"),
+    prescriptionForm: document.querySelector("#prescription-form"),
+    prescriptionItemsContainer: document.querySelector("#prescription-items-container"),
+    prescriptionAddItemRowButton: document.querySelector("#prescription-add-item-row-button"),
+    prescriptionGeneralInstructions: document.querySelector("#prescription-general-instructions"),
+    prescriptionInstructionsCounter: document.querySelector("#prescription-instructions-counter"),
+    prescriptionCancelButton: document.querySelector("#prescription-cancel-button"),
+    prescriptionSubmitButton: document.querySelector("#prescription-submit-button"),
+    prescriptionSubmitLabel: document.querySelector("#prescription-submit-label"),
+    prescriptionSubmitSpinner: document.querySelector("#prescription-submit-spinner"),
+    prescriptionsLoading: document.querySelector("#evaluation-prescriptions-loading"),
+    prescriptionsLoadError: document.querySelector("#evaluation-prescriptions-load-error"),
+    prescriptionsLoadErrorMessage: document.querySelector("#evaluation-prescriptions-load-error-message"),
+    prescriptionsLoadErrorCorrelation: document.querySelector("#evaluation-prescriptions-load-error-correlation"),
+    prescriptionsRetryButton: document.querySelector("#evaluation-prescriptions-retry-button"),
+    prescriptionsEmpty: document.querySelector("#evaluation-prescriptions-empty"),
+    prescriptionsList: document.querySelector("#evaluation-prescriptions-list")
   };
 }

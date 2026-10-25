@@ -36,7 +36,10 @@ class ConsultationController {
         var diagList = consultations.listDiagnoses(consultationId).stream()
                 .map(DiagnosisResponse::from)
                 .toList();
-        return ResponseEntity.ok(ConsultationResponse.from(summary, diagList));
+        var prescList = consultations.listPrescriptions(consultationId).stream()
+                .map(PrescriptionResponse::from)
+                .toList();
+        return ResponseEntity.ok(ConsultationResponse.from(summary, diagList, prescList));
     }
 
     @PutMapping("/api/v1/consultations/{consultationId}/evaluation")
@@ -79,6 +82,23 @@ class ConsultationController {
         return ResponseEntity.ok(consultations.listPatientDiagnoses(patientId).stream()
                 .map(PatientDiagnosisResponse::from)
                 .toList());
+    }
+
+    @GetMapping("/api/v1/consultations/{consultationId}/prescriptions")
+    ResponseEntity<List<PrescriptionResponse>> listPrescriptions(
+            @PathVariable("consultationId") UUID consultationId) {
+        return ResponseEntity.ok(consultations.listPrescriptions(consultationId).stream()
+                .map(PrescriptionResponse::from)
+                .toList());
+    }
+
+    @PostMapping("/api/v1/consultations/{consultationId}/prescriptions")
+    ResponseEntity<PrescriptionResponse> issuePrescription(
+            @PathVariable("consultationId") UUID consultationId,
+            @RequestBody IssuePrescriptionRequest request) {
+        var created = consultations.issuePrescription(consultationId, request != null ? request.toCommand() : null);
+        URI location = URI.create("/api/v1/consultations/" + consultationId + "/prescriptions/" + created.id());
+        return ResponseEntity.created(location).body(PrescriptionResponse.from(created));
     }
 
     private static ResponseEntity<ConsultationResponse> toResponse(StartConsultationResult result) {

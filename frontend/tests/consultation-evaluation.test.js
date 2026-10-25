@@ -1419,6 +1419,662 @@ test("HU-022: fallo al cargar diagnósticos distingue error de lista vacía, mue
   controller.destroy();
 });
 
+test("HU-023: renderizado de prescripciones emitidas, badges y estructura de ítems", async () => {
+  const prescData = [
+    {
+      id: "99999999-aaaa-4999-8999-999999999999",
+      consultationId: CONSULTATION_ID,
+      veterinarianId: VET_ID,
+      veterinarianName: "Dra. Sofía Morales",
+      status: "EMITIDA",
+      generalInstructions: "Administrar con abundante agua.",
+      idempotencyKey: "test-key-1",
+      issuedAt: "2026-10-25T12:00:00Z",
+      items: [
+        {
+          id: "88888888-bbbb-4888-8888-888888888888",
+          medicationName: "Amoxicilina 500mg",
+          dosage: "1 comprimido",
+          frequency: "Cada 12 horas",
+          duration: "7 días",
+          route: "Oral",
+          instructions: "Con alimento"
+        }
+      ]
+    }
+  ];
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta médica general",
+          diagnoses: [],
+          prescriptions: prescData
+        };
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const counter = document.querySelector("#evaluation-prescriptions-counter");
+  const empty = document.querySelector("#evaluation-prescriptions-empty");
+  const list = document.querySelector("#evaluation-prescriptions-list");
+
+  equal(counter.textContent, "1");
+  assert(empty.hidden, "El estado vacío debe estar oculto con 1 prescripción");
+  assert(!list.hidden, "La lista de prescripciones debe estar visible");
+
+  const cards = list.querySelectorAll(".pc-prescription-card");
+  equal(cards.length, 1);
+  const card = cards[0];
+  equal(card.dataset.prescriptionId, "99999999-aaaa-4999-8999-999999999999");
+  assert(card.textContent.includes("EMITIDA"), "Debe mostrar badge EMITIDA");
+  assert(card.textContent.includes("Amoxicilina 500mg"), "Debe listar el medicamento");
+  assert(card.textContent.includes("Administrar con abundante agua."), "Debe mostrar indicaciones generales");
+  assert(card.textContent.includes("Medicamentos externos al catálogo"), "Debe indicar medicamentos externos");
+
+  controller.destroy();
+});
+
+test("HU-023: dinámica de filas de medicamentos (añadir fila, deshabilitar eliminación en fila única y reindexar)", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta general",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const addBtn = document.querySelector("#prescription-add-button");
+  const form = document.querySelector("#prescription-form");
+  const itemsContainer = document.querySelector("#prescription-items-container");
+  const addRowBtn = document.querySelector("#prescription-add-item-row-button");
+
+  assert(!addBtn.hidden, "Botón de emitir prescripción debe ser visible para vet asignado en BORRADOR");
+  addBtn.click();
+
+  assert(!form.hidden, "Formulario de prescripción debe mostrarse al hacer clic en + Emitir");
+  let rows = itemsContainer.querySelectorAll(".pc-prescription-item-row");
+  equal(rows.length, 1, "Debe iniciar con 1 fila de medicamento");
+  equal(rows[0].querySelector(".pc-prescription-item-badge").textContent, "Medicamento #1");
+  assert(rows[0].querySelector(".pc-prescription-item-remove-btn").disabled, "Eliminar debe estar deshabilitado con 1 sola fila");
+
+  // Añadir segunda fila
+  addRowBtn.click();
+  rows = itemsContainer.querySelectorAll(".pc-prescription-item-row");
+  equal(rows.length, 2, "Debe tener 2 filas tras añadir una");
+  equal(rows[1].querySelector(".pc-prescription-item-badge").textContent, "Medicamento #2");
+  assert(!rows[0].querySelector(".pc-prescription-item-remove-btn").disabled, "Fila 1 debe habilitar eliminar con 2 filas");
+  assert(!rows[1].querySelector(".pc-prescription-item-remove-btn").disabled, "Fila 2 debe habilitar eliminar con 2 filas");
+
+  // Añadir tercera fila y eliminar la del medio
+  addRowBtn.click();
+  rows = itemsContainer.querySelectorAll(".pc-prescription-item-row");
+  equal(rows.length, 3, "Debe tener 3 filas");
+  equal(rows[2].querySelector(".pc-prescription-item-badge").textContent, "Medicamento #3");
+
+  rows[1].querySelector(".pc-prescription-item-remove-btn").click();
+  rows = itemsContainer.querySelectorAll(".pc-prescription-item-row");
+  equal(rows.length, 2, "Debe quedar con 2 filas");
+  equal(rows[0].querySelector(".pc-prescription-item-badge").textContent, "Medicamento #1");
+  equal(rows[1].querySelector(".pc-prescription-item-badge").textContent, "Medicamento #2");
+
+  controller.destroy();
+});
+
+test("HU-023: validación en cliente detecta campos obligatorios faltantes o longitudes excedidas", async () => {
+  let postCalled = false;
+  const client = {
+    requestJson: async (url, opts) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (opts?.method === "POST") {
+        postCalled = true;
+      }
+      return {};
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  document.querySelector("#prescription-add-button").click();
+  const form = document.querySelector("#prescription-form");
+  const validationAlert = document.querySelector("#prescription-validation");
+
+  // Enviar con campos vacíos
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  assert(!postCalled, "No debe enviar POST con campos vacíos");
+  assert(!validationAlert.hidden, "Debe mostrar alerta de validación");
+  const row = document.querySelector("#prescription-items-container .pc-prescription-item-row");
+  equal(row.querySelector(".pc-prescription-item-name").getAttribute("aria-invalid"), "true");
+  equal(row.querySelector(".pc-prescription-item-dosage").getAttribute("aria-invalid"), "true");
+
+  controller.destroy();
+});
+
+test("HU-023: emisión exitosa vía POST envía datos correctos, limpia formulario y actualiza lista", async () => {
+  const requests = [];
+  const client = {
+    requestJson: async (url, opts = {}) => {
+      requests.push({ url, method: opts.method || "GET", body: opts.body ? JSON.parse(opts.body) : null });
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && opts.method === "POST") {
+        return {
+          id: "77777777-cccc-4777-8777-777777777777",
+          consultationId: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          veterinarianName: "Dra. Sofía Morales",
+          status: "EMITIDA",
+          generalInstructions: "Tomar con comida.",
+          idempotencyKey: opts.body ? JSON.parse(opts.body).idempotencyKey : "key-1",
+          issuedAt: "2026-10-25T14:00:00Z",
+          items: [
+            {
+              id: "66666666-dddd-4666-8666-666666666666",
+              medicationName: "Meloxicam 1mg",
+              dosage: "1 tableta",
+              frequency: "Cada 24 horas",
+              duration: "3 días",
+              route: "Oral",
+              instructions: "Junto al alimento matutino"
+            }
+          ]
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && (!opts.method || opts.method === "GET")) {
+        return [
+          {
+            id: "77777777-cccc-4777-8777-777777777777",
+            consultationId: CONSULTATION_ID,
+            veterinarianId: VET_ID,
+            veterinarianName: "Dra. Sofía Morales",
+            status: "EMITIDA",
+            generalInstructions: "Tomar con comida.",
+            idempotencyKey: "key-1",
+            issuedAt: "2026-10-25T14:00:00Z",
+            items: [
+              {
+                id: "66666666-dddd-4666-8666-666666666666",
+                medicationName: "Meloxicam 1mg",
+                dosage: "1 tableta",
+                frequency: "Cada 24 horas",
+                duration: "3 días",
+                route: "Oral",
+                instructions: "Junto al alimento matutino"
+              }
+            ]
+          }
+        ];
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  document.querySelector("#prescription-add-button").click();
+  const row = document.querySelector("#prescription-items-container .pc-prescription-item-row");
+  row.querySelector(".pc-prescription-item-name").value = "Meloxicam 1mg";
+  row.querySelector(".pc-prescription-item-dosage").value = "1 tableta";
+  row.querySelector(".pc-prescription-item-frequency").value = "Cada 24 horas";
+  row.querySelector(".pc-prescription-item-duration").value = "3 días";
+  row.querySelector(".pc-prescription-item-route").value = "Oral";
+  row.querySelector(".pc-prescription-item-instructions").value = "Junto al alimento matutino";
+  document.querySelector("#prescription-general-instructions").value = "Tomar con comida.";
+
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  const postReq = requests.find((r) => r.method === "POST");
+  assert(Boolean(postReq), "Debe enviar petición POST");
+  equal(postReq.url, `/api/v1/consultations/${CONSULTATION_ID}/prescriptions`);
+  equal(postReq.body.generalInstructions, "Tomar con comida.");
+  assert(Boolean(postReq.body.idempotencyKey), "Debe incluir idempotencyKey");
+  equal(postReq.body.items.length, 1);
+  equal(postReq.body.items[0].medicationName, "Meloxicam 1mg");
+
+  // Formulario debe cerrarse
+  assert(document.querySelector("#prescription-form").hidden, "Formulario debe ocultarse tras emisión exitosa");
+  // Alerta de éxito visible
+  assert(!document.querySelector("#prescription-notice").hidden, "Debe mostrar aviso de éxito");
+  // Lista actualizada
+  equal(document.querySelector("#evaluation-prescriptions-counter").textContent, "1");
+  const cards = document.querySelectorAll("#evaluation-prescriptions-list .pc-prescription-card");
+  equal(cards.length, 1);
+
+  controller.destroy();
+});
+
+test("HU-023: reintento tras error de red conserva los valores y el mismo idempotencyKey", async () => {
+  const postBodies = [];
+  let failFirstPost = true;
+
+  const client = {
+    requestJson: async (url, opts = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && opts.method === "POST") {
+        const body = JSON.parse(opts.body);
+        postBodies.push(body);
+        if (failFirstPost) {
+          failFirstPost = false;
+          throw new ApiRequestError({
+            kind: "HTTP_500",
+            status: 500,
+            message: "Fallo temporal de conexión",
+            correlationId: "CID-PRESCR-500"
+          });
+        }
+        return {
+          id: "77777777-cccc-4777-8777-777777777777",
+          consultationId: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "EMITIDA",
+          items: body.items,
+          issuedAt: "2026-10-25T14:00:00Z"
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && (!opts.method || opts.method === "GET")) {
+        return [];
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  document.querySelector("#prescription-add-button").click();
+  const row = document.querySelector("#prescription-items-container .pc-prescription-item-row");
+  row.querySelector(".pc-prescription-item-name").value = "Ketoprofeno 10mg";
+  row.querySelector(".pc-prescription-item-dosage").value = "1 gota/kg";
+  row.querySelector(".pc-prescription-item-frequency").value = "Cada 24h";
+  row.querySelector(".pc-prescription-item-duration").value = "2 días";
+
+  // Primer intento: falla
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  equal(postBodies.length, 1);
+  assert(!document.querySelector("#prescription-error").hidden, "Debe mostrar alerta de error");
+  assert(!document.querySelector("#prescription-form").hidden, "El formulario debe permanecer abierto con los datos");
+  equal(row.querySelector(".pc-prescription-item-name").value, "Ketoprofeno 10mg");
+
+  // Segundo intento (reintento del usuario)
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  equal(postBodies.length, 2);
+  equal(postBodies[0].idempotencyKey, postBodies[1].idempotencyKey, "Ambas solicitudes deben compartir el mismo idempotencyKey");
+
+  controller.destroy();
+});
+
+test("HU-023: oculta botón de emitir si la consulta no es BORRADOR o el usuario no es el vet asignado", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: "different-vet-id",
+          status: "BORRADOR",
+          reason: "Consulta",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const addBtn = document.querySelector("#prescription-add-button");
+  assert(addBtn.hidden, "Botón de emitir debe estar oculto si el usuario no es el veterinario asignado");
+
+  controller.destroy();
+});
+
+test("HU-023: fallo al cargar prescripciones distingue error de lista vacía y permite reintentar", async () => {
+  let failPrescriptions = true;
+  let retryCount = 0;
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta",
+          diagnoses: [],
+          prescriptions: null // Fuerza llamada a GET /prescriptions
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions`) {
+        if (failPrescriptions) {
+          throw new ApiRequestError({
+            kind: "HTTP_500",
+            status: 500,
+            message: "Fallo temporal de prescripciones",
+            correlationId: "CID-PRESC-500"
+          });
+        }
+        retryCount++;
+        return [];
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  const emptyState = document.querySelector("#evaluation-prescriptions-empty");
+  const errorBox = document.querySelector("#evaluation-prescriptions-load-error");
+
+  assert(emptyState.hidden, "No debe mostrar 'sin prescripciones' cuando falló la consulta");
+  assert(!errorBox.hidden, "Debe mostrar el contenedor de error accesible");
+  assert(document.querySelector("#evaluation-prescriptions-load-error-message").textContent.includes("Fallo temporal"), "Debe mostrar mensaje");
+  assert(document.querySelector("#evaluation-prescriptions-load-error-correlation").textContent.includes("CID-PRESC-500"), "Debe mostrar correlation ID");
+
+  // Reintento
+  failPrescriptions = false;
+  document.querySelector("#evaluation-prescriptions-retry-button").click();
+  await flushPromises();
+
+  equal(retryCount, 1, "Debe ejecutar nueva llamada en reintento");
+  assert(errorBox.hidden, "Error debe ocultarse tras reintento exitoso");
+  assert(!emptyState.hidden, "Debe mostrar 'sin prescripciones' tras respuesta vacía válida");
+
+  controller.destroy();
+});
+
+test("HU-023: respuesta perdida y edición posterior conserva el intento y la misma clave para no duplicar automáticamente", async () => {
+  const postBodies = [];
+  let failFirstPost = true;
+
+  const client = {
+    requestJson: async (url, opts = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta general",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && opts.method === "POST") {
+        const body = JSON.parse(opts.body);
+        postBodies.push(body);
+        if (failFirstPost) {
+          failFirstPost = false;
+          throw new ApiRequestError({
+            kind: "HTTP_504",
+            status: 504,
+            message: "Tiempo de espera agotado al conectar con el servidor",
+            correlationId: "CID-TIMEOUT-504"
+          });
+        }
+        throw new ApiRequestError({
+          kind: "HTTP_409",
+          status: 409,
+          code: "CONFLICT",
+          message: "La clave de idempotencia ya fue utilizada con un contenido diferente.",
+          correlationId: "CID-IDEMP-CONFLICT-409"
+        });
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && (!opts.method || opts.method === "GET")) {
+        return [];
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  document.querySelector("#prescription-add-button").click();
+  const row = document.querySelector("#prescription-items-container .pc-prescription-item-row");
+  row.querySelector(".pc-prescription-item-name").value = "Meloxicam 0.5%";
+  row.querySelector(".pc-prescription-item-dosage").value = "0.1 mg/kg";
+  row.querySelector(".pc-prescription-item-frequency").value = "Cada 24h";
+  row.querySelector(".pc-prescription-item-duration").value = "3 días";
+
+  // 1. Envío inicial que sufre respuesta perdida / timeout
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  equal(postBodies.length, 1);
+  assert(!document.querySelector("#prescription-error").hidden, "Debe mostrar alerta de error");
+
+  // 2. El usuario edita la dosis en el formulario sin cancelar
+  row.querySelector(".pc-prescription-item-dosage").value = "0.2 mg/kg";
+
+  // 3. Envío posterior
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  equal(postBodies.length, 2);
+  equal(postBodies[0].idempotencyKey, postBodies[1].idempotencyKey, "No debe generar una clave nueva automáticamente al editar tras respuesta perdida");
+  equal(postBodies[1].items[0].dosage, "0.2 mg/kg", "Envía la dosis actualizada");
+
+  // 4. Ante 409 CONFLICT por idempotencia:
+  assert(!document.querySelector("#prescription-error").hidden, "Muestra error de conflicto");
+  assert(document.querySelector("#prescription-error-message").textContent.includes("contenido diferente"));
+  assert(!document.querySelector("#evaluation-reason").disabled, "El formulario de evaluación NO debe bloquearse por conflicto de idempotencia");
+  assert(!document.querySelector("#evaluation-save-button").disabled, "El botón de guardar consulta debe seguir habilitado");
+
+  controller.destroy();
+});
+
+test("HU-023: error 409 INVALID_CONSULTATION_STATUS bloquea evaluación general pero 409 CONFLICT no lo hace", async () => {
+  let conflictType = "CONFLICT";
+
+  const client = {
+    requestJson: async (url, opts = {}) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          veterinarianId: VET_ID,
+          status: "BORRADOR",
+          reason: "Consulta general",
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && opts.method === "POST") {
+        if (conflictType === "INVALID_CONSULTATION_STATUS") {
+          throw new ApiRequestError({
+            kind: "HTTP_409",
+            status: 409,
+            code: "INVALID_CONSULTATION_STATUS",
+            message: "La consulta ya no se encuentra en estado BORRADOR."
+          });
+        }
+        throw new ApiRequestError({
+          kind: "HTTP_409",
+          status: 409,
+          code: "CONFLICT",
+          message: "Conflicto de clave de idempotencia."
+        });
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/prescriptions` && (!opts.method || opts.method === "GET")) {
+        return [];
+      }
+      throw new Error(`URL no manejada: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({
+    document,
+    client,
+    onBackToAppointments: () => {}
+  });
+
+  controller.sessionReady({
+    userId: VET_ID,
+    authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE"]
+  });
+
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  // Escenario A: 409 CONFLICT (idempotencia)
+  conflictType = "CONFLICT";
+  document.querySelector("#prescription-add-button").click();
+  const row = document.querySelector("#prescription-items-container .pc-prescription-item-row");
+  row.querySelector(".pc-prescription-item-name").value = "Cefalexina 500mg";
+  row.querySelector(".pc-prescription-item-dosage").value = "1 tableta";
+  row.querySelector(".pc-prescription-item-frequency").value = "Cada 12h";
+  row.querySelector(".pc-prescription-item-duration").value = "7 días";
+
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  assert(!document.querySelector("#evaluation-reason").disabled, "409 CONFLICT no debe bloquear evaluación general");
+  assert(!document.querySelector("#evaluation-save-button").disabled);
+
+  // Escenario B: 409 INVALID_CONSULTATION_STATUS
+  conflictType = "INVALID_CONSULTATION_STATUS";
+  document.querySelector("#prescription-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await flushPromises();
+
+  assert(document.querySelector("#evaluation-reason").disabled, "409 INVALID_CONSULTATION_STATUS debe bloquear evaluación general");
+  assert(document.querySelector("#evaluation-save-button").disabled);
+
+  controller.destroy();
+});
+
 run();
 
 function test(name, fn) {

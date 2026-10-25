@@ -6,6 +6,8 @@ import com.petcare.enterprise.clinical.application.ConsultationResourceNotFoundE
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.ConsultationSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionItemSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
 import com.petcare.enterprise.clinical.application.InvalidConsultationStatusException;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import com.petcare.enterprise.clinical.domain.VitalSigns;
@@ -13,6 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -533,5 +536,309 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                 rs.getString("notes"),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getTimestamp("updated_at").toInstant());
+    }
+
+    @Override
+    public List<PrescriptionSummary> findPrescriptionsByConsultationId(UUID tenantId, UUID consultationId) {
+        String sql = """
+                SELECT
+                    p.id,
+                    p.consultation_id,
+                    p.prescribed_by,
+                    btrim(u.first_name || ' ' || u.last_name) AS veterinarian_full_name,
+                    p.issued_at,
+                    p.general_instructions,
+                    p.status,
+                    p.created_at
+                FROM prescriptions p
+                JOIN users u
+                  ON u.tenant_id = p.tenant_id
+                 AND u.id = p.prescribed_by
+                WHERE p.tenant_id = :tenant_id
+                  AND p.consultation_id = :consultation_id
+                ORDER BY p.created_at ASC, p.id ASC
+                """;
+        List<PrescriptionHeader> headers = jdbc.query(
+                sql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("consultation_id", consultationId),
+                this::mapPrescriptionHeader);
+
+        List<PrescriptionSummary> result = new java.util.ArrayList<>(headers.size());
+        for (PrescriptionHeader header : headers) {
+            List<PrescriptionItemSummary> items = findItemsByPrescriptionId(tenantId, header.id());
+            result.add(new PrescriptionSummary(
+                    header.id(),
+                    header.consultationId(),
+                    header.prescribedBy(),
+                    header.veterinarianFullName(),
+                    header.issuedAt(),
+                    header.generalInstructions(),
+                    header.status(),
+                    items,
+                    header.createdAt()));
+        }
+        return result;
+    }
+
+    @Override
+    public Optional<PrescriptionSummary> findPrescriptionByIdempotencyKey(
+            UUID tenantId, UUID consultationId, String idempotencyKey) {
+        String sql = """
+                SELECT
+                    p.id,
+                    p.consultation_id,
+                    p.prescribed_by,
+                    btrim(u.first_name || ' ' || u.last_name) AS veterinarian_full_name,
+                    p.issued_at,
+                    p.general_instructions,
+                    p.status,
+                    p.created_at
+                FROM prescriptions p
+                JOIN users u
+                  ON u.tenant_id = p.tenant_id
+                 AND u.id = p.prescribed_by
+                WHERE p.tenant_id = :tenant_id
+                  AND p.consultation_id = :consultation_id
+                  AND p.idempotency_key = :idempotency_key
+                """;
+        List<PrescriptionHeader> headers = jdbc.query(
+                sql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("consultation_id", consultationId)
+                        .addValue("idempotency_key", idempotencyKey),
+                this::mapPrescriptionHeader);
+        if (headers.isEmpty()) {
+            return Optional.empty();
+        }
+        PrescriptionHeader header = headers.get(0);
+        List<PrescriptionItemSummary> items = findItemsByPrescriptionId(tenantId, header.id());
+        return Optional.of(new PrescriptionSummary(
+                header.id(),
+                header.consultationId(),
+                header.prescribedBy(),
+                header.veterinarianFullName(),
+                header.issuedAt(),
+                header.generalInstructions(),
+                header.status(),
+                items,
+                header.createdAt()));
+    }
+
+    @Override
+    public Optional<PrescriptionSummary> findPrescriptionById(
+            UUID tenantId, UUID consultationId, UUID prescriptionId) {
+        String sql = """
+                SELECT
+                    p.id,
+                    p.consultation_id,
+                    p.prescribed_by,
+                    btrim(u.first_name || ' ' || u.last_name) AS veterinarian_full_name,
+                    p.issued_at,
+                    p.general_instructions,
+                    p.status,
+                    p.created_at
+                FROM prescriptions p
+                JOIN users u
+                  ON u.tenant_id = p.tenant_id
+                 AND u.id = p.prescribed_by
+                WHERE p.tenant_id = :tenant_id
+                  AND p.consultation_id = :consultation_id
+                  AND p.id = :prescription_id
+                """;
+        List<PrescriptionHeader> headers = jdbc.query(
+                sql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("consultation_id", consultationId)
+                        .addValue("prescription_id", prescriptionId),
+                this::mapPrescriptionHeader);
+        if (headers.isEmpty()) {
+            return Optional.empty();
+        }
+        PrescriptionHeader header = headers.get(0);
+        List<PrescriptionItemSummary> items = findItemsByPrescriptionId(tenantId, header.id());
+        return Optional.of(new PrescriptionSummary(
+                header.id(),
+                header.consultationId(),
+                header.prescribedBy(),
+                header.veterinarianFullName(),
+                header.issuedAt(),
+                header.generalInstructions(),
+                header.status(),
+                items,
+                header.createdAt()));
+    }
+
+    @Override
+    public PrescriptionSummary insertPrescription(
+            NewPrescriptionRecord record, List<NewPrescriptionItemRecord> items) {
+        String insertPrescriptionSql = """
+                INSERT INTO prescriptions (
+                    id,
+                    tenant_id,
+                    consultation_id,
+                    prescribed_by,
+                    issued_at,
+                    general_instructions,
+                    status,
+                    idempotency_key,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :id,
+                    :tenant_id,
+                    :consultation_id,
+                    :prescribed_by,
+                    :issued_at,
+                    :general_instructions,
+                    :status,
+                    :idempotency_key,
+                    :created_at,
+                    :updated_at
+                )
+                """;
+        jdbc.update(
+                insertPrescriptionSql,
+                new MapSqlParameterSource()
+                        .addValue("id", record.id())
+                        .addValue("tenant_id", record.tenantId())
+                        .addValue("consultation_id", record.consultationId())
+                        .addValue("prescribed_by", record.prescribedBy())
+                        .addValue("issued_at", Timestamp.from(record.issuedAt()))
+                        .addValue("general_instructions", record.generalInstructions())
+                        .addValue("status", record.status())
+                        .addValue("idempotency_key", record.idempotencyKey())
+                        .addValue("created_at", Timestamp.from(record.createdAt()))
+                        .addValue("updated_at", Timestamp.from(record.updatedAt())));
+
+        String insertItemSql = """
+                INSERT INTO prescription_items (
+                    id,
+                    tenant_id,
+                    prescription_id,
+                    item_order,
+                    medication_name,
+                    dosage,
+                    frequency,
+                    duration,
+                    route,
+                    instructions,
+                    created_at
+                ) VALUES (
+                    :id,
+                    :tenant_id,
+                    :prescription_id,
+                    :item_order,
+                    :medication_name,
+                    :dosage,
+                    :frequency,
+                    :duration,
+                    :route,
+                    :instructions,
+                    :created_at
+                )
+                """;
+        List<PrescriptionItemSummary> summaryItems = new java.util.ArrayList<>(items.size());
+        for (NewPrescriptionItemRecord item : items) {
+            jdbc.update(
+                    insertItemSql,
+                    new MapSqlParameterSource()
+                            .addValue("id", item.id())
+                            .addValue("tenant_id", item.tenantId())
+                            .addValue("prescription_id", item.prescriptionId())
+                            .addValue("item_order", item.itemOrder())
+                            .addValue("medication_name", item.medicationName())
+                            .addValue("dosage", item.dosage())
+                            .addValue("frequency", item.frequency())
+                            .addValue("duration", item.duration())
+                            .addValue("route", item.route())
+                            .addValue("instructions", item.instructions())
+                            .addValue("created_at", Timestamp.from(item.createdAt())));
+
+            summaryItems.add(new PrescriptionItemSummary(
+                    item.id(),
+                    item.prescriptionId(),
+                    item.itemOrder(),
+                    item.medicationName(),
+                    item.dosage(),
+                    item.frequency(),
+                    item.duration(),
+                    item.route(),
+                    item.instructions(),
+                    item.createdAt()));
+        }
+
+        return new PrescriptionSummary(
+                record.id(),
+                record.consultationId(),
+                record.prescribedBy(),
+                record.veterinarianFullName(),
+                record.issuedAt(),
+                record.generalInstructions(),
+                record.status(),
+                summaryItems,
+                record.createdAt());
+    }
+
+    private List<PrescriptionItemSummary> findItemsByPrescriptionId(UUID tenantId, UUID prescriptionId) {
+        String sql = """
+                SELECT
+                    i.id,
+                    i.prescription_id,
+                    i.item_order,
+                    i.medication_name,
+                    i.dosage,
+                    i.frequency,
+                    i.duration,
+                    i.route,
+                    i.instructions,
+                    i.created_at
+                FROM prescription_items i
+                WHERE i.tenant_id = :tenant_id
+                  AND i.prescription_id = :prescription_id
+                ORDER BY i.item_order ASC, i.id ASC
+                """;
+        return jdbc.query(
+                sql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("prescription_id", prescriptionId),
+                (rs, rowNum) -> new PrescriptionItemSummary(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("prescription_id", UUID.class),
+                        rs.getInt("item_order"),
+                        rs.getString("medication_name"),
+                        rs.getString("dosage"),
+                        rs.getString("frequency"),
+                        rs.getString("duration"),
+                        rs.getString("route"),
+                        rs.getString("instructions"),
+                        rs.getTimestamp("created_at").toInstant()));
+    }
+
+    private PrescriptionHeader mapPrescriptionHeader(ResultSet rs, int rowNum) throws SQLException {
+        return new PrescriptionHeader(
+                rs.getObject("id", UUID.class),
+                rs.getObject("consultation_id", UUID.class),
+                rs.getObject("prescribed_by", UUID.class),
+                rs.getString("veterinarian_full_name"),
+                rs.getTimestamp("issued_at").toInstant(),
+                rs.getString("general_instructions"),
+                rs.getString("status"),
+                rs.getTimestamp("created_at").toInstant());
+    }
+
+    private record PrescriptionHeader(
+            UUID id,
+            UUID consultationId,
+            UUID prescribedBy,
+            String veterinarianFullName,
+            Instant issuedAt,
+            String generalInstructions,
+            String status,
+            Instant createdAt) {
     }
 }

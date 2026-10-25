@@ -12,11 +12,16 @@ import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.ActivePatientMedicalRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.NewConsultationRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.NewDiagnosisRecord;
+import com.petcare.enterprise.clinical.application.ConsultationRepository.NewPrescriptionItemRecord;
+import com.petcare.enterprise.clinical.application.ConsultationRepository.NewPrescriptionRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.UpdateDiagnosisRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.UpdateEvaluationRecord;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.AddDiagnosisCommand;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.IssuePrescriptionCommand;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionItemCommand;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.UpdateDiagnosisCommand;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import com.petcare.enterprise.clinical.domain.ConsultationStatus;
@@ -486,5 +491,230 @@ public class ConsultationService implements ConsultationUseCase {
             throw new ConsultationResourceNotFoundException();
         }
         return consultationRepository.findDiagnosesByPatientId(metadata.tenantId(), patientId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PrescriptionSummary> listPrescriptions(UUID consultationId) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        consultationRepository.findById(metadata.tenantId(), consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+        return consultationRepository.findPrescriptionsByConsultationId(metadata.tenantId(), consultationId);
+    }
+
+    @Override
+    @Transactional
+    public PrescriptionSummary issuePrescription(UUID consultationId, IssuePrescriptionCommand command) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        if (command == null) {
+            throw new InvalidConsultationDataException("command", "Los datos de la prescripción son obligatorios.");
+        }
+
+        // Explicit rejection of stock deduction or product catalog attempts
+        if (Boolean.TRUE.equals(command.deductStock()) || command.productId() != null) {
+            throw new InvalidConsultationDataException(
+                    "deductStock",
+                    "La dispensación y descuento de inventario no están disponibles en este momento. Solo se admiten medicamentos externos al catálogo.");
+        }
+
+        if (command.items() == null || command.items().isEmpty()) {
+            throw new InvalidConsultationDataException("items", "La prescripción debe incluir al menos un medicamento.");
+        }
+
+        List<PrescriptionItemCommand> rawItems = command.items();
+        for (int i = 0; i < rawItems.size(); i++) {
+            PrescriptionItemCommand item = rawItems.get(i);
+            if (item == null) {
+                throw new InvalidConsultationDataException("items[" + i + "]", "La línea de prescripción es obligatoria.");
+            }
+            if (Boolean.TRUE.equals(item.deductStock()) || item.productId() != null) {
+                throw new InvalidConsultationDataException(
+                        "items[" + i + "].deductStock",
+                        "La dispensación y descuento de inventario no están disponibles en este momento. Solo se admiten medicamentos externos al catálogo.");
+            }
+            if (item.medicationName() == null || item.medicationName().isBlank()) {
+                throw new InvalidConsultationDataException("items[" + i + "].medicationName", "El nombre del medicamento es obligatorio.");
+            }
+            if (item.medicationName().trim().length() > 200) {
+                throw new InvalidConsultationDataException("items[" + i + "].medicationName", "El nombre del medicamento no debe exceder los 200 caracteres.");
+            }
+            if (item.dosage() == null || item.dosage().isBlank()) {
+                throw new InvalidConsultationDataException("items[" + i + "].dosage", "La dosis del medicamento es obligatoria.");
+            }
+            if (item.dosage().trim().length() > 100) {
+                throw new InvalidConsultationDataException("items[" + i + "].dosage", "La dosis no debe exceder los 100 caracteres.");
+            }
+            if (item.frequency() == null || item.frequency().isBlank()) {
+                throw new InvalidConsultationDataException("items[" + i + "].frequency", "La frecuencia del medicamento es obligatoria.");
+            }
+            if (item.frequency().trim().length() > 100) {
+                throw new InvalidConsultationDataException("items[" + i + "].frequency", "La frecuencia no debe exceder los 100 caracteres.");
+            }
+            if (item.duration() == null || item.duration().isBlank()) {
+                throw new InvalidConsultationDataException("items[" + i + "].duration", "La duración del tratamiento es obligatoria.");
+            }
+            if (item.duration().trim().length() > 100) {
+                throw new InvalidConsultationDataException("items[" + i + "].duration", "La duración no debe exceder los 100 caracteres.");
+            }
+            if (item.route() != null && !item.route().isBlank() && item.route().trim().length() > 50) {
+                throw new InvalidConsultationDataException("items[" + i + "].route", "La vía de administración no debe exceder los 50 caracteres.");
+            }
+            if (item.instructions() != null && !item.instructions().isBlank() && item.instructions().trim().length() > 2000) {
+                throw new InvalidConsultationDataException("items[" + i + "].instructions", "Las indicaciones del medicamento no deben exceder los 2000 caracteres.");
+            }
+        }
+
+        String normalizedGeneralInstructions = null;
+        if (command.generalInstructions() != null && !command.generalInstructions().isBlank()) {
+            normalizedGeneralInstructions = command.generalInstructions().trim();
+            if (normalizedGeneralInstructions.length() > 2000) {
+                throw new InvalidConsultationDataException("generalInstructions", "Las indicaciones generales no deben exceder los 2000 caracteres.");
+            }
+        }
+
+        String normalizedIdempotencyKey = null;
+        if (command.idempotencyKey() != null && !command.idempotencyKey().isBlank()) {
+            normalizedIdempotencyKey = command.idempotencyKey().trim();
+            if (normalizedIdempotencyKey.length() > 100) {
+                throw new InvalidConsultationDataException(
+                        "idempotencyKey",
+                        "La clave de idempotencia no debe exceder los 100 caracteres.");
+            }
+        }
+
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+        UUID actorUserId = metadata.actorUserId();
+
+        // Lock consultation tenant-aware
+        ConsultationSummary consultation = consultationRepository.lockConsultationForUpdate(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+
+        if (!consultation.veterinarianId().equals(actorUserId)) {
+            throw new ConsultationAccessDeniedException(
+                    "Solo el veterinario asignado a la consulta puede emitir prescripciones.");
+        }
+
+        // Check idempotency under lock to handle concurrent retry attempts
+        if (normalizedIdempotencyKey != null) {
+            Optional<PrescriptionSummary> existingUnderLock = consultationRepository.findPrescriptionByIdempotencyKey(
+                    tenantId, consultationId, normalizedIdempotencyKey);
+            if (existingUnderLock.isPresent()) {
+                PrescriptionSummary original = existingUnderLock.get();
+                if (hasMatchingContent(original, normalizedGeneralInstructions, rawItems)) {
+                    return original;
+                } else {
+                    throw new PrescriptionIdempotencyConflictException(
+                            "La clave de idempotencia ya fue utilizada con un contenido diferente para esta consulta.");
+                }
+            }
+        }
+
+        if (!"BORRADOR".equals(consultation.status())) {
+            throw new InvalidConsultationStatusException(consultation.status(), "BORRADOR");
+        }
+
+        UUID prescriptionId = UUID.randomUUID();
+        Instant now = clock.instant();
+
+        List<NewPrescriptionItemRecord> itemRecords = new java.util.ArrayList<>(rawItems.size());
+        for (int i = 0; i < rawItems.size(); i++) {
+            PrescriptionItemCommand item = rawItems.get(i);
+            String route = item.route() != null && !item.route().isBlank() ? item.route().trim() : null;
+            String instructions = item.instructions() != null && !item.instructions().isBlank() ? item.instructions().trim() : null;
+            itemRecords.add(new NewPrescriptionItemRecord(
+                    UUID.randomUUID(),
+                    tenantId,
+                    prescriptionId,
+                    i + 1,
+                    item.medicationName().trim(),
+                    item.dosage().trim(),
+                    item.frequency().trim(),
+                    item.duration().trim(),
+                    route,
+                    instructions,
+                    now));
+        }
+
+        NewPrescriptionRecord prescriptionRecord = new NewPrescriptionRecord(
+                prescriptionId,
+                tenantId,
+                consultationId,
+                actorUserId,
+                consultation.veterinarianFullName(),
+                now,
+                normalizedGeneralInstructions,
+                "EMITIDA",
+                normalizedIdempotencyKey,
+                now,
+                now);
+
+        PrescriptionSummary created = consultationRepository.insertPrescription(prescriptionRecord, itemRecords);
+
+        // Append audit log within the same transaction without leaking sensitive drug dosages/text
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                actorUserId,
+                consultation.branchId(),
+                "PRESCRIPTION",
+                prescriptionId,
+                "PRESCRIPTION_ISSUED",
+                now,
+                null,
+                metadata.correlationId(),
+                null,
+                Map.of(
+                        "consultationId", consultationId.toString(),
+                        "prescriptionId", prescriptionId.toString(),
+                        "itemCount", String.valueOf(itemRecords.size()),
+                        "patientId", consultation.patientId().toString(),
+                        "branchId", consultation.branchId().toString(),
+                        "hasGeneralInstructions", String.valueOf(normalizedGeneralInstructions != null))));
+
+        return created;
+    }
+
+    private boolean hasMatchingContent(
+            PrescriptionSummary existing,
+            String normalizedGeneralInstructions,
+            List<PrescriptionItemCommand> rawItems) {
+        if (!Objects.equals(existing.generalInstructions(), normalizedGeneralInstructions)) {
+            return false;
+        }
+        List<PrescriptionItemSummary> existingItems = existing.items();
+        if (existingItems == null || existingItems.size() != rawItems.size()) {
+            return false;
+        }
+        for (int i = 0; i < rawItems.size(); i++) {
+            PrescriptionItemSummary ex = existingItems.get(i);
+            PrescriptionItemCommand in = rawItems.get(i);
+            if (!Objects.equals(ex.medicationName(), in.medicationName().trim())) {
+                return false;
+            }
+            if (!Objects.equals(ex.dosage(), in.dosage().trim())) {
+                return false;
+            }
+            if (!Objects.equals(ex.frequency(), in.frequency().trim())) {
+                return false;
+            }
+            if (!Objects.equals(ex.duration(), in.duration().trim())) {
+                return false;
+            }
+            String normRoute = in.route() != null && !in.route().isBlank() ? in.route().trim() : null;
+            if (!Objects.equals(ex.route(), normRoute)) {
+                return false;
+            }
+            String normInst = in.instructions() != null && !in.instructions().isBlank() ? in.instructions().trim() : null;
+            if (!Objects.equals(ex.instructions(), normInst)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

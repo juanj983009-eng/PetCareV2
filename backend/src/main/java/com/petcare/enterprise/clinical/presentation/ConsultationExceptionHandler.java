@@ -4,6 +4,7 @@ import com.petcare.enterprise.clinical.application.ConsultationAccessDeniedExcep
 import com.petcare.enterprise.clinical.application.ConsultationResourceNotFoundException;
 import com.petcare.enterprise.clinical.application.InvalidConsultationDataException;
 import com.petcare.enterprise.clinical.application.InvalidConsultationStatusException;
+import com.petcare.enterprise.clinical.application.PrescriptionIdempotencyConflictException;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorCode;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponse;
 import com.petcare.enterprise.shared.infrastructure.web.error.ApiErrorResponseFactory;
@@ -63,6 +64,14 @@ class ConsultationExceptionHandler {
         return errors.response(
                 HttpStatus.CONFLICT,
                 ApiErrorCode.INVALID_CONSULTATION_STATUS,
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(PrescriptionIdempotencyConflictException.class)
+    ResponseEntity<ApiErrorResponse> idempotencyConflict(PrescriptionIdempotencyConflictException exception) {
+        return errors.response(
+                HttpStatus.CONFLICT,
+                ApiErrorCode.CONFLICT,
                 exception.getMessage());
     }
 }

@@ -89,6 +89,8 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
             }
         }
         for (UUID tenantId : createdTenantIds) {
+            jdbc.update("DELETE FROM prescription_items WHERE tenant_id = ?", tenantId);
+            jdbc.update("DELETE FROM prescriptions WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM diagnoses WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM consultations WHERE tenant_id = ?", tenantId);
             jdbc.update("DELETE FROM appointments WHERE tenant_id = ?", tenantId);
@@ -1730,6 +1732,1337 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 String.class,
                 diagnosisId);
         assertThat(currentDesc).isEqualTo("Diagnóstico inicial");
+    }
+
+    @Test
+    void issuesMultiLinePrescriptionSuccessfullyAndPersistsAtomicallyWithAudit() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-issue");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Valeria",
+                "Paredes",
+                "valeria@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "César", "Rosas", "DNI", "45678901");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Rocky",
+                "CANINO",
+                "Beagle");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Alergia cutánea",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String prescriptionPayload = """
+                {
+                    "generalInstructions": "Administrar con alimento sólido por la mañana.",
+                    "idempotencyKey": "idem-rocky-01",
+                    "items": [
+                        {
+                            "medicationName": "Amoxicilina con Ácido Clavulánico 250mg",
+                            "dosage": "1 comprimido (250 mg)",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días",
+                            "route": "Oral",
+                            "instructions": "No interrumpir el antibiótico antes del séptimo día."
+                        },
+                        {
+                            "medicationName": "Prednisolona 5mg",
+                            "dosage": "0.5 comprimido (2.5 mg)",
+                            "frequency": "Cada 24 horas",
+                            "duration": "5 días",
+                            "route": "Oral",
+                            "instructions": "Reducir gradualmente según evolución."
+                        }
+                    ]
+                }
+                """;
+
+        MvcResult emitResult = mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(prescriptionPayload))
+                .andExpect(status().isCreated())
+                .andExpect(header().exists("Location"))
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.consultationId").value(consultationId.toString()))
+                .andExpect(jsonPath("$.prescribedBy").value(vetId.toString()))
+                .andExpect(jsonPath("$.veterinarianFullName").value("Dra. Valeria Paredes"))
+                .andExpect(jsonPath("$.status").value("EMITIDA"))
+                .andExpect(jsonPath("$.generalInstructions").value("Administrar con alimento sólido por la mañana."))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].medicationName").value("Amoxicilina con Ácido Clavulánico 250mg"))
+                .andExpect(jsonPath("$.items[0].dosage").value("1 comprimido (250 mg)"))
+                .andExpect(jsonPath("$.items[0].frequency").value("Cada 12 horas"))
+                .andExpect(jsonPath("$.items[0].duration").value("7 días"))
+                .andExpect(jsonPath("$.items[0].route").value("Oral"))
+                .andExpect(jsonPath("$.items[1].medicationName").value("Prednisolona 5mg"))
+                .andReturn();
+
+        UUID prescriptionId = UUID.fromString(objectMapper.readTree(emitResult.getResponse().getContentAsString()).get("id").asText());
+        assertThat(emitResult.getResponse().getHeader("Location"))
+                .isEqualTo("/api/v1/consultations/" + consultationId + "/prescriptions/" + prescriptionId);
+
+        // Verify retrieval via dedicated endpoint
+        mvc.perform(get("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(prescriptionId.toString()))
+                .andExpect(jsonPath("$[0].items.length()").value(2))
+                .andExpect(jsonPath("$[0].items[0].medicationName").value("Amoxicilina con Ácido Clavulánico 250mg"))
+                .andExpect(jsonPath("$[0].items[1].medicationName").value("Prednisolona 5mg"));
+
+        // Verify inclusion in consultation summary
+        mvc.perform(get("/api/v1/consultations/" + consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prescriptions.length()").value(1))
+                .andExpect(jsonPath("$.prescriptions[0].id").value(prescriptionId.toString()))
+                .andExpect(jsonPath("$.prescriptions[0].items.length()").value(2));
+
+        // Verify atomic audit log entry exists without sensitive drug texts
+        List<Map<String, Object>> auditEntries = jdbc.queryForList("""
+                SELECT action, entity_type, entity_id, new_data
+                FROM audit_entries
+                WHERE tenant_id = ? AND entity_id = ? AND action = 'PRESCRIPTION_ISSUED'
+                """, tenant.tenantId, prescriptionId);
+
+        assertThat(auditEntries).hasSize(1);
+        Map<String, Object> audit = auditEntries.get(0);
+        assertThat(audit.get("action")).isEqualTo("PRESCRIPTION_ISSUED");
+        assertThat(audit.get("entity_type")).isEqualTo("PRESCRIPTION");
+        String detailsJson = audit.get("new_data").toString();
+        assertThat(detailsJson).contains("\"itemCount\": \"2\"");
+        assertThat(detailsJson).contains("\"hasGeneralInstructions\": \"true\"");
+        assertThat(detailsJson).doesNotContain("Amoxicilina");
+        assertThat(detailsJson).doesNotContain("Prednisolona");
+        assertThat(detailsJson).doesNotContain("250 mg");
+    }
+
+    @Test
+    void rejectsStockDeductionOrInventoryDispensationsExplicitly() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-stock");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Marcos",
+                "Ríos",
+                "marcos@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Laura", "Vidal", "DNI", "55667788");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Simba",
+                "FELINO",
+                "Siamés");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Chequeo",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Attempt with top-level deductStock: true
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "deductStock": true,
+                                    "items": [
+                                        {
+                                            "medicationName": "Meloxicam",
+                                            "dosage": "1 ml",
+                                            "frequency": "Cada 24 horas",
+                                            "duration": "3 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("La dispensación y descuento de inventario no están disponibles")));
+
+        // Attempt with item-level deductStock: true
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Meloxicam",
+                                            "dosage": "1 ml",
+                                            "frequency": "Cada 24 horas",
+                                            "duration": "3 días",
+                                            "deductStock": true
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("La dispensación y descuento de inventario no están disponibles")));
+
+        // Attempt with productId provided
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Meloxicam",
+                                            "dosage": "1 ml",
+                                            "frequency": "Cada 24 horas",
+                                            "duration": "3 días",
+                                            "productId": "00000000-0000-0000-0000-000000000001"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("La dispensación y descuento de inventario no están disponibles")));
+    }
+
+    @Test
+    void validatesRequiredAndConstrainedFieldsOnPrescriptionEmission() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-val");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Jorge",
+                "Flores",
+                "jorge@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Diana", "Castro", "DNI", "66778899");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Pelusa",
+                "FELINO",
+                "Persa");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Revisión",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Empty items list
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\": []}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La prescripción debe incluir al menos un medicamento."));
+
+        // Blank medication name
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "   ",
+                                            "dosage": "1 tableta",
+                                            "frequency": "Cada 8h",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("El nombre del medicamento es obligatorio."));
+
+        // Medication name exceeding 200 chars
+        String longMedName = "A".repeat(201);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "%s",
+                                            "dosage": "1 tableta",
+                                            "frequency": "Cada 8h",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """, longMedName)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("El nombre del medicamento no debe exceder los 200 caracteres."));
+
+        // Blank dosage
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "   ",
+                                            "frequency": "Cada 8h",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La dosis del medicamento es obligatoria."));
+
+        // Blank frequency
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "10 mg",
+                                            "frequency": "   ",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La frecuencia del medicamento es obligatoria."));
+
+        // Blank duration
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "10 mg",
+                                            "frequency": "Cada 12h",
+                                            "duration": "   "
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La duración del tratamiento es obligatoria."));
+
+        // Route exceeding 50 chars
+        String longRoute = "R".repeat(51);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "10 mg",
+                                            "frequency": "Cada 12h",
+                                            "duration": "5 días",
+                                            "route": "%s"
+                                        }
+                                    ]
+                                }
+                                """, longRoute)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La vía de administración no debe exceder los 50 caracteres."));
+
+        // Dosage exceeding 100 chars
+        String longDosage = "D".repeat(101);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "%s",
+                                            "frequency": "Cada 12h",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """, longDosage)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("La dosis no debe exceder los 100 caracteres."));
+
+        // Instructions exceeding 2000 chars
+        String longInstructions = "I".repeat(2001);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "10 mg",
+                                            "frequency": "Cada 12h",
+                                            "duration": "5 días",
+                                            "instructions": "%s"
+                                        }
+                                    ]
+                                }
+                                """, longInstructions)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Las indicaciones del medicamento no deben exceder los 2000 caracteres."));
+
+        // General instructions exceeding 2000 chars
+        String longGeneralInstructions = "G".repeat(2001);
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                    "generalInstructions": "%s",
+                                    "items": [
+                                        {
+                                            "medicationName": "Ibuprofeno veterinario",
+                                            "dosage": "10 mg",
+                                            "frequency": "Cada 12h",
+                                            "duration": "5 días"
+                                        }
+                                    ]
+                                }
+                                """, longGeneralInstructions)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Las indicaciones generales no deben exceder los 2000 caracteres."));
+    }
+
+    @Test
+    void rejectsEmissionWhenConsultationNotInDraftStatus() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-status");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Andrés",
+                "Luna",
+                "andres@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Pedro", "Navarro", "DNI", "77889900");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Zeus",
+                "CANINO",
+                "Doberman");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Update consultation status to FINALIZADA directly in DB
+        jdbc.update("UPDATE consultations SET status = 'FINALIZADA' WHERE id = ?", consultationId);
+
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Cefalexina 500mg",
+                                            "dosage": "1 tableta",
+                                            "frequency": "Cada 12 horas",
+                                            "duration": "10 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_CONSULTATION_STATUS"));
+    }
+
+    @Test
+    void rejectsEmissionByNonAssignedVeterinarianOrWithoutConsultationUpdateAuthority() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-auth");
+        UUID assignedVetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Asignado",
+                "Vera",
+                "asignado@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID nonAssignedVetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Ajeno",
+                "Salas",
+                "ajeno@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Soto", "DNI", "88990011");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Milo",
+                "CANINO",
+                "Poodle");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                assignedVetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Vacunación",
+                null);
+
+        TenantFixture assignedVetActor = new TenantFixture(tenant.tenantId, tenant.branchId, assignedVetId);
+        TenantFixture nonAssignedVetActor = new TenantFixture(tenant.tenantId, tenant.branchId, nonAssignedVetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String validBody = """
+                {
+                    "items": [
+                        {
+                            "medicationName": "Doxiciclina 100mg",
+                            "dosage": "1 tableta",
+                            "frequency": "Cada 24 horas",
+                            "duration": "14 días"
+                        }
+                    ]
+                }
+                """;
+
+        // Non-assigned veterinarian attempts emission -> 403 ACCESS_DENIED
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(nonAssignedVetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("Solo el veterinario asignado a la consulta puede emitir prescripciones."));
+
+        // User without CONSULTATION_UPDATE authority -> 403 ACCESS_DENIED
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // Unauthenticated request -> 401 UNAUTHORIZED
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void enforcesTenantIsolationOnPrescriptions() throws Exception {
+        TenantFixture tenantA = createTenantFixture("presc-t-a");
+        TenantFixture tenantB = createTenantFixture("presc-t-b");
+
+        UUID vetA = insertUserWithRoleAndBranch(
+                tenantA.tenantId,
+                tenantA.branchId,
+                "Dr. Alfa",
+                "Uno",
+                "alfa@" + tenantA.tenantId + ".test",
+                "VETERINARIO");
+        UUID vetB = insertUserWithRoleAndBranch(
+                tenantB.tenantId,
+                tenantB.branchId,
+                "Dr. Beta",
+                "Dos",
+                "beta@" + tenantB.tenantId + ".test",
+                "VETERINARIO");
+
+        UUID ownerA = insertOwner(tenantA.tenantId, "Ana", "López", "DNI", "11223344");
+        PatientWithMedicalRecord patientA = insertPatientWithMedicalRecord(
+                tenantA.tenantId,
+                ownerA,
+                "Max",
+                "CANINO",
+                "Labrador");
+        Instant now = Instant.now();
+        UUID apptA = insertAppointment(
+                tenantA.tenantId,
+                tenantA.branchId,
+                patientA.patientId,
+                vetA,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Chequeo",
+                null);
+
+        TenantFixture vetActorA = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetA);
+        TenantFixture vetActorB = new TenantFixture(tenantB.tenantId, tenantB.branchId, vetB);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptA + "/consultation")
+                        .with(authentication(auth(vetActorA, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationIdA = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String validBody = """
+                {
+                    "items": [
+                        {
+                            "medicationName": "Meloxicam 2mg",
+                            "dosage": "1 ml",
+                            "frequency": "Cada 24 horas",
+                            "duration": "3 días"
+                        }
+                    ]
+                }
+                """;
+
+        // Tenant B attempts to issue prescription on Tenant A's consultation -> 404 RESOURCE_NOT_FOUND
+        mvc.perform(post("/api/v1/consultations/" + consultationIdA + "/prescriptions")
+                        .with(authentication(auth(vetActorB, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // Tenant B attempts to read prescriptions from Tenant A's consultation -> 404 RESOURCE_NOT_FOUND
+        mvc.perform(get("/api/v1/consultations/" + consultationIdA + "/prescriptions")
+                        .with(authentication(auth(vetActorB, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void idempotentRetryReturnsExistingPrescriptionWithoutDuplicates() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-idem");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Camila",
+                "Duarte",
+                "camila@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Ernesto", "Silva", "DNI", "22334455");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Kira",
+                "CANINO",
+                "Husky");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Tos de las perreras",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String initialRequest = """
+                {
+                    "idempotencyKey": "retry-key-001",
+                    "generalInstructions": "Reposo e hidratación constante.",
+                    "items": [
+                        {
+                            "medicationName": "Jarabe antitusígeno",
+                            "dosage": "5 ml",
+                            "frequency": "Cada 8 horas",
+                            "duration": "5 días"
+                        }
+                    ]
+                }
+                """;
+
+        // First emission
+        MvcResult firstResult = mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initialRequest))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID firstPrescriptionId = UUID.fromString(objectMapper.readTree(firstResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Retry of identical emission with same idempotencyKey
+        MvcResult retryResult = mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initialRequest))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID retryPrescriptionId = UUID.fromString(objectMapper.readTree(retryResult.getResponse().getContentAsString()).get("id").asText());
+        assertThat(retryPrescriptionId).isEqualTo(firstPrescriptionId);
+
+        // Verify only 1 prescription and 1 audit record exist for this key in the database
+        Integer countInDb = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ? AND idempotency_key = 'retry-key-001'",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(countInDb).isEqualTo(1);
+
+        Integer auditCount = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entries WHERE tenant_id = ? AND entity_id = ? AND action = 'PRESCRIPTION_ISSUED'",
+                Integer.class,
+                tenant.tenantId,
+                firstPrescriptionId);
+        assertThat(auditCount).isEqualTo(1);
+
+        // An intentional additional prescription with a different key is permitted
+        String secondRequest = """
+                {
+                    "idempotencyKey": "retry-key-002",
+                    "generalInstructions": "Aplicación tópica.",
+                    "items": [
+                        {
+                            "medicationName": "Pomada cicatrizante",
+                            "dosage": "Capa fina",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        }
+                    ]
+                }
+                """;
+
+        MvcResult secondResult = mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(secondRequest))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID secondPrescriptionId = UUID.fromString(objectMapper.readTree(secondResult.getResponse().getContentAsString()).get("id").asText());
+        assertThat(secondPrescriptionId).isNotEqualTo(firstPrescriptionId);
+
+        // Total prescriptions for this consultation is now 2
+        Integer totalInDb = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(totalInDb).isEqualTo(2);
+    }
+
+    @Test
+    void rollsBackTransactionIfAuditFailsOnPrescriptionEmission() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-rollback");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Samuel",
+                "Peña",
+                "samuel@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Julia", "Reyes", "DNI", "33445566");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Oreo",
+                "FELINO",
+                "Criollo");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Evaluación",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Make auditLogWriter throw on PRESCRIPTION_ISSUED
+        doThrow(new RuntimeException("Simulated audit disk failure"))
+                .when(auditLogWriter)
+                .append(argThat(rec -> rec != null && "PRESCRIPTION_ISSUED".equals(rec.action())));
+
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "items": [
+                                        {
+                                            "medicationName": "Antiparasitario interno",
+                                            "dosage": "1 tableta",
+                                            "frequency": "Dosis única",
+                                            "duration": "1 día"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isInternalServerError());
+
+        // Verify that neither prescription nor prescription_items were committed to DB
+        Integer prescCount = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(prescCount).isZero();
+
+        Integer itemCount = jdbc.queryForObject(
+                "SELECT count(*) FROM prescription_items WHERE tenant_id = ?",
+                Integer.class,
+                tenant.tenantId);
+        assertThat(itemCount).isZero();
+    }
+
+    @Test
+    void rejectsPrescriptionIssuanceAndRetryByNonAssignedVeterinarian() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-non-assigned");
+        UUID assignedVetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Camila",
+                "Torres",
+                "camila@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID otherVetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Roberto",
+                "Gómez",
+                "roberto@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+
+        UUID ownerId = insertOwner(tenant.tenantId, "Patricia", "Sánchez", "DNI", "88776655");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Toby",
+                "CANINO",
+                "Beagle");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                assignedVetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Revisión dental",
+                null);
+
+        TenantFixture assignedVetActor = new TenantFixture(tenant.tenantId, tenant.branchId, assignedVetId);
+        TenantFixture otherVetActor = new TenantFixture(tenant.tenantId, tenant.branchId, otherVetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String initialRequest = """
+                {
+                    "idempotencyKey": "vet-auth-key-01",
+                    "items": [
+                        {
+                            "medicationName": "Clorhexidina gel dental",
+                            "dosage": "1 aplicación",
+                            "frequency": "Cada 12 horas",
+                            "duration": "10 días"
+                        }
+                    ]
+                }
+                """;
+
+        // Assigned vet issues prescription successfully
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initialRequest))
+                .andExpect(status().isCreated());
+
+        // Other vet attempts to retrieve or re-issue with the same key -> MUST BE FORBIDDEN (403)
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(otherVetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(initialRequest))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // Other vet attempts to issue a new prescription with new key -> MUST BE FORBIDDEN (403)
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(otherVetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "idempotencyKey": "vet-auth-key-02",
+                                    "items": [
+                                        {
+                                            "medicationName": "Otro medicamento",
+                                            "dosage": "1 dosis",
+                                            "frequency": "Cada 24 horas",
+                                            "duration": "3 días"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void rejectsSameIdempotencyKeyWithDifferentContentReturningConflict() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-diff-content");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Alonso",
+                "Navarro",
+                "alonso@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Ernesto", "Salas", "DNI", "55443322");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Milo",
+                "FELINO",
+                "Siamés");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Otitis",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String originalRequest = """
+                {
+                    "idempotencyKey": "same-key-diff-content",
+                    "generalInstructions": "Limpiar oído antes de aplicar.",
+                    "items": [
+                        {
+                            "medicationName": "Gotas óticas antibióticas",
+                            "dosage": "3 gotas",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        }
+                    ]
+                }
+                """;
+
+        // Initial emission
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(originalRequest))
+                .andExpect(status().isCreated());
+
+        // Same key, different dosage (3 gotas -> 5 gotas)
+        String diffDosageRequest = """
+                {
+                    "idempotencyKey": "same-key-diff-content",
+                    "generalInstructions": "Limpiar oído antes de aplicar.",
+                    "items": [
+                        {
+                            "medicationName": "Gotas óticas antibióticas",
+                            "dosage": "5 gotas",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        }
+                    ]
+                }
+                """;
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(diffDosageRequest))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        // Same key, different general instructions
+        String diffInstructionsRequest = """
+                {
+                    "idempotencyKey": "same-key-diff-content",
+                    "generalInstructions": "Instrucción completamente diferente.",
+                    "items": [
+                        {
+                            "medicationName": "Gotas óticas antibióticas",
+                            "dosage": "3 gotas",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        }
+                    ]
+                }
+                """;
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(diffInstructionsRequest))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        // Same key, extra line
+        String diffLinesRequest = """
+                {
+                    "idempotencyKey": "same-key-diff-content",
+                    "generalInstructions": "Limpiar oído antes de aplicar.",
+                    "items": [
+                        {
+                            "medicationName": "Gotas óticas antibióticas",
+                            "dosage": "3 gotas",
+                            "frequency": "Cada 12 horas",
+                            "duration": "7 días"
+                        },
+                        {
+                            "medicationName": "Analgésico oral",
+                            "dosage": "1 tableta",
+                            "frequency": "Cada 24 horas",
+                            "duration": "3 días"
+                        }
+                    ]
+                }
+                """;
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(diffLinesRequest))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        // Verify only 1 prescription in DB and 1 audit record
+        Integer countInDb = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(countInDb).isEqualTo(1);
+
+        Integer auditCount = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entries WHERE tenant_id = ? AND action = 'PRESCRIPTION_ISSUED'",
+                Integer.class,
+                tenant.tenantId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentEmissionWithSameKeyAndSameContentReturnsSamePrescription() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-concurrent");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Mariano",
+                "Castro",
+                "mariano@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Gladys", "Paredes", "DNI", "11223344");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Luna",
+                "CANINO",
+                "Poodle");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Dermatitis",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String concurrentRequest = """
+                {
+                    "idempotencyKey": "concurrent-key-999",
+                    "generalInstructions": "Baños medicados 2 veces por semana.",
+                    "items": [
+                        {
+                            "medicationName": "Champú antiséptico",
+                            "dosage": "1 aplicación tópica",
+                            "frequency": "Cada 72 horas",
+                            "duration": "14 días"
+                        }
+                    ]
+                }
+                """;
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.Callable<MvcResult> emitTask = () -> mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(concurrentRequest))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        java.util.concurrent.Future<MvcResult> f1 = executor.submit(emitTask);
+        java.util.concurrent.Future<MvcResult> f2 = executor.submit(emitTask);
+
+        MvcResult r1 = f1.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        MvcResult r2 = f2.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        executor.shutdown();
+
+        UUID id1 = UUID.fromString(objectMapper.readTree(r1.getResponse().getContentAsString()).get("id").asText());
+        UUID id2 = UUID.fromString(objectMapper.readTree(r2.getResponse().getContentAsString()).get("id").asText());
+        assertThat(id1).isEqualTo(id2);
+
+        Integer countInDb = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(countInDb).isEqualTo(1);
+
+        Integer auditCount = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entries WHERE tenant_id = ? AND action = 'PRESCRIPTION_ISSUED'",
+                Integer.class,
+                tenant.tenantId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsPrescriptionWithNullItemLineUniformly() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-null-item");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Felipe",
+                "Arce",
+                "felipe@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Carla", "Vargas", "DNI", "66778899");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Boby",
+                "CANINO",
+                "Labrador");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\": [null]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("items[0]"))
+                .andExpect(jsonPath("$.fieldErrors[0].code").value("INVALID_VALUE"));
+    }
+
+    @Test
+    void rejectsLongIdempotencyKeyWithoutSilentlyTruncating() throws Exception {
+        TenantFixture tenant = createTenantFixture("presc-long-key");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Elena",
+                "Ríos",
+                "elena@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Lucas", "Mendoza", "DNI", "77889900");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Simba",
+                "FELINO",
+                "Persa");
+        Instant now = Instant.now();
+        UUID apptId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now.plusSeconds(1800),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String longKey = "k".repeat(101);
+        String request = """
+                {
+                    "idempotencyKey": "%s",
+                    "items": [
+                        {
+                            "medicationName": "Antiinflamatorio",
+                            "dosage": "1 tableta",
+                            "frequency": "Cada 24 horas",
+                            "duration": "3 días"
+                        }
+                    ]
+                }
+                """.formatted(longKey);
+
+        mvc.perform(post("/api/v1/consultations/" + consultationId + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("idempotencyKey"))
+                .andExpect(jsonPath("$.fieldErrors[0].code").value("INVALID_VALUE"));
+
+        // Verify no prescription was created
+        Integer countInDb = jdbc.queryForObject(
+                "SELECT count(*) FROM prescriptions WHERE tenant_id = ? AND consultation_id = ?",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(countInDb).isZero();
     }
 
     private TenantFixture createTenantFixture(String slugPrefix) {

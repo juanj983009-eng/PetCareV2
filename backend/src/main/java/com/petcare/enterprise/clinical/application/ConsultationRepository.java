@@ -3,6 +3,7 @@ package com.petcare.enterprise.clinical.application;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.ConsultationSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import java.time.Instant;
 import java.util.List;
@@ -34,6 +35,14 @@ public interface ConsultationRepository {
     DiagnosisSummary updateDiagnosis(UpdateDiagnosisRecord record);
 
     List<PatientDiagnosisSummary> findDiagnosesByPatientId(UUID tenantId, UUID patientId);
+
+    List<PrescriptionSummary> findPrescriptionsByConsultationId(UUID tenantId, UUID consultationId);
+
+    Optional<PrescriptionSummary> findPrescriptionByIdempotencyKey(UUID tenantId, UUID consultationId, String idempotencyKey);
+
+    Optional<PrescriptionSummary> findPrescriptionById(UUID tenantId, UUID consultationId, UUID prescriptionId);
+
+    PrescriptionSummary insertPrescription(NewPrescriptionRecord record, List<NewPrescriptionItemRecord> items);
 
     record ActivePatientMedicalRecord(
             UUID patientId,
@@ -91,5 +100,33 @@ public interface ConsultationRepository {
             String diagnosisType,
             String notes,
             Instant updatedAt) {
+    }
+
+    record NewPrescriptionRecord(
+            UUID id,
+            UUID tenantId,
+            UUID consultationId,
+            UUID prescribedBy,
+            String veterinarianFullName,
+            Instant issuedAt,
+            String generalInstructions,
+            String status,
+            String idempotencyKey,
+            Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    record NewPrescriptionItemRecord(
+            UUID id,
+            UUID tenantId,
+            UUID prescriptionId,
+            int itemOrder,
+            String medicationName,
+            String dosage,
+            String frequency,
+            String duration,
+            String route,
+            String instructions,
+            Instant createdAt) {
     }
 }

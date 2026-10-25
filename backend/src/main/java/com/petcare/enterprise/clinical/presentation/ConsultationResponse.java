@@ -26,14 +26,22 @@ record ConsultationResponse(
         VitalSigns vitalSigns,
         ClinicalDetails clinicalDetails,
         List<DiagnosisResponse> diagnoses,
+        List<PrescriptionResponse> prescriptions,
         Instant createdAt,
         Instant updatedAt) {
 
     static ConsultationResponse from(ConsultationSummary summary) {
-        return from(summary, List.of());
+        return from(summary, List.of(), List.of());
     }
 
     static ConsultationResponse from(ConsultationSummary summary, List<DiagnosisResponse> diagnoses) {
+        return from(summary, diagnoses, List.of());
+    }
+
+    static ConsultationResponse from(
+            ConsultationSummary summary,
+            List<DiagnosisResponse> diagnoses,
+            List<PrescriptionResponse> prescriptions) {
         return new ConsultationResponse(
                 summary.id(),
                 summary.appointmentId(),
@@ -53,6 +61,7 @@ record ConsultationResponse(
                 summary.vitalSigns(),
                 summary.clinicalDetails(),
                 diagnoses != null ? diagnoses : List.of(),
+                prescriptions != null ? prescriptions : List.of(),
                 summary.createdAt(),
                 summary.updatedAt());
     }

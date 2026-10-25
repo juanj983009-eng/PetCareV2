@@ -23,6 +23,10 @@ public interface ConsultationUseCase {
 
     List<PatientDiagnosisSummary> listPatientDiagnoses(UUID patientId);
 
+    List<PrescriptionSummary> listPrescriptions(UUID consultationId);
+
+    PrescriptionSummary issuePrescription(UUID consultationId, IssuePrescriptionCommand command);
+
     record StartConsultationResult(
             ConsultationSummary consultation,
             boolean created) {
@@ -71,6 +75,50 @@ public interface ConsultationUseCase {
             String description,
             String diagnosisType,
             String notes,
+            Instant createdAt) {
+    }
+
+    record IssuePrescriptionCommand(
+            String generalInstructions,
+            List<PrescriptionItemCommand> items,
+            String idempotencyKey,
+            Boolean deductStock,
+            UUID productId) {
+    }
+
+    record PrescriptionItemCommand(
+            String medicationName,
+            String dosage,
+            String frequency,
+            String duration,
+            String route,
+            String instructions,
+            Boolean deductStock,
+            UUID productId) {
+    }
+
+    record PrescriptionSummary(
+            UUID id,
+            UUID consultationId,
+            UUID prescribedBy,
+            String veterinarianFullName,
+            Instant issuedAt,
+            String generalInstructions,
+            String status,
+            List<PrescriptionItemSummary> items,
+            Instant createdAt) {
+    }
+
+    record PrescriptionItemSummary(
+            UUID id,
+            UUID prescriptionId,
+            int itemOrder,
+            String medicationName,
+            String dosage,
+            String frequency,
+            String duration,
+            String route,
+            String instructions,
             Instant createdAt) {
     }
 
