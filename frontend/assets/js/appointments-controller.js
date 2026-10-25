@@ -59,7 +59,8 @@ export function createAppointmentsController({
   document,
   client,
   onViewPatientProfile = null,
-  onAppointmentCreated = null
+  onAppointmentCreated = null,
+  onStartConsultation = null
 }) {
   const s = findElements(document);
   const d = findDialogElements(document);
@@ -780,18 +781,19 @@ export function createAppointmentsController({
 
     if (
       canStartConsultation
-      && item.status === "EN_ESPERA"
+      && (item.status === "EN_ESPERA" || item.status === "EN_ATENCION")
       && currentUserId
       && item.veterinarianId
       && currentUserId === item.veterinarianId
     ) {
+      const isResuming = item.status === "EN_ATENCION";
       const startConsultationBtn = document.createElement("button");
       startConsultationBtn.type = "button";
-      startConsultationBtn.className = "btn btn-success btn-sm";
+      startConsultationBtn.className = isResuming ? "btn btn-outline-primary btn-sm" : "btn btn-success btn-sm";
       startConsultationBtn.dataset.action = "start-consultation";
       startConsultationBtn.dataset.appointmentId = item.id;
       startConsultationBtn.disabled = isBusy;
-      startConsultationBtn.textContent = "Iniciar atención";
+      startConsultationBtn.textContent = isResuming ? "Retomar consulta" : "Iniciar atención";
       buttons.push(startConsultationBtn);
     }
 
@@ -1330,6 +1332,7 @@ export function createAppointmentsController({
     }
 
     const item = renderedItemsById.get(appointmentId);
+    const isResuming = item?.status === "EN_ATENCION";
     const relatedButtons = Array.from(
       s.view.querySelectorAll(`[data-appointment-id="${appointmentId}"]`)
     );
@@ -1339,7 +1342,7 @@ export function createAppointmentsController({
       btn.disabled = true;
       if (btn.dataset.action === "start-consultation") {
         btn.setAttribute("aria-busy", "true");
-        btn.textContent = "Iniciando consulta...";
+        btn.textContent = isResuming ? "Abriendo consulta..." : "Iniciando consulta...";
       }
     }
 
@@ -1357,7 +1360,7 @@ export function createAppointmentsController({
       }
       const baseMessage = (error instanceof ApiRequestError && error.message)
         ? error.message
-        : "No fue posible iniciar la consulta.";
+        : (isResuming ? "No fue posible abrir la consulta." : "No fue posible iniciar la consulta.");
       const correlationSuffix = (error instanceof ApiRequestError && error.correlationId)
         ? ` (ID de correlación: ${error.correlationId})`
         : "";
@@ -1373,7 +1376,9 @@ export function createAppointmentsController({
 
     if (s.notice) {
       const patientLabel = consultation?.patientName || item?.patientName || "el paciente";
-      s.notice.textContent = `Consulta en borrador iniciada para ${patientLabel}. Cita en atención.`;
+      s.notice.textContent = isResuming
+        ? `Consulta retomada para ${patientLabel}. Cita en atención.`
+        : `Consulta en borrador iniciada para ${patientLabel}. Cita en atención.`;
       s.notice.hidden = false;
     }
 
@@ -1382,7 +1387,8 @@ export function createAppointmentsController({
         const refreshed = await executeSearch(page, { throwOnError: true });
         if (!refreshed && s.statusError && s.statusError.hidden) {
           const detail = s.errorMessage?.textContent || "No fue posible actualizar la agenda de citas.";
-          s.statusError.textContent = `La consulta se inició correctamente, pero no se pudo actualizar la agenda: ${detail}`;
+          const actionText = isResuming ? "abrió" : "inició";
+          s.statusError.textContent = `La consulta se ${actionText} correctamente, pero no se pudo actualizar la agenda: ${detail}`;
           s.statusError.hidden = false;
           s.statusError.focus({ preventScroll: true });
         }
@@ -1399,11 +1405,16 @@ export function createAppointmentsController({
           ? ` (ID de correlación: ${reloadError.correlationId})`
           : "";
         if (s.statusError) {
-          s.statusError.textContent = `La consulta se inició correctamente, pero no se pudo actualizar la agenda: ${reloadMessage}${correlationSuffix}`;
+          const actionText = isResuming ? "abrió" : "inició";
+          s.statusError.textContent = `La consulta se ${actionText} correctamente, pero no se pudo actualizar la agenda: ${reloadMessage}${correlationSuffix}`;
           s.statusError.hidden = false;
           s.statusError.focus({ preventScroll: true });
         }
       }
+    }
+
+    if (typeof onStartConsultation === "function" && consultation) {
+      onStartConsultation(consultation);
     }
   }
 

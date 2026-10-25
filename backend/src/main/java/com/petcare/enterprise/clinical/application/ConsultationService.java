@@ -11,6 +11,8 @@ import com.petcare.enterprise.audit.application.AuditMetadataProvider;
 import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.ActivePatientMedicalRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository.NewConsultationRecord;
+import com.petcare.enterprise.clinical.application.ConsultationRepository.UpdateEvaluationRecord;
+import com.petcare.enterprise.clinical.domain.ClinicalDetails;
 import com.petcare.enterprise.clinical.domain.ConsultationStatus;
 import java.time.Clock;
 import java.time.Instant;
@@ -152,5 +154,116 @@ public class ConsultationService implements ConsultationUseCase {
                         "status", created.status())));
 
         return new StartConsultationResult(created, true);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ConsultationSummary getById(UUID consultationId) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        return consultationRepository.findById(metadata.tenantId(), consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+    }
+
+    @Override
+    @Transactional
+    public ConsultationSummary saveEvaluation(UUID consultationId, SaveEvaluationCommand command) {
+        if (consultationId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        if (command == null) {
+            throw new InvalidConsultationDataException("command", "Los datos de la evaluación clínica son obligatorios.");
+        }
+
+        if (command.reason() == null || command.reason().isBlank()) {
+            throw new InvalidConsultationDataException("reason", "El motivo de la consulta es obligatorio.");
+        }
+        String normalizedReason = command.reason().trim();
+        if (normalizedReason.length() > 500) {
+            throw new InvalidConsultationDataException("reason", "El motivo no debe exceder los 500 caracteres.");
+        }
+
+        String normalizedAnamnesis = null;
+        if (command.anamnesis() != null) {
+            String trimmed = command.anamnesis().trim();
+            if (trimmed.length() > 4000) {
+                throw new InvalidConsultationDataException("anamnesis", "La anamnesis no debe exceder los 4000 caracteres.");
+            }
+            normalizedAnamnesis = trimmed.isEmpty() ? null : trimmed;
+        }
+
+        String normalizedPhysicalExam = null;
+        if (command.physicalExam() != null) {
+            String trimmed = command.physicalExam().trim();
+            if (trimmed.length() > 4000) {
+                throw new InvalidConsultationDataException("physicalExam", "El examen físico no debe exceder los 4000 caracteres.");
+            }
+            normalizedPhysicalExam = trimmed.isEmpty() ? null : trimmed;
+        }
+
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        UUID tenantId = metadata.tenantId();
+        UUID actorUserId = metadata.actorUserId();
+
+        ConsultationSummary consultation = consultationRepository.findById(tenantId, consultationId)
+                .orElseThrow(ConsultationResourceNotFoundException::new);
+
+        if (!consultation.veterinarianId().equals(actorUserId)) {
+            throw new ConsultationAccessDeniedException(
+                    "Solo el veterinario asignado a la consulta puede registrar o modificar la evaluación clínica.");
+        }
+
+        if (!"BORRADOR".equals(consultation.status())) {
+            throw new InvalidConsultationStatusException(consultation.status(), "BORRADOR");
+        }
+
+        Map<String, String> resolvedVariableDetails;
+        if (command.variableDetails() != null) {
+            resolvedVariableDetails = command.variableDetails();
+        } else if (consultation.clinicalDetails() != null && consultation.clinicalDetails().variableDetails() != null) {
+            resolvedVariableDetails = consultation.clinicalDetails().variableDetails();
+        } else {
+            resolvedVariableDetails = Map.of();
+        }
+
+        ClinicalDetails clinicalDetails = new ClinicalDetails(
+                command.vitalSigns(),
+                command.observations(),
+                resolvedVariableDetails);
+
+        Instant now = clock.instant();
+        ConsultationSummary updated = consultationRepository.updateEvaluation(new UpdateEvaluationRecord(
+                tenantId,
+                consultationId,
+                normalizedReason,
+                normalizedAnamnesis,
+                normalizedPhysicalExam,
+                clinicalDetails,
+                now));
+
+        // Audit log without copying sensitive clinical contents (anamnesis, physical exam, vital signs, etc.)
+        auditWriter.append(new AuditRecord(
+                UUID.randomUUID(),
+                tenantId,
+                actorUserId,
+                consultation.branchId(),
+                "CONSULTATION",
+                consultationId,
+                "CONSULTATION_EVALUATION_SAVED",
+                now,
+                null,
+                metadata.correlationId(),
+                null,
+                Map.of(
+                        "consultationId", consultationId.toString(),
+                        "appointmentId", consultation.appointmentId().toString(),
+                        "patientId", consultation.patientId().toString(),
+                        "branchId", consultation.branchId().toString(),
+                        "veterinarianId", consultation.veterinarianId().toString(),
+                        "status", consultation.status())));
+
+        return updated;
     }
 }

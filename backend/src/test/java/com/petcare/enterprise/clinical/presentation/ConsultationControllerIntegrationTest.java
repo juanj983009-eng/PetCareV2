@@ -3,15 +3,21 @@ package com.petcare.enterprise.clinical.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petcare.enterprise.audit.application.AuditLogWriter;
 import com.petcare.enterprise.audit.application.AuditRecord;
 import com.petcare.enterprise.clinical.application.ConsultationRepository;
@@ -21,6 +27,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -33,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -49,6 +57,9 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    ObjectMapper objectMapper;
 
     @MockitoSpyBean
     AuditLogWriter auditLogWriter;
@@ -92,25 +103,28 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void provisionsConsultationCreatePermissionIdempotentlyOnlyToVeterinario() {
+    void provisionsConsultationPermissionsIdempotentlyOnlyToVeterinario() {
         TenantFixture tenant = createTenantFixture("consulta-rbac");
         jdbc.query("SELECT ensure_tenant_system_roles(?)", rs -> null, tenant.tenantId);
 
-        Integer permCount = jdbc.queryForObject(
-                "SELECT count(*) FROM permissions WHERE code = 'CONSULTATION_CREATE' AND module = 'CLINICAL'",
-                Integer.class);
-        assertThat(permCount).isEqualTo(1);
+        for (String permCode : List.of("CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE")) {
+            Integer permCount = jdbc.queryForObject(
+                    "SELECT count(*) FROM permissions WHERE code = ? AND module = 'CLINICAL'",
+                    Integer.class,
+                    permCode);
+            assertThat(permCount).isEqualTo(1);
 
-        List<String> rolesWithPermission = jdbc.queryForList("""
-                SELECT upper(r.name)
-                FROM role_permissions rp
-                JOIN roles r ON r.tenant_id = rp.tenant_id AND r.id = rp.role_id
-                JOIN permissions p ON p.id = rp.permission_id
-                WHERE rp.tenant_id = ? AND p.code = 'CONSULTATION_CREATE'
-                ORDER BY upper(r.name)
-                """, String.class, tenant.tenantId);
+            List<String> rolesWithPermission = jdbc.queryForList("""
+                    SELECT upper(r.name)
+                    FROM role_permissions rp
+                    JOIN roles r ON r.tenant_id = rp.tenant_id AND r.id = rp.role_id
+                    JOIN permissions p ON p.id = rp.permission_id
+                    WHERE rp.tenant_id = ? AND p.code = ?
+                    ORDER BY upper(r.name)
+                    """, String.class, tenant.tenantId, permCode);
 
-        assertThat(rolesWithPermission).containsExactly("VETERINARIO");
+            assertThat(rolesWithPermission).containsExactly("VETERINARIO");
+        }
     }
 
     @Test
@@ -537,6 +551,540 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 String.class,
                 tenantA.tenantId,
                 apptWithoutMedicalRecord)).isEqualTo("EN_ESPERA");
+    }
+
+    @Test
+    void savesClinicalEvaluationAndRetrievesViaGetWithStructuredAndVariableDetails() throws Exception {
+        TenantFixture tenant = createTenantFixture("eval-save");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Camila",
+                "Torres",
+                "camila@petcare.test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Andrea", "Perez", "DNI", "47112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Boby",
+                "CANINO",
+                "Beagle");
+
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                Instant.parse("2026-09-30T10:00:00Z"),
+                Instant.parse("2026-09-30T10:30:00Z"),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // 1. Start consultation
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 2. Initial state has null clinical fields
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(consultationId.toString()))
+                .andExpect(jsonPath("$.status").value("BORRADOR"))
+                .andExpect(jsonPath("$.reason").isEmpty())
+                .andExpect(jsonPath("$.anamnesis").isEmpty())
+                .andExpect(jsonPath("$.physicalExam").isEmpty())
+                .andExpect(jsonPath("$.vitalSigns").isEmpty())
+                .andExpect(jsonPath("$.clinicalDetails").isEmpty());
+
+        // 3. Save evaluation via PUT
+        String requestBody = objectMapper.writeValueAsString(Map.of(
+                "reason", "  Chequeo anual por pérdida de apetito y letargo  ",
+                "anamnesis", "Propietario refiere decaimiento desde hace 2 días, menor consumo de agua.",
+                "physicalExam", "Mucosas ligeramente pálidas, dolor a la palpación abdominal leve.",
+                "vitalSigns", Map.of(
+                        "temperatureCelsius", 38.6,
+                        "weightKg", 14.75,
+                        "heartRateBpm", 115,
+                        "respiratoryRateBpm", 26,
+                        "capillaryRefillTimeSeconds", 1.8,
+                        "mucousMembranes", "PALIDAS"
+                ),
+                "observations", "Observación clínica: sugiere ecografía abdominal preventiva.",
+                "variableDetails", Map.of(
+                        "hidratacion", "Leve deshidratación estimada 5%",
+                        "condicionCorporal", "3/5",
+                        "ganglios", "Sin linfoadenomegalia"
+                )
+        ));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(consultationId.toString()))
+                .andExpect(jsonPath("$.status").value("BORRADOR"))
+                .andExpect(jsonPath("$.reason").value("Chequeo anual por pérdida de apetito y letargo"))
+                .andExpect(jsonPath("$.anamnesis").value("Propietario refiere decaimiento desde hace 2 días, menor consumo de agua."))
+                .andExpect(jsonPath("$.physicalExam").value("Mucosas ligeramente pálidas, dolor a la palpación abdominal leve."))
+                .andExpect(jsonPath("$.vitalSigns.temperatureCelsius").value(38.6))
+                .andExpect(jsonPath("$.vitalSigns.weightKg").value(14.75))
+                .andExpect(jsonPath("$.vitalSigns.heartRateBpm").value(115))
+                .andExpect(jsonPath("$.vitalSigns.respiratoryRateBpm").value(26))
+                .andExpect(jsonPath("$.vitalSigns.capillaryRefillTimeSeconds").value(1.8))
+                .andExpect(jsonPath("$.vitalSigns.mucousMembranes").value("PALIDAS"))
+                .andExpect(jsonPath("$.clinicalDetails.observations").value("Observación clínica: sugiere ecografía abdominal preventiva."))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.hidratacion").value("Leve deshidratación estimada 5%"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.condicionCorporal").value("3/5"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.ganglios").value("Sin linfoadenomegalia"));
+
+        // 4. Retrieve via GET and verify persistence
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(consultationId.toString()))
+                .andExpect(jsonPath("$.status").value("BORRADOR"))
+                .andExpect(jsonPath("$.reason").value("Chequeo anual por pérdida de apetito y letargo"))
+                .andExpect(jsonPath("$.anamnesis").value("Propietario refiere decaimiento desde hace 2 días, menor consumo de agua."))
+                .andExpect(jsonPath("$.physicalExam").value("Mucosas ligeramente pálidas, dolor a la palpación abdominal leve."))
+                .andExpect(jsonPath("$.vitalSigns.temperatureCelsius").value(38.6))
+                .andExpect(jsonPath("$.vitalSigns.weightKg").value(14.75))
+                .andExpect(jsonPath("$.vitalSigns.heartRateBpm").value(115))
+                .andExpect(jsonPath("$.vitalSigns.respiratoryRateBpm").value(26))
+                .andExpect(jsonPath("$.vitalSigns.capillaryRefillTimeSeconds").value(1.8))
+                .andExpect(jsonPath("$.vitalSigns.mucousMembranes").value("PALIDAS"))
+                .andExpect(jsonPath("$.clinicalDetails.observations").value("Observación clínica: sugiere ecografía abdominal preventiva."))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.hidratacion").value("Leve deshidratación estimada 5%"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.condicionCorporal").value("3/5"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.ganglios").value("Sin linfoadenomegalia"));
+
+        // 5. Verify audit entry: CONSULTATION_EVALUATION_SAVED without copying sensitive clinical details
+        Integer evalAuditCount = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entries WHERE tenant_id = ? AND entity_type = 'CONSULTATION' AND entity_id = ? AND action = 'CONSULTATION_EVALUATION_SAVED'",
+                Integer.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(evalAuditCount).isEqualTo(1);
+
+        String auditNewData = jdbc.queryForObject(
+                "SELECT new_data::text FROM audit_entries WHERE tenant_id = ? AND entity_type = 'CONSULTATION' AND entity_id = ? AND action = 'CONSULTATION_EVALUATION_SAVED'",
+                String.class,
+                tenant.tenantId,
+                consultationId);
+        assertThat(auditNewData).doesNotContain("Chequeo anual");
+        assertThat(auditNewData).doesNotContain("decaimiento");
+        assertThat(auditNewData).doesNotContain("palpación");
+        assertThat(auditNewData).doesNotContain("38.6");
+        assertThat(auditNewData).doesNotContain("PALIDAS");
+        assertThat(auditNewData).doesNotContain("ecografía");
+        assertThat(auditNewData).contains(consultationId.toString());
+        assertThat(auditNewData).contains("BORRADOR");
+    }
+
+    @Test
+    void rejectsEvaluationWithoutReasonOrWithInvalidVitalSigns() throws Exception {
+        TenantFixture tenant = createTenantFixture("eval-val");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Andres",
+                "Luna",
+                "andres@petcare.test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Soto", "DNI", "49001122");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Pelusa",
+                "FELINO",
+                "Persa");
+
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                Instant.parse("2026-09-30T11:00:00Z"),
+                Instant.parse("2026-09-30T11:30:00Z"),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Vacunación",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 1. Missing or blank reason -> 400 VALIDATION_FAILED
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 2. Temperature out of safe range (e.g. 25.0 °C or 50.0 °C) -> 400
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"temperatureCelsius\":25.0}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"temperatureCelsius\":50.0}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 3. Negative or zero weight -> 400
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"weightKg\":-2.5}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 4. Heart rate out of range (<20 or >400) -> 400
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"heartRateBpm\":500}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 5. Respiratory rate out of range (<5 or >200) -> 400
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"respiratoryRateBpm\":250}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        // 6. CRT out of range (<0.1 or >10.0) -> 400
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Control\",\"vitalSigns\":{\"capillaryRefillTimeSeconds\":15.0}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void enforcesAssignedVeterinarianTenantIsolationAndStatusForEvaluation() throws Exception {
+        TenantFixture tenantA = createTenantFixture("eval-sec-a");
+        TenantFixture tenantB = createTenantFixture("eval-sec-b");
+
+        UUID vetAssigned = insertUserWithRoleAndBranch(
+                tenantA.tenantId,
+                tenantA.branchId,
+                "Dr. Raul",
+                "Navarro",
+                "raul@petcare.test",
+                "VETERINARIO");
+        UUID vetOther = insertUserWithRoleAndBranch(
+                tenantA.tenantId,
+                tenantA.branchId,
+                "Dr. Gabriel",
+                "Rios",
+                "gabriel@petcare.test",
+                "VETERINARIO");
+        UUID vetTenantB = insertUserWithRoleAndBranch(
+                tenantB.tenantId,
+                tenantB.branchId,
+                "Dra. Natalia",
+                "Lozano",
+                "natalia@petcare.test",
+                "VETERINARIO");
+
+        UUID ownerA = insertOwner(tenantA.tenantId, "Claudia", "Ruiz", "DNI", "41998877");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenantA.tenantId,
+                ownerA,
+                "Simba",
+                "FELINO",
+                "Angora");
+
+        UUID appointmentId = insertAppointment(
+                tenantA.tenantId,
+                tenantA.branchId,
+                patient.patientId,
+                vetAssigned,
+                Instant.parse("2026-09-30T12:00:00Z"),
+                Instant.parse("2026-09-30T12:30:00Z"),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Revisión",
+                null);
+
+        TenantFixture assignedVetActor = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetAssigned);
+        TenantFixture unassignedVetActor = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetOther);
+        TenantFixture otherTenantVetActor = new TenantFixture(tenantB.tenantId, tenantB.branchId, vetTenantB);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        String validBody = "{\"reason\":\"Chequeo dermatológico rutinario\"}";
+
+        // 1. Unauthenticated -> 401 UNAUTHORIZED
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 2. User without CONSULTATION_UPDATE / CONSULTATION_READ -> 403 ACCESS_DENIED
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_CREATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(assignedVetActor, "APPOINTMENT_READ"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 3. Different veterinarian in same tenant attempting PUT -> 403 ACCESS_DENIED
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(unassignedVetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        // 4. Veterinarian from different tenant -> 404 RESOURCE_NOT_FOUND (no tenant leakage)
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(otherTenantVetActor, "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(otherTenantVetActor, "CONSULTATION_READ", "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // 5. Nonexistent UUID -> 404 RESOURCE_NOT_FOUND
+        UUID randomId = UUID.randomUUID();
+        mvc.perform(get("/api/v1/consultations/{consultationId}", randomId)
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", randomId)
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // 6. When consultation is in state FINALIZADA -> 409 INVALID_CONSULTATION_STATUS
+        jdbc.update("UPDATE consultations SET status = 'FINALIZADA' WHERE id = ?", consultationId);
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(assignedVetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validBody))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_CONSULTATION_STATUS"));
+
+        // Verify consultation data in DB was NOT updated
+        String currentReason = jdbc.queryForObject(
+                "SELECT reason FROM consultations WHERE id = ?",
+                String.class,
+                consultationId);
+        assertThat(currentReason).isNotEqualTo("Evaluación de control general.");
+
+        // Verify no audit log was created for the failed evaluation
+        verify(auditLogWriter, never()).append(argThat(record ->
+                "CONSULTATION_EVALUATION_SAVED".equals(record.action())));
+    }
+
+    @Test
+    void preservesExistingVariableDetailsWhenNotModifiedInEvaluation() throws Exception {
+        TenantFixture tenant = createTenantFixture("eval-var-pres");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Paula", "Mora", "paula@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Carlos", "Silva", "DNI", "55112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Toby", "CANINO", "Poodle");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-01T10:00:00Z"), Instant.parse("2026-10-01T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID consultationId = UUID.fromString(objectMapper.readTree(startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // 1. First save includes variableDetails
+        String firstPayload = objectMapper.writeValueAsString(Map.of(
+                "reason", "Primera evaluación con detalles",
+                "observations", "Observación inicial",
+                "variableDetails", Map.of("hidratacion", "optima", "comportamiento", "docil")
+        ));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(firstPayload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reason").value("Primera evaluación con detalles"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.hidratacion").value("optima"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.comportamiento").value("docil"));
+
+        // 2. Second save updates ONLY reason and vitalSigns, leaving variableDetails null in request
+        String secondPayload = objectMapper.writeValueAsString(Map.of(
+                "reason", "Segunda evaluación actualizada",
+                "vitalSigns", Map.of("temperatureCelsius", 38.5, "weightKg", 12.0)
+        ));
+
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(secondPayload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reason").value("Segunda evaluación actualizada"))
+                .andExpect(jsonPath("$.vitalSigns.temperatureCelsius").value(38.5))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.hidratacion").value("optima"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.comportamiento").value("docil"));
+
+        // 3. GET retrieves the consultation with variableDetails completely intact
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.hidratacion").value("optima"))
+                .andExpect(jsonPath("$.clinicalDetails.variableDetails.comportamiento").value("docil"));
+    }
+
+    @Test
+    void reopeningAppointmentInAttentionReturnsExistingConsultationIdempotently() throws Exception {
+        TenantFixture tenant = createTenantFixture("eval-resume");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dr. Jorge", "Vera", "jorge@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Lucia", "Ramos", "DNI", "66112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Rocky", "CANINO", "Bulldog");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-02T10:00:00Z"), Instant.parse("2026-10-02T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // 1. First call transitions EN_ESPERA -> EN_ATENCION and creates consultation
+        MvcResult firstCall = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/api/v1/consultations/")))
+                .andReturn();
+
+        String consultationId = objectMapper.readTree(firstCall.getResponse().getContentAsString()).get("id").asText();
+
+        // 2. Save evaluation in borrador
+        String evalPayload = objectMapper.writeValueAsString(Map.of(
+                "reason", "Evaluación guardada antes de salir de la consulta",
+                "anamnesis", "Detalles clínicos registrados"
+        ));
+        mvc.perform(put("/api/v1/consultations/{consultationId}/evaluation", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(evalPayload))
+                .andExpect(status().isOk());
+
+        // 3. User returns to schedule, appointment is in EN_ATENCION. Vet reopens it:
+        MvcResult resumeCall = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Location", "/api/v1/consultations/" + consultationId))
+                .andReturn();
+
+        String resumedId = objectMapper.readTree(resumeCall.getResponse().getContentAsString()).get("id").asText();
+        assertThat(resumedId).isEqualTo(consultationId);
+
+        // 4. GET retrieves the previously saved draft data accurately
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reason").value("Evaluación guardada antes de salir de la consulta"))
+                .andExpect(jsonPath("$.anamnesis").value("Detalles clínicos registrados"));
+
+        // Verify only 1 CONSULTATION_STARTED audit was ever written
+        Integer auditCount = jdbc.queryForObject(
+                "SELECT count(*) FROM audit_entries WHERE tenant_id = ? AND entity_type = 'CONSULTATION' AND action = 'CONSULTATION_STARTED'",
+                Integer.class,
+                tenant.tenantId);
+        assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void uninterpretableClinicalDetailsJsonThrowsAndDoesNotSilentlyWipeData() throws Exception {
+        TenantFixture tenant = createTenantFixture("eval-corrupt");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId, tenant.branchId, "Dra. Lucia", "Mendez", "lucia@petcare.test", "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Mario", "Bros", "DNI", "77112233");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId, ownerId, "Yoshi", "EXOTICO", "Reptil");
+        UUID appointmentId = insertAppointment(
+                tenant.tenantId, tenant.branchId, patient.patientId, vetId,
+                Instant.parse("2026-10-03T10:00:00Z"), Instant.parse("2026-10-03T10:30:00Z"),
+                "CONSULTA_GENERAL", "EN_ESPERA", "Control", null);
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult = mvc.perform(post("/api/v1/appointments/{appointmentId}/consultation", appointmentId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID consultationId = UUID.fromString(objectMapper.readTree(
+                startResult.getResponse().getContentAsString()).get("id").asText());
+
+        // Corrupt clinical_details column with invalid structure (vitalSigns array instead of object)
+        jdbc.update("UPDATE consultations SET clinical_details = '{\"vitalSigns\": [1, 2, 3]}'::jsonb WHERE id = ?", consultationId);
+
+        // Reading via GET fails with 500 because parseClinicalDetails throws IllegalStateException
+        mvc.perform(get("/api/v1/consultations/{consultationId}", consultationId)
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isInternalServerError());
+
+        // Assert that the raw data in DB was NOT wiped out or overwritten with null/empty
+        String rawDetails = jdbc.queryForObject(
+                "SELECT clinical_details::text FROM consultations WHERE id = ?",
+                String.class,
+                consultationId);
+        assertThat(rawDetails).contains("[1, 2, 3]");
     }
 
     private TenantFixture createTenantFixture(String slugPrefix) {

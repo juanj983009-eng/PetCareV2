@@ -1215,6 +1215,122 @@ test("HU-020: conserva confirmación de consulta y muestra error de agenda por s
   controller.sessionEnded();
 });
 
+test("HU-021: muestra Retomar consulta para cita en EN_ATENCION asignada al veterinario autenticado", async () => {
+  const branchA = "11111111-1111-4111-8111-111111111111";
+  const vet1 = "22222222-2222-4222-8222-222222222222";
+  const vet2 = "33333333-3333-4333-8333-333333333333";
+  const apptOwn = "aa000001-0000-4000-8000-000000000001";
+  const apptOther = "aa000002-0000-4000-8000-000000000002";
+
+  const items = [
+    {
+      id: apptOwn,
+      startsAt: "2099-09-28T14:00:00Z",
+      endsAt: "2099-09-28T14:30:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "EN_ATENCION",
+      patientId: "55555555-5555-4555-8555-555555555555",
+      patientName: "Thor",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet1,
+      veterinarianFullName: "Dra. Elena Rojas"
+    },
+    {
+      id: apptOther,
+      startsAt: "2099-09-28T14:30:00Z",
+      endsAt: "2099-09-28T15:00:00Z",
+      appointmentType: "CONSULTA_GENERAL",
+      status: "EN_ATENCION",
+      patientId: "66666666-6666-4666-8666-666666666666",
+      patientName: "Loki",
+      branchId: branchA,
+      branchName: "Sede Principal",
+      veterinarianId: vet2,
+      veterinarianFullName: "Dr. Carlos Vega"
+    }
+  ];
+
+  let postCalled = false;
+  let resumedConsultation = null;
+
+  const controller = createAppointmentsController({
+    document,
+    client: {
+      async requestJson(url, options = {}) {
+        if (options.method === "POST" && url === `/api/v1/appointments/${apptOwn}/consultation`) {
+          postCalled = true;
+          return {
+            id: "cc000001-0000-4000-8000-000000000001",
+            appointmentId: apptOwn,
+            appointmentStatus: "EN_ATENCION",
+            patientId: "55555555-5555-4555-8555-555555555555",
+            patientName: "Thor",
+            status: "BORRADOR"
+          };
+        }
+        if (url.startsWith("/api/v1/appointments/options")) {
+          return {
+            branches: [{ id: branchA, name: "Sede Principal", timeZone: "America/Lima" }],
+            veterinarians: [
+              { id: vet1, fullName: "Dra. Elena Rojas", branchIds: [branchA] },
+              { id: vet2, fullName: "Dr. Carlos Vega", branchIds: [branchA] }
+            ]
+          };
+        }
+        return {
+          content: items,
+          page: 0,
+          size: 10,
+          totalElements: 2,
+          totalPages: 1,
+          scheduledCount: 0,
+          confirmedCount: 0,
+          waitingCount: 0,
+          noShowCount: 0
+        };
+      }
+    },
+    onStartConsultation: (consultation) => {
+      resumedConsultation = consultation;
+    }
+  });
+
+  controller.sessionReady({
+    userId: vet1,
+    authorities: ["APPOINTMENT_READ", "CONSULTATION_CREATE"]
+  });
+
+  await controller.openAppointmentsView();
+
+  const rows = document.querySelectorAll("#appointments-table-body tr");
+  assert(rows.length === 2, "Deben haber 2 filas renderizadas");
+
+  // Fila propia en EN_ATENCION: muestra botón "Retomar consulta"
+  const resumeBtn = rows[0].querySelector('[data-action="start-consultation"]');
+  assert(resumeBtn !== null, "Fila propia en EN_ATENCION debe renderizar botón de acción de consulta");
+  assert(resumeBtn.textContent.trim() === "Retomar consulta", "El botón debe mostrar 'Retomar consulta'");
+  assert(resumeBtn.classList.contains("btn-outline-primary"), "Debe tener estilo btn-outline-primary");
+
+  // Fila de otro veterinario en EN_ATENCION: NO muestra botón
+  const otherActionBtn = rows[1].querySelector('[data-action="start-consultation"]');
+  assert(otherActionBtn === null, "Fila de otro veterinario en EN_ATENCION no debe mostrar acción de consulta");
+
+  // Al hacer clic, invoca POST y delega en onStartConsultation
+  resumeBtn.click();
+  await new Promise((r) => setTimeout(r, 40));
+
+  assert(postCalled, "Debe invocar POST /api/v1/appointments/{id}/consultation para retomar");
+  const noticeEl = document.querySelector("#appointments-notice");
+  assert(!noticeEl.hidden, "Debe mostrar aviso accesible de consulta retomada");
+  assert(noticeEl.textContent.includes("Consulta retomada para Thor"), "Aviso debe indicar que la consulta fue retomada");
+
+  assert(resumedConsultation !== null, "Debe invocar onStartConsultation");
+  assert(resumedConsultation.id === "cc000001-0000-4000-8000-000000000001", "La consulta retomada debe tener el ID correcto");
+
+  controller.sessionEnded();
+});
+
 async function run() {
   let passed = 0;
   for (const t of tests) {

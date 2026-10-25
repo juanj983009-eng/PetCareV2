@@ -1,6 +1,8 @@
 package com.petcare.enterprise.clinical.presentation;
 
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.ConsultationSummary;
+import com.petcare.enterprise.clinical.domain.ClinicalDetails;
+import com.petcare.enterprise.clinical.domain.VitalSigns;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -17,6 +19,11 @@ record ConsultationResponse(
         String veterinarianFullName,
         String status,
         Instant startedAt,
+        String reason,
+        String anamnesis,
+        String physicalExam,
+        VitalSigns vitalSigns,
+        ClinicalDetails clinicalDetails,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -34,6 +41,11 @@ record ConsultationResponse(
                 summary.veterinarianFullName(),
                 summary.status(),
                 summary.startedAt(),
+                summary.reason(),
+                summary.anamnesis(),
+                summary.physicalExam(),
+                summary.vitalSigns(),
+                summary.clinicalDetails(),
                 summary.createdAt(),
                 summary.updatedAt());
     }

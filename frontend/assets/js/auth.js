@@ -6,6 +6,7 @@ import { createRolesController } from "./roles-controller.js";
 import { createOwnersController } from "./owners-controller.js";
 import { createPatientsController } from "./patients-controller.js";
 import { createAppointmentsController } from "./appointments-controller.js";
+import { createConsultationEvaluationController } from "./consultation-evaluation-controller.js";
 
 const usersController = createUsersController({
   document,
@@ -15,6 +16,11 @@ const usersController = createUsersController({
 const rolesController = createRolesController({ document, client: apiClient });
 const ownersController = createOwnersController({ document, client: apiClient });
 let appointmentsController = null;
+const consultationEvaluationController = createConsultationEvaluationController({
+  document,
+  client: apiClient,
+  onBackToAppointments: () => appointmentsController?.openAppointmentsView()
+});
 const patientsController = createPatientsController({
   document,
   client: apiClient,
@@ -24,7 +30,8 @@ appointmentsController = createAppointmentsController({
   document,
   client: apiClient,
   onViewPatientProfile: (patientId) => patientsController.openPatientProfile(patientId),
-  onAppointmentCreated: (_created, message) => patientsController.showProfileNotice(message)
+  onAppointmentCreated: (_created, message) => patientsController.showProfileNotice(message),
+  onStartConsultation: (consultation) => consultationEvaluationController.openEvaluation(consultation?.id)
 });
 
 const authController = createAuthController({
@@ -39,6 +46,7 @@ const authController = createAuthController({
       ownersController.sessionReady(identity);
       patientsController.sessionReady(identity);
       appointmentsController.sessionReady(identity);
+      consultationEvaluationController.sessionReady(identity);
     },
     ended: () => {
       usersController.sessionEnded();
@@ -46,6 +54,7 @@ const authController = createAuthController({
       ownersController.sessionEnded();
       patientsController.sessionEnded();
       appointmentsController.sessionEnded();
+      consultationEvaluationController.sessionEnded();
     }
   }
 });
