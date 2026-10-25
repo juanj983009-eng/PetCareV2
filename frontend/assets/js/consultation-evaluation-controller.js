@@ -34,6 +34,8 @@ export function createConsultationEvaluationController({
   let currentPrescriptions = [];
   let isSavingPrescription = false;
   let currentPrescriptionIdempotencyKey = null;
+  let activeBackHandler = null;
+  let isReadOnly = false;
 
   // Event Listeners
   elements.backButton?.addEventListener("click", handleBack);
@@ -102,6 +104,8 @@ export function createConsultationEvaluationController({
     canUpdate = false;
     canFinalize = false;
     isFinalizing = false;
+    isReadOnly = false;
+    activeBackHandler = null;
     initialFormSnapshot = null;
     currentUserId = null;
     currentConsultationId = null;
@@ -112,6 +116,7 @@ export function createConsultationEvaluationController({
     setSavingPrescriptionState(false);
     resetForm();
     resetContext();
+    resetPatientAlerts();
     resetDiagnosisForm();
     resetDiagnosisAlerts();
     resetPrescriptionForm();
@@ -152,9 +157,49 @@ export function createConsultationEvaluationController({
       elements.contextStatus.textContent = "BORRADOR";
       elements.contextStatus.className = "badge bg-secondary";
     }
+    resetPatientAlerts();
   }
 
-  async function openEvaluation(consultationId) {
+  function resetPatientAlerts() {
+    if (elements.medicalAlertsBanner) elements.medicalAlertsBanner.hidden = true;
+    if (elements.allergiesRow) elements.allergiesRow.hidden = true;
+    if (elements.allergiesValue) elements.allergiesValue.textContent = "";
+    if (elements.alertsRow) elements.alertsRow.hidden = true;
+    if (elements.alertsValue) elements.alertsValue.textContent = "";
+    if (elements.noAlerts) elements.noAlerts.hidden = true;
+  }
+
+  function renderPatientAlerts(medicalRecord, forPatientId) {
+    if (!elements.medicalAlertsBanner && !elements.noAlerts) return;
+    if (!currentConsultation || currentConsultation.patientId !== forPatientId) {
+      resetPatientAlerts();
+      return;
+    }
+    const allergies = (medicalRecord?.allergies || "").trim();
+    const alerts = (medicalRecord?.medicalAlerts || "").trim();
+    const hasAlerts = allergies.length > 0 || alerts.length > 0;
+
+    if (elements.medicalAlertsBanner) {
+      elements.medicalAlertsBanner.hidden = !hasAlerts;
+    }
+    if (elements.allergiesRow) {
+      elements.allergiesRow.hidden = allergies.length === 0;
+    }
+    if (elements.allergiesValue) {
+      elements.allergiesValue.textContent = allergies;
+    }
+    if (elements.alertsRow) {
+      elements.alertsRow.hidden = alerts.length === 0;
+    }
+    if (elements.alertsValue) {
+      elements.alertsValue.textContent = alerts;
+    }
+    if (elements.noAlerts) {
+      elements.noAlerts.hidden = hasAlerts;
+    }
+  }
+
+  async function openEvaluation(consultationId, options = {}) {
     if (!consultationId) return;
     const requestId = ++activeRequestId;
     currentConsultationId = null;
@@ -163,12 +208,15 @@ export function createConsultationEvaluationController({
     isFinalizing = false;
     closeFinalizeDialog();
     setFinalizingState(false);
+    activeBackHandler = typeof options?.onBack === "function" ? options.onBack : null;
+    isReadOnly = options?.readOnly === true;
 
     showOnlyEvaluationView();
     resetAlerts();
     clearValidationErrors();
     resetForm();
     resetContext();
+    resetPatientAlerts();
     resetDiagnosisForm();
     resetDiagnosisAlerts();
     resetPrescriptionForm();
@@ -204,7 +252,20 @@ export function createConsultationEvaluationController({
       populateForm(consultation);
       initialFormSnapshot = buildSnapshotFromConsultation(consultation);
 
-      const isEditable = canUpdate && consultation.status === "BORRADOR";
+      if (consultation.patientId && options?.patientProfile) {
+        if (options.patientProfile.id === consultation.patientId) {
+          renderPatientAlerts(options.patientProfile.medicalRecord || options.patientProfile, consultation.patientId);
+        } else {
+          resetPatientAlerts();
+          if (elements.noAlerts) elements.noAlerts.hidden = false;
+        }
+      } else if (consultation.patientId && options?.medicalAlerts) {
+        renderPatientAlerts(options.medicalAlerts, consultation.patientId);
+      } else {
+        resetPatientAlerts();
+      }
+
+      const isEditable = !isReadOnly && canUpdate && consultation.status === "BORRADOR";
       setFormEditable(isEditable);
       updateFinalizeButtonState();
       setViewState("content");
@@ -234,7 +295,17 @@ export function createConsultationEvaluationController({
           elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
         }
       }
-      if (isEditable) {
+
+      if (isReadOnly) {
+        if (elements.saveButton) elements.saveButton.hidden = true;
+        if (elements.finalizeButton) {
+          elements.finalizeButton.hidden = true;
+          elements.finalizeButton.disabled = true;
+        }
+        if (elements.diagnosisAddButton) elements.diagnosisAddButton.hidden = true;
+        if (elements.prescriptionAddButton) elements.prescriptionAddButton.hidden = true;
+        setFormEditable(false);
+      } else if (isEditable) {
         elements.reasonInput?.focus({ preventScroll: true });
       }
     } catch (error) {
@@ -265,7 +336,7 @@ export function createConsultationEvaluationController({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!currentConsultationId || !currentConsultation || isSaving) return;
+    if (isReadOnly || !currentConsultationId || !currentConsultation || isSaving) return;
     if (!canUpdate || currentConsultation.status !== "BORRADOR") return;
 
     resetAlerts();
@@ -508,6 +579,7 @@ export function createConsultationEvaluationController({
   }
 
   function setFormEditable(isEditable) {
+    const canEdit = !isReadOnly && Boolean(isEditable);
     const inputs = [
       elements.reasonInput,
       elements.anamnesisInput,
@@ -522,27 +594,32 @@ export function createConsultationEvaluationController({
     ];
     for (const input of inputs) {
       if (input) {
-        input.disabled = !isEditable;
+        input.disabled = !canEdit;
       }
     }
     if (elements.saveButton) {
-      elements.saveButton.disabled = !isEditable;
-      elements.saveButton.hidden = !isEditable;
+      elements.saveButton.disabled = !canEdit;
+      elements.saveButton.hidden = !canEdit;
     }
     updateFinalizeButtonState();
     if (elements.diagnosisAddButton) {
-      elements.diagnosisAddButton.hidden = !isEditable;
+      elements.diagnosisAddButton.hidden = !canEdit;
     }
     if (elements.prescriptionAddButton) {
       const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
-      elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
+      elements.prescriptionAddButton.hidden = !(canEdit && isVetAssigned);
     }
   }
 
   function updateFinalizeButtonState() {
     if (!elements.finalizeButton) return;
+    if (isReadOnly) {
+      elements.finalizeButton.hidden = true;
+      elements.finalizeButton.disabled = true;
+      return;
+    }
     const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
-    const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+    const isEditable = !isReadOnly && canUpdate && currentConsultation?.status === "BORRADOR";
     const canFinalizeNow = isEditable && canFinalize && isVetAssigned;
     elements.finalizeButton.hidden = !canFinalizeNow;
     const hasUnsavedChanges = hasPendingChanges();
@@ -553,7 +630,7 @@ export function createConsultationEvaluationController({
   function setSavingState(saving) {
     isSaving = saving;
     if (elements.saveButton) {
-      const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+      const isEditable = !isReadOnly && canUpdate && currentConsultation?.status === "BORRADOR";
       elements.saveButton.disabled = saving || !isEditable;
       elements.saveButton.hidden = !isEditable;
       elements.saveButton.setAttribute("aria-busy", String(saving));
@@ -647,7 +724,7 @@ export function createConsultationEvaluationController({
   }
 
   function handleOpenFinalizeDialog() {
-    if (!canFinalize || !currentConsultationId || isFinalizing) return;
+    if (isReadOnly || !canFinalize || !currentConsultationId || isFinalizing) return;
     if (currentConsultation?.status !== "BORRADOR") return;
 
     resetAlerts();
@@ -723,7 +800,7 @@ export function createConsultationEvaluationController({
   }
 
   async function handleFinalizeSubmit() {
-    if (isFinalizing || !currentConsultationId || !currentConsultation) return;
+    if (isReadOnly || isFinalizing || !currentConsultationId || !currentConsultation) return;
     if (!canFinalize || currentConsultation.status !== "BORRADOR") return;
 
     if (isSaving || isSavingDiagnosis || isSavingPrescription) {
@@ -877,7 +954,13 @@ export function createConsultationEvaluationController({
     if (elements.view) {
       elements.view.hidden = true;
     }
-    onBackToAppointments?.();
+    if (typeof activeBackHandler === "function") {
+      const handler = activeBackHandler;
+      activeBackHandler = null;
+      handler();
+    } else {
+      onBackToAppointments?.();
+    }
   }
 
   function getFieldElementByName(fieldName) {
@@ -956,7 +1039,7 @@ export function createConsultationEvaluationController({
 
       currentDiagnoses = list;
       renderDiagnoses(currentDiagnoses);
-      const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+      const isEditable = !isReadOnly && canUpdate && currentConsultation?.status === "BORRADOR";
       if (elements.diagnosisAddButton) {
         elements.diagnosisAddButton.hidden = !isEditable;
       }
@@ -1009,7 +1092,7 @@ export function createConsultationEvaluationController({
     if (elements.diagnosesEmpty) elements.diagnosesEmpty.hidden = true;
     elements.diagnosesList.hidden = false;
 
-    const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+    const isEditable = !isReadOnly && canUpdate && currentConsultation?.status === "BORRADOR";
     for (const diag of list) {
       const item = document.createElement("div");
       item.className = "list-group-item d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 p-3";
@@ -1070,7 +1153,7 @@ export function createConsultationEvaluationController({
   }
 
   function handleOpenAddDiagnosis() {
-    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    if (isReadOnly || !canUpdate || currentConsultation?.status !== "BORRADOR") return;
     resetDiagnosisAlerts();
     clearDiagnosisValidationErrors();
     editingDiagnosisId = null;
@@ -1087,7 +1170,7 @@ export function createConsultationEvaluationController({
   }
 
   function handleOpenEditDiagnosis(diag) {
-    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    if (isReadOnly || !canUpdate || currentConsultation?.status !== "BORRADOR") return;
     resetDiagnosisAlerts();
     clearDiagnosisValidationErrors();
     editingDiagnosisId = diag.id;
@@ -1134,7 +1217,7 @@ export function createConsultationEvaluationController({
 
   async function handleDiagnosisSubmit(event) {
     event.preventDefault();
-    if (!currentConsultationId || !currentConsultation || isSavingDiagnosis) return;
+    if (isReadOnly || !currentConsultationId || !currentConsultation || isSavingDiagnosis) return;
     if (!canUpdate || currentConsultation.status !== "BORRADOR") return;
 
     resetDiagnosisAlerts();
@@ -1319,7 +1402,7 @@ export function createConsultationEvaluationController({
 
       currentPrescriptions = list;
       renderPrescriptions(currentPrescriptions);
-      const isEditable = canUpdate && currentConsultation?.status === "BORRADOR";
+      const isEditable = !isReadOnly && canUpdate && currentConsultation?.status === "BORRADOR";
       const isVetAssigned = !currentConsultation?.veterinarianId || !currentUserId || currentConsultation.veterinarianId === currentUserId;
       if (elements.prescriptionAddButton) {
         elements.prescriptionAddButton.hidden = !(isEditable && isVetAssigned);
@@ -1528,7 +1611,7 @@ export function createConsultationEvaluationController({
   }
 
   function handleOpenPrescriptionForm() {
-    if (!canUpdate || currentConsultation?.status !== "BORRADOR") return;
+    if (isReadOnly || !canUpdate || currentConsultation?.status !== "BORRADOR") return;
     resetPrescriptionAlerts();
     clearPrescriptionValidationErrors();
     currentPrescriptionIdempotencyKey = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -1741,7 +1824,7 @@ export function createConsultationEvaluationController({
 
   async function handlePrescriptionSubmit(event) {
     event.preventDefault();
-    if (!currentConsultationId || !currentConsultation || isSavingPrescription) return;
+    if (isReadOnly || !currentConsultationId || !currentConsultation || isSavingPrescription) return;
     if (!canUpdate || currentConsultation.status !== "BORRADOR") return;
 
     resetPrescriptionAlerts();
@@ -1985,6 +2068,12 @@ function findElements(document) {
     contextVeterinarian: document.querySelector("#evaluation-context-veterinarian"),
     contextBranch: document.querySelector("#evaluation-context-branch"),
     contextStatus: document.querySelector("#evaluation-context-status"),
+    medicalAlertsBanner: document.querySelector("#evaluation-medical-alerts-banner"),
+    allergiesRow: document.querySelector("#evaluation-allergies-row"),
+    allergiesValue: document.querySelector("#evaluation-allergies-value"),
+    alertsRow: document.querySelector("#evaluation-alerts-row"),
+    alertsValue: document.querySelector("#evaluation-alerts-value"),
+    noAlerts: document.querySelector("#evaluation-no-alerts"),
     consultationIdInput: document.querySelector("#evaluation-consultation-id"),
     reasonInput: document.querySelector("#evaluation-reason"),
     reasonCounter: document.querySelector("#evaluation-reason-counter"),

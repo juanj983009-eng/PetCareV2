@@ -791,30 +791,66 @@
                     </div>
                   </div>
 
-                  <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                      <div class="card border h-100">
-                        <div class="pc-folio-header">
-                          <h3 class="h6 mb-0 fw-semibold">Consultas y diagnósticos clínicos</h3>
-                        </div>
-                        <div class="card-body">
-                          <div id="patient-profile-diagnoses-loading" class="text-center py-3 text-secondary small" hidden>
-                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                            Cargando diagnósticos clínicos...
-                          </div>
-                          <div id="patient-profile-diagnoses-error" class="alert alert-danger py-2 px-3 small mb-2" role="alert" tabindex="-1" hidden>
-                            <div id="patient-profile-diagnoses-error-message">No fue posible consultar los diagnósticos clínicos del paciente.</div>
-                            <div id="patient-profile-diagnoses-error-correlation" class="pc-data-mono text-secondary small mt-1" hidden></div>
-                            <button id="patient-profile-diagnoses-retry" class="btn btn-sm btn-outline-danger mt-2" type="button">Reintentar</button>
-                          </div>
-                          <p id="patient-profile-consultations-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
-                            Sin consultas registradas.
-                          </p>
-                          <div id="patient-profile-diagnoses-list" class="list-group list-group-flush" hidden></div>
-                        </div>
+                  <!-- Historia clínica cronológica (HU-025) -->
+                  <div class="card border mb-4">
+                    <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <div class="d-flex align-items-center gap-2">
+                        <h3 class="h6 mb-0 fw-semibold">Historia clínica</h3>
+                        <span id="patient-profile-history-count" class="badge text-bg-light border pc-data-mono"></span>
                       </div>
                     </div>
+                    <div class="card-body">
+                      <!-- Estado de carga -->
+                      <div id="patient-profile-history-loading" class="text-center py-4 text-secondary small" role="status" aria-live="polite" hidden>
+                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        Cargando historia clínica…
+                      </div>
 
+                      <!-- Permiso insuficiente -->
+                      <div id="patient-profile-history-forbidden" class="alert alert-warning py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
+                        <strong>▲ Permiso insuficiente:</strong> Tu rol actual no cuenta con la autoridad <code>CONSULTATION_READ</code> para consultar la historia clínica de este paciente.
+                      </div>
+
+                      <!-- Estado de error accesible con correlation ID y reintento -->
+                      <div id="patient-profile-history-error" class="alert alert-danger py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
+                        <p class="fw-semibold mb-1">● No fue posible consultar la historia clínica</p>
+                        <div id="patient-profile-history-error-message"></div>
+                        <div id="patient-profile-history-error-correlation" class="pc-data-mono text-secondary small mt-1" hidden></div>
+                        <button id="patient-profile-history-retry" class="btn btn-sm btn-outline-danger mt-2" type="button">Reintentar</button>
+                      </div>
+
+                      <!-- Estado vacío -->
+                      <div id="patient-profile-history-empty" class="pc-empty-state py-4 px-3 text-center small text-secondary" role="status" hidden>
+                        Sin consultas registradas.
+                      </div>
+
+                      <!-- Listado de consultas cronológicas -->
+                      <div id="patient-profile-history-list" class="d-grid gap-3" hidden></div>
+
+                      <!-- Paginación -->
+                      <nav id="patient-profile-history-pagination" class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-3 pt-3 border-top" aria-label="Paginación de historia clínica" hidden>
+                        <p id="patient-profile-history-page-info" class="small text-secondary mb-0" role="status" aria-live="polite"></p>
+                        <div class="btn-group">
+                          <button id="patient-profile-history-prev" class="btn btn-sm btn-outline-secondary" type="button" disabled>Anterior</button>
+                          <button id="patient-profile-history-next" class="btn btn-sm btn-outline-secondary" type="button" disabled>Siguiente</button>
+                        </div>
+                      </nav>
+
+                      <!-- Contenedor oculto para compatibilidad de elementos legados -->
+                      <div id="patient-profile-diagnoses-compatibility" hidden>
+                        <div id="patient-profile-diagnoses-loading" hidden></div>
+                        <div id="patient-profile-diagnoses-error" hidden>
+                          <div id="patient-profile-diagnoses-error-message"></div>
+                          <div id="patient-profile-diagnoses-error-correlation" hidden></div>
+                          <button id="patient-profile-diagnoses-retry" type="button">Reintentar</button>
+                        </div>
+                        <p id="patient-profile-consultations-empty" hidden></p>
+                        <div id="patient-profile-diagnoses-list" hidden></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="row g-3">
                     <div class="col-12 col-md-6">
                       <div class="card border h-100">
                         <div class="pc-folio-header">
@@ -841,14 +877,11 @@
                       </div>
                     </div>
 
-                    <div class="col-12 col-md-6">
+                    <div class="col-12 col-md-6" hidden>
                       <div class="card border h-100">
-                        <div class="pc-folio-header">
-                          <h3 class="h6 mb-0 fw-semibold">Prescripciones y recetas</h3>
-                        </div>
                         <div class="card-body">
                           <p id="patient-profile-prescriptions-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
-                            Sin prescripciones emitidas (módulo de recetas pendiente en Sprint 2 — HU-021).
+                            Sin prescripciones emitidas.
                           </p>
                         </div>
                       </div>
@@ -1042,6 +1075,20 @@
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <!-- ALERTAS MÉDICAS Y ALERGIAS DEL PACIENTE EN CONSULTA (HU-025) -->
+                  <div id="evaluation-medical-alerts-banner" class="alert alert-danger mb-4" role="alert" hidden>
+                    <h3 class="h6 fw-bold mb-2">⚠️ Alertas médicas y alergias registradas</h3>
+                    <div id="evaluation-allergies-row" class="mb-1" hidden>
+                      <span class="fw-semibold">Alergias:</span> <span id="evaluation-allergies-value"></span>
+                    </div>
+                    <div id="evaluation-alerts-row" class="mb-0" hidden>
+                      <span class="fw-semibold">Alertas médicas:</span> <span id="evaluation-alerts-value"></span>
+                    </div>
+                  </div>
+                  <div id="evaluation-no-alerts" class="pc-empty-state py-2 px-3 mb-4 small text-secondary" role="status" hidden>
+                    Sin alergias ni alertas médicas críticas registradas en la historia clínica base.
                   </div>
 
                   <!-- COMPOSICIÓN ASIMÉTRICA: 75% TRABAJO CLÍNICO / 25% CONTEXTO -->

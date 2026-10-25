@@ -2725,6 +2725,251 @@ test("HU-024: cancelación nativa del diálogo (evento cancel / tecla Esc): canc
   controller.destroy();
 });
 
+test("HU-025: consulta BORRADOR abierta en readOnly oculta botones de acción, inhabilita inputs y no renderiza botones Editar de diagnósticos", async () => {
+  const PATIENT_ID = "patient-hu025-ro";
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          patientId: PATIENT_ID,
+          status: "BORRADOR",
+          reason: "Consulta de prueba",
+          veterinarianId: VET_ID,
+          diagnoses: [
+            { id: "diag-1", diagnosisType: "PRESUNTIVO", description: "Gastritis presuntiva" }
+          ],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          medicalRecord: { allergies: "Penicilina", medicalAlerts: "Cardiopatía" }
+        };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"] });
+
+  await controller.openEvaluation(CONSULTATION_ID, {
+    readOnly: true,
+    patientProfile: {
+      id: PATIENT_ID,
+      medicalRecord: { allergies: "Penicilina", medicalAlerts: "Cardiopatía" }
+    }
+  });
+
+  // Inputs inhabilitados
+  assert(document.querySelector("#evaluation-reason").disabled, "El motivo debe estar deshabilitado en readOnly");
+  assert(document.querySelector("#evaluation-temperature").disabled, "Temperatura debe estar deshabilitada en readOnly");
+  // Botones de acción ocultos
+  assert(document.querySelector("#evaluation-save-button").hidden, "Botón guardar debe estar oculto en readOnly");
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Botón finalizar debe estar oculto en readOnly");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón añadir diagnóstico debe estar oculto en readOnly");
+  assert(document.querySelector("#prescription-add-button").hidden, "Botón añadir prescripción debe estar oculto en readOnly");
+  // Botón editar diagnóstico NO debe ser renderizado
+  assert(document.querySelector("button[data-action='edit-diagnosis']") === null, "No debe renderizar botones 'Editar' en diagnósticos en readOnly");
+
+  // Alertas médicas visibles
+  assert(!document.querySelector("#evaluation-medical-alerts-banner").hidden, "Banner de alertas médicas debe estar visible");
+  equal(document.querySelector("#evaluation-allergies-value").textContent, "Penicilina");
+  equal(document.querySelector("#evaluation-alerts-value").textContent, "Cardiopatía");
+  assert(document.querySelector("#evaluation-no-alerts").hidden, "Caja de sin alertas debe estar oculta");
+
+  controller.destroy();
+});
+
+test("HU-025: consulta BORRADOR en readOnly permanece en lectura tras error y reintento de diagnósticos", async () => {
+  const PATIENT_ID = "p-1";
+  let failDiag = true;
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          patientId: "p-1",
+          status: "BORRADOR",
+          reason: "Control",
+          veterinarianId: VET_ID,
+          diagnoses: null, // fuerza llamada a GET /diagnoses
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/patients/p-1`) {
+        return { id: "p-1", medicalRecord: { allergies: "", medicalAlerts: "" } };
+      }
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}/diagnoses`) {
+        if (failDiag) {
+          throw new ApiRequestError({ status: 500, message: "Error temporal" });
+        }
+        return [
+          { id: "diag-retry-1", diagnosisType: "DEFINITIVO", description: "Otitis externa" }
+        ];
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"] });
+
+  await controller.openEvaluation(CONSULTATION_ID, {
+    readOnly: true,
+    patientProfile: {
+      id: PATIENT_ID,
+      medicalRecord: { allergies: "Penicilina", medicalAlerts: "Cardiopatía" }
+    }
+  });
+
+  assert(!document.querySelector("#evaluation-diagnoses-load-error").hidden, "Error de diagnósticos visible");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón añadir diagnóstico oculto");
+
+  // Reintentar carga
+  failDiag = false;
+  document.querySelector("#evaluation-diagnoses-retry-button").click();
+  await flushPromises();
+
+  assert(document.querySelector("#evaluation-diagnoses-load-error").hidden, "Error oculto tras reintento");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón añadir diagnóstico DEBE permanecer oculto tras reintento en readOnly");
+  assert(document.querySelector("button[data-action='edit-diagnosis']") === null, "Botones 'Editar' diagnósticos NO deben renderizarse tras reintento");
+  assert(document.querySelector("#evaluation-save-button").hidden, "Botón guardar debe permanecer oculto");
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Botón finalizar debe permanecer oculto");
+
+  controller.destroy();
+});
+
+test("HU-025: apertura desde historia en readOnly y posterior apertura desde agenda restaura edición autorizada", async () => {
+  const PATIENT_ID = "p-1";
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/consultations/${CONSULTATION_ID}`) {
+        return {
+          id: CONSULTATION_ID,
+          patientId: "p-1",
+          status: "BORRADOR",
+          reason: "Consulta activa",
+          veterinarianId: VET_ID,
+          diagnoses: [
+            { id: "diag-1", diagnosisType: "PRESUNTIVO", description: "Dermatitis alérgica" }
+          ],
+          prescriptions: []
+        };
+      }
+      if (url === `/api/v1/patients/p-1`) {
+        return { id: "p-1", medicalRecord: { allergies: "", medicalAlerts: "" } };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ", "CONSULTATION_UPDATE", "CONSULTATION_FINALIZE"] });
+
+  // 1. Abrir desde historia en modo de solo lectura
+  await controller.openEvaluation(CONSULTATION_ID, {
+    readOnly: true,
+    patientProfile: {
+      id: PATIENT_ID,
+      medicalRecord: { allergies: "Penicilina", medicalAlerts: "Cardiopatía" }
+    }
+  });
+
+  assert(document.querySelector("#evaluation-reason").disabled, "Motivo inhabilitado en readOnly");
+  assert(document.querySelector("#evaluation-save-button").hidden, "Botón guardar oculto en readOnly");
+  assert(document.querySelector("#evaluation-finalize-button").hidden, "Botón finalizar oculto en readOnly");
+  assert(document.querySelector("#diagnosis-add-button").hidden, "Botón añadir diagnóstico oculto en readOnly");
+  assert(document.querySelector("button[data-action='edit-diagnosis']") === null, "Sin botones editar diagnósticos");
+
+  // 2. Abrir posteriormente desde la agenda (sin readOnly)
+  await controller.openEvaluation(CONSULTATION_ID);
+
+  assert(!document.querySelector("#evaluation-reason").disabled, "Motivo DEBE habilitarse al abrir desde agenda");
+  assert(!document.querySelector("#evaluation-save-button").hidden, "Botón guardar DEBE mostrarse al abrir desde agenda");
+  assert(!document.querySelector("#evaluation-finalize-button").hidden, "Botón finalizar DEBE mostrarse al abrir desde agenda");
+  assert(!document.querySelector("#diagnosis-add-button").hidden, "Botón añadir diagnóstico DEBE mostrarse al abrir desde agenda");
+  assert(document.querySelector("button[data-action='edit-diagnosis']") !== null, "Botones 'Editar' diagnósticos DEBEN renderizarse al abrir desde agenda");
+
+  controller.destroy();
+});
+
+test("HU-025: alertas médicas reflejan datos reales, estado vacío si no hay alertas y no cruzan datos entre pacientes", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === "/api/v1/consultations/c-patient-a") {
+        return {
+          id: "c-patient-a",
+          patientId: "patient-a",
+          status: "BORRADOR",
+          reason: "Consulta A",
+          veterinarianId: VET_ID,
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      if (url === "/api/v1/consultations/c-patient-b") {
+        return {
+          id: "c-patient-b",
+          patientId: "patient-b",
+          status: "BORRADOR",
+          reason: "Consulta B",
+          veterinarianId: VET_ID,
+          diagnoses: [],
+          prescriptions: []
+        };
+      }
+      throw new Error(`Inesperado: ${url}`);
+    }
+  };
+
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  controller.sessionReady({ userId: VET_ID, authorities: ["CONSULTATION_READ"] });
+
+  // 1. Abrir consulta de paciente B pasando perfil con id 'patient-a' (cruce de datos simulado)
+  await controller.openEvaluation("c-patient-b", {
+    readOnly: true,
+    patientProfile: {
+      id: "patient-a",
+      medicalRecord: { allergies: "Penicilina", medicalAlerts: "Alergia crítica a sulfas" }
+    }
+  });
+
+  // Verificar que los datos de A NO se muestran en B porque el patientId de la consulta es 'patient-b'
+  assert(document.querySelector("#evaluation-medical-alerts-banner").hidden, "Banner de alertas de A NO debe mostrarse en consulta de B");
+  assert(!document.querySelector("#evaluation-no-alerts").hidden, "Caja 'sin alertas' debe estar visible para B");
+  equal(document.querySelector("#evaluation-allergies-value").textContent, "", "Alergias deben permanecer vacías en B");
+
+  // 2. Abrir paciente B con su propio perfil (sin alertas)
+  await controller.openEvaluation("c-patient-b", {
+    readOnly: true,
+    patientProfile: {
+      id: "patient-b",
+      medicalRecord: { allergies: "", medicalAlerts: "" }
+    }
+  });
+  assert(document.querySelector("#evaluation-medical-alerts-banner").hidden, "Banner de alertas debe estar oculto para B");
+  assert(!document.querySelector("#evaluation-no-alerts").hidden, "Caja 'sin alertas' debe estar visible para B");
+
+  // 3. Abrir paciente A con su propio perfil (con alertas)
+  await controller.openEvaluation("c-patient-a", {
+    readOnly: true,
+    patientProfile: {
+      id: "patient-a",
+      medicalRecord: { allergies: "Penicilina", medicalAlerts: "Alergia crítica a sulfas" }
+    }
+  });
+
+  assert(!document.querySelector("#evaluation-medical-alerts-banner").hidden, "Banner de alertas debe estar visible para A");
+  equal(document.querySelector("#evaluation-allergies-value").textContent, "Penicilina");
+  equal(document.querySelector("#evaluation-alerts-value").textContent, "Alergia crítica a sulfas");
+  assert(document.querySelector("#evaluation-no-alerts").hidden, "Caja 'sin alertas' debe estar oculta para A");
+
+  controller.destroy();
+});
+
 run();
 
 function test(name, fn) {

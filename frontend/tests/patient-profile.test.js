@@ -540,6 +540,421 @@ test("respuesta inválida de diagnósticos (no array) se trata como error accesi
   assert(document.querySelector("#patient-profile-diagnoses-error-message").textContent.includes("formato"), "Debe indicar formato no válido");
 });
 
+
+test("consulta historia clínica cronológica desde el perfil de paciente y renderiza consultas ordenadas con diagnósticos y prescripciones", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria Quispe" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      if (url.startsWith(`/api/v1/patients/${PATIENT_ID}/consultations`)) {
+        return {
+          page: 0,
+          size: 10,
+          totalElements: 2,
+          totalPages: 1,
+          items: [
+            {
+              id: "c-reciente-001",
+              appointmentId: "a-001",
+              startedAt: "2026-10-25T15:00:00Z",
+              status: "BORRADOR",
+              reason: "Vómitos agudos",
+              veterinarianId: "v-001",
+              veterinarianFullName: "Dr. Roberto Gómez",
+              branchId: "b-001",
+              branchName: "Sede Principal",
+              diagnoses: [],
+              prescriptions: []
+            },
+            {
+              id: "c-antigua-002",
+              appointmentId: "a-002",
+              startedAt: "2026-10-20T10:00:00Z",
+              status: "FINALIZADA",
+              reason: "Control post-operatorio",
+              veterinarianId: "v-002",
+              veterinarianFullName: "Dra. Natalia Reyes",
+              branchId: "b-001",
+              branchName: "Sede Principal",
+              diagnoses: [
+                {
+                  id: "d-001",
+                  code: "POST-01",
+                  description: "Cicatrización en curso",
+                  diagnosisType: "DEFINITIVO"
+                }
+              ],
+              prescriptions: [
+                {
+                  id: "p-001",
+                  status: "EMITIDA",
+                  issuedAt: "2026-10-20T10:30:00Z",
+                  items: [
+                    {
+                      id: "pi-001",
+                      medicationName: "Clorhexidina tópica 0.5%",
+                      dosage: "2 pulverizaciones",
+                      frequency: "Cada 12 horas",
+                      duration: "7 días",
+                      route: "Tópica"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}/diagnoses`) {
+        return [];
+      }
+      throw new Error(`Ruta inesperada: ${url}`);
+    }
+  };
+
+  const controller = createPatientsController({ document, client });
+  controller.sessionReady({ authorities: ["PATIENT_READ", "CONSULTATION_READ"] });
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  const loading = document.querySelector("#patient-profile-history-loading");
+  const list = document.querySelector("#patient-profile-history-list");
+  const count = document.querySelector("#patient-profile-history-count");
+  const empty = document.querySelector("#patient-profile-history-empty");
+
+  assert(loading.hidden, "El loading de historia debe ocultarse tras cargar");
+  assert(empty.hidden, "No debe mostrar empty state cuando hay consultas");
+  assert(!list.hidden, "El listado de historia debe ser visible");
+  equal(count.textContent, "2", "El contador debe mostrar 2 consultas");
+
+  const cards = list.querySelectorAll(".pc-history-card");
+  equal(cards.length, 2, "Debe renderizar 2 tarjetas de consulta");
+
+  // Tarjeta 1 (más reciente)
+  const card1 = cards[0];
+  assert(card1.textContent.includes("BORRADOR"), "Tarjeta 1 debe tener estado BORRADOR");
+  assert(card1.textContent.includes("Dr. Roberto Gómez"), "Tarjeta 1 debe tener profesional");
+  assert(card1.textContent.includes("Vómitos agudos"), "Tarjeta 1 debe tener motivo");
+  assert(card1.textContent.includes("No registrados"), "Tarjeta 1 debe indicar diagnósticos 'No registrados'");
+  assert(card1.textContent.includes("No registradas"), "Tarjeta 1 debe indicar prescripciones 'No registradas'");
+
+  // Tarjeta 2 (más antigua)
+  const card2 = cards[1];
+  assert(card2.textContent.includes("FINALIZADA"), "Tarjeta 2 debe tener estado FINALIZADA");
+  assert(card2.textContent.includes("Dra. Natalia Reyes"), "Tarjeta 2 debe tener profesional");
+  assert(card2.textContent.includes("Control post-operatorio"), "Tarjeta 2 debe tener motivo");
+  assert(card2.textContent.includes("POST-01"), "Tarjeta 2 debe mostrar código de diagnóstico");
+  assert(card2.textContent.includes("Cicatrización en curso"), "Tarjeta 2 debe mostrar descripción");
+  assert(card2.textContent.includes("DEFINITIVO"), "Tarjeta 2 debe mostrar tipo");
+  assert(card2.textContent.includes("Clorhexidina tópica 0.5%"), "Tarjeta 2 debe mostrar medicamento");
+  assert(card2.textContent.includes("2 pulverizaciones"), "Tarjeta 2 debe mostrar dosis");
+  assert(card2.textContent.includes("Cada 12 horas"), "Tarjeta 2 debe mostrar frecuencia");
+  assert(card2.textContent.includes("7 días"), "Tarjeta 2 debe mostrar duración");
+  assert(card2.textContent.includes("Tópica"), "Tarjeta 2 debe mostrar vía");
+});
+
+test("historia clínica vacía muestra estado 'Sin consultas registradas.' y oculta lista y paginación", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria Quispe" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      if (url.startsWith(`/api/v1/patients/${PATIENT_ID}/consultations`)) {
+        return {
+          page: 0,
+          size: 10,
+          totalElements: 0,
+          totalPages: 0,
+          items: []
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}/diagnoses`) {
+        return [];
+      }
+      throw new Error(`Ruta inesperada: ${url}`);
+    }
+  };
+
+  const controller = createPatientsController({ document, client });
+  controller.sessionReady({ authorities: ["PATIENT_READ", "CONSULTATION_READ"] });
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  const empty = document.querySelector("#patient-profile-history-empty");
+  const list = document.querySelector("#patient-profile-history-list");
+  const pagination = document.querySelector("#patient-profile-history-pagination");
+  const count = document.querySelector("#patient-profile-history-count");
+
+  assert(!empty.hidden, "Debe mostrar el estado vacío");
+  assert(empty.textContent.includes("Sin consultas registradas"), "Debe mostrar texto 'Sin consultas registradas.'");
+  assert(list.hidden, "El listado debe estar oculto");
+  assert(pagination.hidden, "La paginación debe estar oculta");
+  equal(count.textContent, "0");
+});
+
+test("sin CONSULTATION_READ muestra aviso de permiso insuficiente en historia clínica sin romper el perfil de paciente", async () => {
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria Quispe" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      throw new Error(`Ruta no autorizada llamada: ${url}`);
+    }
+  };
+
+  const controller = createPatientsController({ document, client });
+  controller.sessionReady({ authorities: ["PATIENT_READ"] }); // NO CONSULTATION_READ
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  assert(!document.querySelector("#patient-profile-view").hidden, "El perfil del paciente debe estar visible");
+  equal(document.querySelector("#patient-profile-name").textContent, "Luna", "Ficha debe renderizar datos");
+
+  const forbidden = document.querySelector("#patient-profile-history-forbidden");
+  assert(!forbidden.hidden, "Debe mostrar aviso de permiso insuficiente en historia clínica");
+  assert(forbidden.textContent.includes("CONSULTATION_READ"), "Debe indicar la autoridad requerida");
+  assert(document.querySelector("#patient-profile-history-list").hidden, "La lista debe estar oculta");
+});
+
+test("fallo al consultar historia clínica muestra contenedor accesible con correlation ID y botón reintentar sin afirmar 'sin consultas'", async () => {
+  let fail = true;
+  let retryCount = 0;
+
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria Quispe" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      if (url.startsWith(`/api/v1/patients/${PATIENT_ID}/consultations`)) {
+        if (fail) {
+          throw new ApiRequestError({
+            status: 500,
+            kind: "HTTP_ERROR",
+            code: "SERVER_ERROR",
+            message: "Fallo temporal en servicio de consultas",
+            correlationId: "CID-HIST-500"
+          });
+        }
+        retryCount++;
+        return {
+          page: 0,
+          size: 10,
+          totalElements: 0,
+          totalPages: 0,
+          items: []
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}/diagnoses`) {
+        return [];
+      }
+      throw new Error(`Ruta inesperada: ${url}`);
+    }
+  };
+
+  const controller = createPatientsController({ document, client });
+  controller.sessionReady({ authorities: ["PATIENT_READ", "CONSULTATION_READ"] });
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  const errorBox = document.querySelector("#patient-profile-history-error");
+  const emptyState = document.querySelector("#patient-profile-history-empty");
+  const list = document.querySelector("#patient-profile-history-list");
+
+  assert(emptyState.hidden, "Nunca debe mostrar 'sin consultas' cuando la carga falló");
+  assert(!errorBox.hidden, "Debe mostrar contenedor accesible de error");
+  equal(errorBox.getAttribute("role"), "alert");
+  assert(document.querySelector("#patient-profile-history-error-message").textContent.includes("Fallo temporal"), "Debe mostrar mensaje");
+  assert(document.querySelector("#patient-profile-history-error-correlation").textContent.includes("CID-HIST-500"), "Debe mostrar correlation ID");
+
+  // Reintento
+  fail = false;
+  document.querySelector("#patient-profile-history-retry").click();
+  await flushPromises();
+
+  equal(retryCount, 1, "Debe reintentar la petición");
+  assert(errorBox.hidden, "Error debe ocultarse tras reintento exitoso");
+  assert(!emptyState.hidden, "Debe mostrar empty state válido tras reintento");
+});
+
+test("paginación de historia clínica: botones anterior y siguiente cargan la página correspondiente", async () => {
+  const calledPages = [];
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      if (url.startsWith(`/api/v1/patients/${PATIENT_ID}/consultations`)) {
+        const u = new URL("http://localhost" + url);
+        const pNum = parseInt(u.searchParams.get("page") || "0", 10);
+        calledPages.push(pNum);
+        return {
+          page: pNum,
+          size: 10,
+          totalElements: 15,
+          totalPages: 2,
+          items: [
+            {
+              id: `c-page-${pNum}`,
+              startedAt: "2026-10-25T12:00:00Z",
+              status: "FINALIZADA",
+              reason: `Consulta página ${pNum}`,
+              veterinarianFullName: "Dr. Roberto",
+              branchName: "Sede Principal",
+              diagnoses: [],
+              prescriptions: []
+            }
+          ]
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}/diagnoses`) {
+        return [];
+      }
+      throw new Error(`Ruta inesperada: ${url}`);
+    }
+  };
+
+  const controller = createPatientsController({ document, client });
+  controller.sessionReady({ authorities: ["PATIENT_READ", "CONSULTATION_READ"] });
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  equal(calledPages[0], 0, "Primera carga en página 0");
+  const prevBtn = document.querySelector("#patient-profile-history-prev");
+  const nextBtn = document.querySelector("#patient-profile-history-next");
+  const pageInfo = document.querySelector("#patient-profile-history-page-info");
+
+  assert(prevBtn.disabled, "Página 0: botón Anterior debe estar deshabilitado");
+  assert(!nextBtn.disabled, "Página 0: botón Siguiente debe estar habilitado");
+  assert(pageInfo.textContent.includes("Página 1 de 2"), "Información de página 1 de 2");
+
+  // Clic Siguiente
+  nextBtn.click();
+  await flushPromises();
+
+  equal(calledPages[1], 1, "Segunda carga en página 1");
+  assert(!prevBtn.disabled, "Página 1: botón Anterior debe estar habilitado");
+  assert(nextBtn.disabled, "Página 1: botón Siguiente debe estar deshabilitado");
+  assert(pageInfo.textContent.includes("Página 2 de 2"), "Información de página 2 de 2");
+
+  // Clic Anterior
+  prevBtn.click();
+  await flushPromises();
+
+  equal(calledPages[2], 0, "Tercera carga vuelve a página 0");
+  assert(prevBtn.disabled, "Página 0: botón Anterior deshabilitado");
+});
+
+test("clic en 'Ver detalle' invoca onViewConsultation y returnToProfile restaura perfil y página", async () => {
+  let viewConsultationId = null;
+  const client = {
+    requestJson: async (url) => {
+      if (url === `/api/v1/patients/${PATIENT_ID}`) {
+        return {
+          id: PATIENT_ID,
+          name: "Luna",
+          species: "CANINO",
+          status: "ACTIVO",
+          owner: { fullName: "Valeria" },
+          medicalRecord: { id: RECORD_ID }
+        };
+      }
+      if (url.startsWith(`/api/v1/patients/${PATIENT_ID}/consultations`)) {
+        return {
+          page: 0,
+          size: 10,
+          totalElements: 1,
+          totalPages: 1,
+          items: [
+            {
+              id: "c-detail-123",
+              startedAt: "2026-10-25T12:00:00Z",
+              status: "FINALIZADA",
+              reason: "Chequeo",
+              veterinarianFullName: "Dr. Roberto",
+              branchName: "Sede Principal",
+              diagnoses: [],
+              prescriptions: []
+            }
+          ]
+        };
+      }
+      if (url === `/api/v1/patients/${PATIENT_ID}/diagnoses`) {
+        return [];
+      }
+      throw new Error(`Ruta inesperada: ${url}`);
+    }
+  };
+
+  let viewPatientProfile = null;
+  const controller = createPatientsController({
+    document,
+    client,
+    onViewConsultation: (cid, profile) => {
+      viewConsultationId = cid;
+      viewPatientProfile = profile;
+    }
+  });
+  controller.sessionReady({ authorities: ["PATIENT_READ", "CONSULTATION_READ"] });
+
+  await controller.openPatientProfile(PATIENT_ID);
+  await flushPromises();
+
+  const detailBtn = document.querySelector('[data-action="view-consultation-detail"][data-consultation-id="c-detail-123"]');
+  assert(Boolean(detailBtn), "Botón 'Ver detalle' debe existir en la tarjeta de consulta");
+  detailBtn.click();
+
+  equal(viewConsultationId, "c-detail-123", "onViewConsultation debe recibir el ID de la consulta");
+  equal(viewPatientProfile?.id, PATIENT_ID, "onViewConsultation debe recibir el perfil confiable del paciente activo");
+
+  // Simular que el usuario regresa al perfil mediante returnToProfile
+  document.querySelector("#patient-profile-view").hidden = true;
+  controller.returnToProfile();
+
+  assert(!document.querySelector("#patient-profile-view").hidden, "returnToProfile debe restaurar #patient-profile-view");
+  equal(document.querySelector("#patient-profile-name").textContent, "Luna", "El paciente activo debe conservarse");
+});
+
 run();
 
 function test(name, fn) {

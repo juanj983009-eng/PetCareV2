@@ -27,6 +27,8 @@ public interface ConsultationUseCase {
 
     List<PatientDiagnosisSummary> listPatientDiagnoses(UUID patientId);
 
+    PatientConsultationPage listPatientConsultations(UUID patientId, int page, int size);
+
     List<PrescriptionSummary> listPrescriptions(UUID consultationId);
 
     PrescriptionSummary issuePrescription(UUID consultationId, IssuePrescriptionCommand command);
@@ -80,6 +82,51 @@ public interface ConsultationUseCase {
             String diagnosisType,
             String notes,
             Instant createdAt) {
+    }
+
+    record PatientConsultationPage(
+            List<PatientConsultationItemSummary> items,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages) {
+    }
+
+    record PatientConsultationItemSummary(
+            UUID id,
+            UUID appointmentId,
+            Instant startedAt,
+            String status,
+            String reason,
+            UUID veterinarianId,
+            String veterinarianFullName,
+            UUID branchId,
+            String branchName,
+            List<PatientConsultationDiagnosisSummary> diagnoses,
+            List<PatientConsultationPrescriptionSummary> prescriptions) {
+    }
+
+    record PatientConsultationDiagnosisSummary(
+            UUID id,
+            String code,
+            String description,
+            String diagnosisType) {
+    }
+
+    record PatientConsultationPrescriptionSummary(
+            UUID id,
+            String status,
+            Instant issuedAt,
+            List<PatientConsultationPrescriptionItemSummary> items) {
+    }
+
+    record PatientConsultationPrescriptionItemSummary(
+            UUID id,
+            String medicationName,
+            String dosage,
+            String frequency,
+            String duration,
+            String route) {
     }
 
     record IssuePrescriptionCommand(

@@ -26,7 +26,7 @@ const STATUS_META = Object.freeze({
   FALLECIDO: { label: "Fallecido", badgeClass: "badge text-bg-danger-subtle text-danger-emphasis border border-danger-subtle" }
 });
 
-export function createPatientsController({ document, client, onCreateAppointment = null }) {
+export function createPatientsController({ document, client, onCreateAppointment = null, onViewConsultation = null }) {
   const e = elements(document);
   const s = searchElements(document);
   const p = profileElements(document);
@@ -45,6 +45,9 @@ export function createPatientsController({ document, client, onCreateAppointment
   let editingPatientId = null;
   let currentSessionId = 0;
   let activeProfileRequestId = 0;
+  let historyPage = 0;
+  let historyTotalPages = 0;
+  let activeHistoryRequestId = 0;
 
   e.open.addEventListener("click", openCreateDialog);
   e.cancel.addEventListener("click", () => {
@@ -82,6 +85,21 @@ export function createPatientsController({ document, client, onCreateAppointment
         openPatientProfile(activeProfileId);
       }
     });
+    p.historyPrev?.addEventListener("click", () => {
+      if (activeProfileId && historyPage > 0) {
+        loadPatientConsultations(activeProfileId, historyPage - 1, ++activeHistoryRequestId, currentSessionId);
+      }
+    });
+    p.historyNext?.addEventListener("click", () => {
+      if (activeProfileId && historyPage < historyTotalPages - 1) {
+        loadPatientConsultations(activeProfileId, historyPage + 1, ++activeHistoryRequestId, currentSessionId);
+      }
+    });
+    p.historyRetry?.addEventListener("click", () => {
+      if (activeProfileId) {
+        loadPatientConsultations(activeProfileId, historyPage, ++activeHistoryRequestId, currentSessionId);
+      }
+    });
   }
 
   return Object.freeze({
@@ -97,6 +115,7 @@ export function createPatientsController({ document, client, onCreateAppointment
       currentProfile = null;
       editingPatientId = null;
       clearPatientDiagnoses();
+      clearPatientHistory();
       e.open.hidden = !canCreate;
       if (s) {
         s.navButton.hidden = !canRead;
@@ -133,6 +152,7 @@ export function createPatientsController({ document, client, onCreateAppointment
       currentProfile = null;
       editingPatientId = null;
       clearPatientDiagnoses();
+      clearPatientHistory();
       e.open.hidden = true;
       if (e.dialog.open) {
         e.dialog.close();
@@ -158,6 +178,7 @@ export function createPatientsController({ document, client, onCreateAppointment
     },
     openSearchView,
     openPatientProfile,
+    returnToProfile,
     showProfileNotice(message) {
       if (p && !p.view.hidden && p.notice) {
         p.notice.textContent = message;
@@ -165,6 +186,16 @@ export function createPatientsController({ document, client, onCreateAppointment
       }
     }
   });
+
+  function returnToProfile() {
+    if (!p) return;
+    p.view.hidden = false;
+    if (s) {
+      s.view.hidden = true;
+      s.home.hidden = true;
+    }
+    p.title.focus({ preventScroll: true });
+  }
 
   function openSearchView() {
     if (!s) return;
@@ -370,8 +401,12 @@ export function createPatientsController({ document, client, onCreateAppointment
       }
       setProfileState("content");
       if (canReadConsultations) {
-        loadPatientDiagnoses(activeProfileId, thisRequestId, thisSession);
+        loadPatientConsultations(activeProfileId, 0, ++activeHistoryRequestId, thisSession);
+        if (p.diagnosesList) {
+          loadPatientDiagnoses(activeProfileId, thisRequestId, thisSession);
+        }
       } else {
+        renderPatientHistoryForbidden();
         renderPatientDiagnoses(null);
       }
     } catch (error) {
@@ -586,6 +621,374 @@ export function createPatientsController({ document, client, onCreateAppointment
       } else {
         p.consultationsEmpty.textContent = "Sin consultas ni diagnósticos registrados.";
       }
+    }
+  }
+
+  function clearPatientHistory() {
+    historyPage = 0;
+    historyTotalPages = 0;
+    activeHistoryRequestId++;
+    if (!p) return;
+    if (p.historyCount) p.historyCount.textContent = "";
+    if (p.historyLoading) p.historyLoading.hidden = true;
+    if (p.historyForbidden) p.historyForbidden.hidden = true;
+    if (p.historyError) p.historyError.hidden = true;
+    if (p.historyEmpty) p.historyEmpty.hidden = true;
+    if (p.historyPagination) p.historyPagination.hidden = true;
+    if (p.historyList) {
+      p.historyList.hidden = true;
+      p.historyList.replaceChildren();
+    }
+  }
+
+  function renderPatientHistoryForbidden() {
+    if (!p) return;
+    if (p.historyLoading) p.historyLoading.hidden = true;
+    if (p.historyList) {
+      p.historyList.hidden = true;
+      p.historyList.replaceChildren();
+    }
+    if (p.historyEmpty) p.historyEmpty.hidden = true;
+    if (p.historyError) p.historyError.hidden = true;
+    if (p.historyPagination) p.historyPagination.hidden = true;
+    if (p.historyForbidden) p.historyForbidden.hidden = false;
+    if (p.historyCount) p.historyCount.textContent = "—";
+  }
+
+  async function loadPatientConsultations(patientId, targetPage, requestId, sessionId) {
+    if (!p) return;
+    historyPage = targetPage;
+    if (p.historyLoading) p.historyLoading.hidden = false;
+    if (p.historyList) p.historyList.hidden = true;
+    if (p.historyEmpty) p.historyEmpty.hidden = true;
+    if (p.historyError) p.historyError.hidden = true;
+    if (p.historyForbidden) p.historyForbidden.hidden = true;
+    if (p.historyPagination) p.historyPagination.hidden = true;
+
+    try {
+      const data = await client.requestJson(
+        `/api/v1/patients/${encodeURIComponent(patientId)}/consultations?page=${encodeURIComponent(targetPage)}&size=10`
+      );
+      if (sessionId !== currentSessionId || requestId !== activeHistoryRequestId || activeProfileId !== String(patientId)) {
+        return;
+      }
+
+      if (!data || !Array.isArray(data.items)) {
+        throw new ApiRequestError({
+          kind: "INVALID_RESPONSE",
+          code: "INVALID_RESPONSE",
+          message: "La respuesta de historia clínica no tiene un formato de lista válido."
+        });
+      }
+
+      historyTotalPages = typeof data.totalPages === "number" ? data.totalPages : (data.items.length > 0 ? 1 : 0);
+      renderPatientConsultations(data, patientId);
+    } catch (error) {
+      if (sessionId !== currentSessionId || requestId !== activeHistoryRequestId || activeProfileId !== String(patientId)) {
+        return;
+      }
+      showPatientHistoryError(error, patientId, targetPage, requestId, sessionId);
+    } finally {
+      if (sessionId === currentSessionId && requestId === activeHistoryRequestId && activeProfileId === String(patientId)) {
+        if (p.historyLoading) p.historyLoading.hidden = true;
+      }
+    }
+  }
+
+  function showPatientHistoryError(error, patientId, targetPage, requestId, sessionId) {
+    if (!p) return;
+    if (p.historyList) {
+      p.historyList.hidden = true;
+      p.historyList.replaceChildren();
+    }
+    if (p.historyEmpty) p.historyEmpty.hidden = true;
+    if (p.historyPagination) p.historyPagination.hidden = true;
+    if (p.historyCount) p.historyCount.textContent = "";
+
+    if (error instanceof ApiRequestError && error.status === 403) {
+      renderPatientHistoryForbidden();
+      return;
+    }
+
+    if (p.historyError) {
+      p.historyError.hidden = false;
+      if (p.historyErrorMessage) {
+        p.historyErrorMessage.textContent = error instanceof ApiRequestError
+          ? error.message
+          : (error?.message || "No fue posible consultar la historia clínica del paciente.");
+      }
+      if (p.historyErrorCorrelation) {
+        const correlationId = error instanceof ApiRequestError ? error.correlationId : error?.correlationId;
+        p.historyErrorCorrelation.textContent = correlationId
+          ? `Código de seguimiento: ${correlationId}`
+          : "";
+        p.historyErrorCorrelation.hidden = !correlationId;
+      }
+
+      p.historyError.focus?.({ preventScroll: true });
+    }
+  }
+
+  function renderPatientConsultations(data, patientId) {
+    if (!p) return;
+    if (p.historyError) p.historyError.hidden = true;
+    if (p.historyForbidden) p.historyForbidden.hidden = true;
+    if (p.historyLoading) p.historyLoading.hidden = true;
+
+    const items = data.items || [];
+    const totalElements = typeof data.totalElements === "number" ? data.totalElements : items.length;
+    const totalPages = typeof data.totalPages === "number" ? data.totalPages : (items.length > 0 ? 1 : 0);
+    const currentPage = typeof data.page === "number" ? data.page : 0;
+
+    if (p.historyCount) {
+      p.historyCount.textContent = String(totalElements);
+    }
+
+    if (items.length === 0) {
+      if (p.historyEmpty) p.historyEmpty.hidden = false;
+      if (p.historyList) {
+        p.historyList.hidden = true;
+        p.historyList.replaceChildren();
+      }
+      if (p.historyPagination) p.historyPagination.hidden = true;
+      return;
+    }
+
+    if (p.historyEmpty) p.historyEmpty.hidden = true;
+    if (p.historyList) {
+      p.historyList.hidden = false;
+      p.historyList.replaceChildren();
+
+      for (const item of items) {
+        const card = createConsultationHistoryCard(item);
+        p.historyList.append(card);
+      }
+    }
+
+    if (p.historyPagination) {
+      p.historyPagination.hidden = false;
+      if (p.historyPageInfo) {
+        p.historyPageInfo.textContent = `Página ${currentPage + 1} de ${Math.max(1, totalPages)} (${totalElements} ${totalElements === 1 ? "consulta" : "consultas"})`;
+      }
+      if (p.historyPrev) {
+        p.historyPrev.disabled = currentPage <= 0;
+      }
+      if (p.historyNext) {
+        p.historyNext.disabled = currentPage >= totalPages - 1;
+      }
+    }
+  }
+
+  function createConsultationHistoryCard(item) {
+    const card = document.createElement("div");
+    card.className = "card border rounded p-3 bg-white mb-2 pc-history-card";
+    card.dataset.consultationId = item.id;
+
+    // Encabezado de la consulta
+    const header = document.createElement("div");
+    header.className = "d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 pb-2 border-bottom";
+
+    const headerLeft = document.createElement("div");
+    headerLeft.className = "d-flex flex-wrap align-items-center gap-2";
+
+    const statusBadge = document.createElement("span");
+    statusBadge.className = item.status === "BORRADOR"
+      ? "badge text-bg-warning text-dark"
+      : (item.status === "FINALIZADA" ? "badge text-bg-success" : "badge text-bg-secondary");
+    statusBadge.textContent = item.status || "BORRADOR";
+    headerLeft.append(statusBadge);
+
+    const dateSpan = document.createElement("span");
+    dateSpan.className = "fw-semibold small";
+    dateSpan.textContent = formatDateTime(item.startedAt);
+    headerLeft.append(dateSpan);
+
+    if (item.id) {
+      const idBadge = document.createElement("span");
+      idBadge.className = "badge text-bg-light border pc-data-mono small text-secondary";
+      idBadge.textContent = `ID: ${item.id.substring(0, 8)}`;
+      headerLeft.append(idBadge);
+    }
+    header.append(headerLeft);
+
+    const headerRight = document.createElement("div");
+    const detailButton = document.createElement("button");
+    detailButton.type = "button";
+    detailButton.className = "btn btn-sm btn-outline-primary";
+    detailButton.textContent = "Ver detalle";
+    detailButton.dataset.action = "view-consultation-detail";
+    detailButton.dataset.consultationId = item.id;
+    detailButton.addEventListener("click", () => {
+      if (typeof onViewConsultation === "function") {
+        onViewConsultation(item.id, currentProfile);
+      }
+    });
+    headerRight.append(detailButton);
+    header.append(headerRight);
+    card.append(header);
+
+    // Metadatos: Profesional, Sucursal, Motivo
+    const metaRow = document.createElement("div");
+    metaRow.className = "row g-2 mb-3 small";
+
+    const colVet = document.createElement("div");
+    colVet.className = "col-12 col-md-4";
+    const vetLabel = document.createElement("span");
+    vetLabel.className = "text-secondary me-1";
+    vetLabel.textContent = "Profesional:";
+    const vetValue = document.createElement("span");
+    vetValue.className = "fw-medium text-dark";
+    vetValue.textContent = item.veterinarianFullName || "No asignado";
+    colVet.append(vetLabel, vetValue);
+
+    const colBranch = document.createElement("div");
+    colBranch.className = "col-12 col-md-4";
+    const branchLabel = document.createElement("span");
+    branchLabel.className = "text-secondary me-1";
+    branchLabel.textContent = "Sucursal:";
+    const branchValue = document.createElement("span");
+    branchValue.className = "fw-medium text-dark";
+    branchValue.textContent = item.branchName || "No asignada";
+    colBranch.append(branchLabel, branchValue);
+
+    const colReason = document.createElement("div");
+    colReason.className = "col-12 col-md-4";
+    const reasonLabel = document.createElement("span");
+    reasonLabel.className = "text-secondary me-1";
+    reasonLabel.textContent = "Motivo:";
+    const reasonValue = document.createElement("span");
+    reasonValue.className = "fw-medium text-dark";
+    reasonValue.textContent = item.reason || "Sin motivo registrado";
+    colReason.append(reasonLabel, reasonValue);
+
+    metaRow.append(colVet, colBranch, colReason);
+    card.append(metaRow);
+
+    // Bloques clínicos: Diagnósticos y Prescripciones
+    const detailsRow = document.createElement("div");
+    detailsRow.className = "row g-3";
+
+    // Diagnósticos
+    const colDiag = document.createElement("div");
+    colDiag.className = "col-12 col-lg-6";
+    const diagBox = document.createElement("div");
+    diagBox.className = "p-2 rounded bg-light border h-100";
+    const diagTitle = document.createElement("h4");
+    diagTitle.className = "h6 fw-semibold mb-2 small text-secondary";
+    diagTitle.textContent = "Diagnósticos";
+    diagBox.append(diagTitle);
+
+    if (Array.isArray(item.diagnoses) && item.diagnoses.length > 0) {
+      const diagList = document.createElement("ul");
+      diagList.className = "list-unstyled mb-0 small";
+      for (const d of item.diagnoses) {
+        const li = document.createElement("li");
+        li.className = "mb-1 pb-1 border-bottom";
+
+        const typeBadge = document.createElement("span");
+        typeBadge.className = d.diagnosisType === "DEFINITIVO"
+          ? "badge text-bg-primary me-1"
+          : "badge text-bg-warning text-dark me-1";
+        typeBadge.textContent = d.diagnosisType || "PRESUNTIVO";
+        li.append(typeBadge);
+
+        if (d.code) {
+          const codeBadge = document.createElement("span");
+          codeBadge.className = "badge text-bg-light border pc-data-mono me-1";
+          codeBadge.textContent = d.code;
+          li.append(codeBadge);
+        }
+
+        const descSpan = document.createElement("span");
+        descSpan.textContent = d.description || "";
+        li.append(descSpan);
+
+        diagList.append(li);
+      }
+      diagBox.append(diagList);
+    } else {
+      const emptyDiag = document.createElement("span");
+      emptyDiag.className = "text-secondary small fst-italic";
+      emptyDiag.textContent = "No registrados";
+      diagBox.append(emptyDiag);
+    }
+    colDiag.append(diagBox);
+
+    // Prescripciones
+    const colPresc = document.createElement("div");
+    colPresc.className = "col-12 col-lg-6";
+    const prescBox = document.createElement("div");
+    prescBox.className = "p-2 rounded bg-light border h-100";
+    const prescTitle = document.createElement("h4");
+    prescTitle.className = "h6 fw-semibold mb-2 small text-secondary";
+    prescTitle.textContent = "Prescripciones";
+    prescBox.append(prescTitle);
+
+    const allItems = [];
+    if (Array.isArray(item.prescriptions)) {
+      for (const presc of item.prescriptions) {
+        if (Array.isArray(presc.items)) {
+          for (const pi of presc.items) {
+            allItems.push(pi);
+          }
+        }
+      }
+    }
+
+    if (allItems.length > 0) {
+      const prescList = document.createElement("ul");
+      prescList.className = "list-unstyled mb-0 small";
+      for (const pi of allItems) {
+        const li = document.createElement("li");
+        li.className = "mb-2 pb-1 border-bottom";
+
+        const medTitle = document.createElement("div");
+        medTitle.className = "fw-medium";
+        medTitle.textContent = pi.medicationName || "Medicamento";
+        li.append(medTitle);
+
+        const medMeta = document.createElement("div");
+        medMeta.className = "text-secondary small";
+        const parts = [
+          pi.dosage,
+          pi.frequency,
+          pi.duration,
+          pi.route ? `Vía: ${pi.route}` : null
+        ].filter(Boolean);
+        medMeta.textContent = parts.join(" · ");
+        li.append(medMeta);
+
+        prescList.append(li);
+      }
+      prescBox.append(prescList);
+    } else {
+      const emptyPresc = document.createElement("span");
+      emptyPresc.className = "text-secondary small fst-italic";
+      emptyPresc.textContent = "No registradas";
+      prescBox.append(emptyPresc);
+    }
+    colPresc.append(prescBox);
+
+    detailsRow.append(colDiag, colPresc);
+    card.append(detailsRow);
+
+    return card;
+  }
+
+  function formatDateTime(isoString) {
+    if (!isoString) return "-";
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return isoString;
+      return d.toLocaleString("es-PE", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch {
+      return isoString;
     }
   }
 
@@ -1045,6 +1448,19 @@ function profileElements(document) {
   }
   resolved.editButton = document.querySelector("#patient-profile-edit-button");
   resolved.notice = document.querySelector("#patient-profile-notice");
+  resolved.historyCount = document.querySelector("#patient-profile-history-count");
+  resolved.historyLoading = document.querySelector("#patient-profile-history-loading");
+  resolved.historyForbidden = document.querySelector("#patient-profile-history-forbidden");
+  resolved.historyError = document.querySelector("#patient-profile-history-error");
+  resolved.historyErrorMessage = document.querySelector("#patient-profile-history-error-message");
+  resolved.historyErrorCorrelation = document.querySelector("#patient-profile-history-error-correlation");
+  resolved.historyRetry = document.querySelector("#patient-profile-history-retry");
+  resolved.historyEmpty = document.querySelector("#patient-profile-history-empty");
+  resolved.historyList = document.querySelector("#patient-profile-history-list");
+  resolved.historyPagination = document.querySelector("#patient-profile-history-pagination");
+  resolved.historyPageInfo = document.querySelector("#patient-profile-history-page-info");
+  resolved.historyPrev = document.querySelector("#patient-profile-history-prev");
+  resolved.historyNext = document.querySelector("#patient-profile-history-next");
   resolved.diagnosesList = document.querySelector("#patient-profile-diagnoses-list");
   resolved.diagnosesLoading = document.querySelector("#patient-profile-diagnoses-loading");
   resolved.diagnosesError = document.querySelector("#patient-profile-diagnoses-error");

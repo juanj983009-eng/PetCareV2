@@ -3596,6 +3596,262 @@ class ConsultationControllerIntegrationTest extends PostgreSqlIntegrationTest {
         assertThat(consStatusInDb).isEqualTo("FINALIZADA");
     }
 
+    @Test
+    void listPatientConsultationsReturnsChronologicalHistoryWithSummaries() throws Exception {
+        TenantFixture tenant = createTenantFixture("pat-hist");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dr. Roberto",
+                "Gómez",
+                "roberto@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Laura", "Méndez", "DNI", "88776655");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Simba",
+                "FELINO",
+                "Siamés");
+
+        Instant now = Instant.now();
+        // Cita 1 (más antigua)
+        UUID apptId1 = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(7200),
+                now.minusSeconds(5400),
+                "CONSULTA_GENERAL",
+                "EN_ESPERA",
+                "Control post-operatorio",
+                null);
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        MvcResult startResult1 = mvc.perform(post("/api/v1/appointments/" + apptId1 + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId1 = UUID.fromString(objectMapper.readTree(startResult1.getResponse().getContentAsString()).get("id").asText());
+
+        // Guardar motivo en consulta 1
+        mvc.perform(put("/api/v1/consultations/" + consultationId1 + "/evaluation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"Control post-operatorio herida limpia\"}"))
+                .andExpect(status().isOk());
+
+        // Diagnóstico en consulta 1
+        mvc.perform(post("/api/v1/consultations/" + consultationId1 + "/diagnoses")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\": \"POST-01\", \"description\": \"Cicatrización en curso\", \"diagnosisType\": \"DEFINITIVO\"}"))
+                .andExpect(status().isCreated());
+
+        // Prescripción en consulta 1
+        mvc.perform(post("/api/v1/consultations/" + consultationId1 + "/prescriptions")
+                        .with(authentication(auth(vetActor, "CONSULTATION_UPDATE", "CONSULTATION_READ")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "generalInstructions": "Aplicar antiséptico cada 12 horas",
+                                    "items": [
+                                        {
+                                            "medicationName": "Clorhexidina tópica 0.5%",
+                                            "dosage": "2 pulverizaciones",
+                                            "frequency": "Cada 12 horas",
+                                            "duration": "7 días",
+                                            "route": "Tópica"
+                                        }
+                                    ]
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        // Finalizar consulta 1
+        mvc.perform(post("/api/v1/consultations/" + consultationId1 + "/finalize")
+                        .with(authentication(auth(vetActor, "CONSULTATION_FINALIZE", "CONSULTATION_READ"))))
+                .andExpect(status().isOk());
+
+        // Cita 2 (más reciente, en borrador)
+        UUID apptId2 = insertAppointment(
+                tenant.tenantId,
+                tenant.branchId,
+                patient.patientId,
+                vetId,
+                now.minusSeconds(1800),
+                now,
+                "EMERGENCIA",
+                "EN_ESPERA",
+                "Vómitos agudos",
+                null);
+
+        MvcResult startResult2 = mvc.perform(post("/api/v1/appointments/" + apptId2 + "/consultation")
+                        .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID consultationId2 = UUID.fromString(objectMapper.readTree(startResult2.getResponse().getContentAsString()).get("id").asText());
+
+        // Consultar historia clínica
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ", "PATIENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                // Primer elemento: consulta 2 (más reciente)
+                .andExpect(jsonPath("$.items[0].id").value(consultationId2.toString()))
+                .andExpect(jsonPath("$.items[0].status").value("BORRADOR"))
+                .andExpect(jsonPath("$.items[0].reason").value("Vómitos agudos"))
+                .andExpect(jsonPath("$.items[0].veterinarianFullName").value("Dr. Roberto Gómez"))
+                .andExpect(jsonPath("$.items[0].branchName").value("Sede Principal"))
+                .andExpect(jsonPath("$.items[0].diagnoses").isEmpty())
+                .andExpect(jsonPath("$.items[0].prescriptions").isEmpty())
+                // Segundo elemento: consulta 1 (más antigua)
+                .andExpect(jsonPath("$.items[1].id").value(consultationId1.toString()))
+                .andExpect(jsonPath("$.items[1].status").value("FINALIZADA"))
+                .andExpect(jsonPath("$.items[1].reason").value("Control post-operatorio herida limpia"))
+                .andExpect(jsonPath("$.items[1].diagnoses.length()").value(1))
+                .andExpect(jsonPath("$.items[1].diagnoses[0].code").value("POST-01"))
+                .andExpect(jsonPath("$.items[1].diagnoses[0].description").value("Cicatrización en curso"))
+                .andExpect(jsonPath("$.items[1].diagnoses[0].diagnosisType").value("DEFINITIVO"))
+                .andExpect(jsonPath("$.items[1].prescriptions.length()").value(1))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].status").value("EMITIDA"))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items.length()").value(1))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items[0].medicationName").value("Clorhexidina tópica 0.5%"))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items[0].dosage").value("2 pulverizaciones"))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items[0].frequency").value("Cada 12 horas"))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items[0].duration").value("7 días"))
+                .andExpect(jsonPath("$.items[1].prescriptions[0].items[0].route").value("Tópica"));
+    }
+
+    @Test
+    void listPatientConsultationsPaginationWorksCorrectly() throws Exception {
+        TenantFixture tenant = createTenantFixture("pat-page");
+        UUID vetId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Dra. Natalia",
+                "Reyes",
+                "natalia@" + tenant.tenantId + ".test",
+                "VETERINARIO");
+        UUID ownerId = insertOwner(tenant.tenantId, "Pedro", "Navarro", "DNI", "11223344");
+        PatientWithMedicalRecord patient = insertPatientWithMedicalRecord(
+                tenant.tenantId,
+                ownerId,
+                "Rocky",
+                "CANINO",
+                "Boxer");
+
+        Instant now = Instant.now();
+        // Insertar 3 citas y consultas
+        for (int i = 0; i < 3; i++) {
+            UUID apptId = insertAppointment(
+                    tenant.tenantId,
+                    tenant.branchId,
+                    patient.patientId,
+                    vetId,
+                    now.minusSeconds(3600 * (3 - i)),
+                    now.minusSeconds(3600 * (3 - i) - 1800),
+                    "CONSULTA_GENERAL",
+                    "EN_ESPERA",
+                    "Motivo consulta " + i,
+                    null);
+            TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+            mvc.perform(post("/api/v1/appointments/" + apptId + "/consultation")
+                            .with(authentication(auth(vetActor, "CONSULTATION_CREATE", "CONSULTATION_READ", "CONSULTATION_UPDATE"))))
+                    .andExpect(status().isCreated());
+        }
+
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        // Página 0 con size=2 -> 2 elementos, totalElements=3, totalPages=2
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations?page=0&size=2")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2));
+
+        // Página 1 con size=2 -> 1 elemento
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations?page=1&size=2")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.items.length()").value(1));
+    }
+
+    @Test
+    void listPatientConsultationsEmptyReturns200WithEmptyList() throws Exception {
+        TenantFixture tenant = createTenantFixture("pat-empty");
+        UUID vetId = insertVeterinarian(tenant.tenantId, tenant.branchId, "vet@" + tenant.tenantId + ".test", "Ana", "López");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Pelusa");
+        TenantFixture vetActor = new TenantFixture(tenant.tenantId, tenant.branchId, vetId);
+
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations")
+                        .with(authentication(auth(vetActor, "CONSULTATION_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.totalPages").value(0))
+                .andExpect(jsonPath("$.items").isEmpty());
+    }
+
+    @Test
+    void listPatientConsultationsNonExistentOrCrossTenantReturns404() throws Exception {
+        TenantFixture tenantA = createTenantFixture("pat-iso-a");
+        TenantFixture tenantB = createTenantFixture("pat-iso-b");
+        UUID vetIdA = insertVeterinarian(tenantA.tenantId, tenantA.branchId, "veta@" + tenantA.tenantId + ".test", "Vet", "A");
+        UUID vetIdB = insertVeterinarian(tenantB.tenantId, tenantB.branchId, "vetb@" + tenantB.tenantId + ".test", "Vet", "B");
+        PatientWithMedicalRecord patientA = createPatientWithMedicalRecord(tenantA.tenantId, "Paciente A");
+
+        TenantFixture vetActorA = new TenantFixture(tenantA.tenantId, tenantA.branchId, vetIdA);
+        TenantFixture vetActorB = new TenantFixture(tenantB.tenantId, tenantB.branchId, vetIdB);
+
+        // Paciente inexistente
+        mvc.perform(get("/api/v1/patients/" + UUID.randomUUID() + "/consultations")
+                        .with(authentication(auth(vetActorA, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+        // Paciente de Tenant A consultado por Tenant B -> 404 RESOURCE_NOT_FOUND
+        mvc.perform(get("/api/v1/patients/" + patientA.patientId + "/consultations")
+                        .with(authentication(auth(vetActorB, "CONSULTATION_READ"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void listPatientConsultationsRequiresConsultationReadAuthority() throws Exception {
+        TenantFixture tenant = createTenantFixture("pat-sec");
+        UUID userId = insertUserWithRoleAndBranch(
+                tenant.tenantId,
+                tenant.branchId,
+                "Recepcionista",
+                "Uno",
+                "recep@" + tenant.tenantId + ".test",
+                "RECEPCIONISTA");
+        PatientWithMedicalRecord patient = createPatientWithMedicalRecord(tenant.tenantId, "Bobby");
+        TenantFixture actor = new TenantFixture(tenant.tenantId, tenant.branchId, userId);
+
+        // Usuario con solo PATIENT_READ -> 403 Forbidden para consultas clínicas
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations")
+                        .with(authentication(auth(actor, "PATIENT_READ"))))
+                .andExpect(status().isForbidden());
+
+        // Sin autenticación -> 401 Unauthorized
+        mvc.perform(get("/api/v1/patients/" + patient.patientId + "/consultations"))
+                .andExpect(status().isUnauthorized());
+    }
+
     private TenantFixture createTenantFixture(String slugPrefix) {
         UUID tenantId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();

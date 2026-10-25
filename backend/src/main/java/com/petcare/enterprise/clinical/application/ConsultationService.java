@@ -20,6 +20,7 @@ import com.petcare.enterprise.clinical.application.ConsultationRepository.Update
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.AddDiagnosisCommand;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.IssuePrescriptionCommand;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationPage;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionItemCommand;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
@@ -599,6 +600,22 @@ public class ConsultationService implements ConsultationUseCase {
             throw new ConsultationResourceNotFoundException();
         }
         return consultationRepository.findDiagnosesByPatientId(metadata.tenantId(), patientId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PatientConsultationPage listPatientConsultations(UUID patientId, int page, int size) {
+        if (patientId == null) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        AuditMetadata metadata = audit.requireTenantMetadata();
+        if (!consultationRepository.patientExists(metadata.tenantId(), patientId)) {
+            throw new ConsultationResourceNotFoundException();
+        }
+        int normalizedPage = Math.max(0, page);
+        int normalizedSize = Math.max(1, Math.min(size, 100));
+        return consultationRepository.findConsultationsByPatientId(
+                metadata.tenantId(), patientId, normalizedPage, normalizedSize);
     }
 
     @Override

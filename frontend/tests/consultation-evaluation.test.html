@@ -85,6 +85,20 @@
             </div>
           </div>
 
+          <!-- ALERTAS MÉDICAS Y ALERGIAS DEL PACIENTE EN CONSULTA -->
+          <div id="evaluation-medical-alerts-banner" class="alert alert-danger mb-4" role="alert" hidden>
+            <h3 class="h6 fw-bold mb-2">⚠️ Alertas médicas y alergias registradas</h3>
+            <div id="evaluation-allergies-row" class="mb-1" hidden>
+              <span class="fw-semibold">Alergias:</span> <span id="evaluation-allergies-value"></span>
+            </div>
+            <div id="evaluation-alerts-row" class="mb-0" hidden>
+              <span class="fw-semibold">Alertas médicas:</span> <span id="evaluation-alerts-value"></span>
+            </div>
+          </div>
+          <div id="evaluation-no-alerts" class="pc-empty-state py-2 px-3 mb-4 small text-secondary" role="status" hidden>
+            Sin alergias ni alertas médicas críticas registradas en la historia clínica base.
+          </div>
+
           <!-- FORMULARIO DE EVALUACIÓN CLÍNICA -->
           <form id="consultation-evaluation-form" class="row g-3" novalidate>
             <input id="evaluation-consultation-id" type="hidden">

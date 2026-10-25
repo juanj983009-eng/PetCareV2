@@ -24,7 +24,12 @@ const consultationEvaluationController = createConsultationEvaluationController(
 const patientsController = createPatientsController({
   document,
   client: apiClient,
-  onCreateAppointment: (patient) => appointmentsController?.openCreateAppointmentDialog(patient)
+  onCreateAppointment: (patient) => appointmentsController?.openCreateAppointmentDialog(patient),
+  onViewConsultation: (consultationId, patientProfile) => consultationEvaluationController?.openEvaluation(consultationId, {
+    readOnly: true,
+    patientProfile,
+    onBack: () => patientsController.returnToProfile()
+  })
 });
 appointmentsController = createAppointmentsController({
   document,

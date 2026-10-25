@@ -39,7 +39,7 @@ public class SecurityConfiguration {
                             .hasAuthority("OWNER_UPDATE")
                         .requestMatchers("/api/v1/owners", "/api/v1/owners/**")
                             .hasAuthority("OWNER_CREATE")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/patients/*/diagnoses")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/patients/*/consultations", "/api/v1/patients/*/diagnoses")
                             .hasAuthority("CONSULTATION_READ")
                         .requestMatchers(HttpMethod.GET, "/api/v1/patients", "/api/v1/patients/**")
                             .hasAuthority("PATIENT_READ")

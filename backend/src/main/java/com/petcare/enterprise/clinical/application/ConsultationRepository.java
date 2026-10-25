@@ -2,6 +2,7 @@ package com.petcare.enterprise.clinical.application;
 
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.ConsultationSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationPage;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
 import com.petcare.enterprise.clinical.domain.ClinicalDetails;
@@ -37,6 +38,8 @@ public interface ConsultationRepository {
     DiagnosisSummary updateDiagnosis(UpdateDiagnosisRecord record);
 
     List<PatientDiagnosisSummary> findDiagnosesByPatientId(UUID tenantId, UUID patientId);
+
+    PatientConsultationPage findConsultationsByPatientId(UUID tenantId, UUID patientId, int page, int size);
 
     List<PrescriptionSummary> findPrescriptionsByConsultationId(UUID tenantId, UUID consultationId);
 

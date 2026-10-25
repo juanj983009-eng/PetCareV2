@@ -253,6 +253,22 @@ HU-024 habilita la finalización formal de la atención veterinaria vinculada a 
 - **Auditoría y eventos de dominio**: se registra la entrada inmutable `CONSULTATION_FINALIZED` en la auditoría del tenant y se publica el evento de dominio `ConsultationFinalized` procesado de forma desacoplada y segura en la fase `AFTER_COMMIT`.
 - **Frontend y modo de solo lectura**: incluye diálogo accesible de confirmación, bloqueo estricto si existen modificaciones locales no guardadas en pantalla (evaluación, diagnósticos o prescripción), actualización inmediata del badge a `FINALIZADA` e inhabilitación completa de controles de edición.
 
+## Historia clínica cronológica de HU-025
+
+HU-025 habilita la consulta cronológica de la historia clínica de un paciente desde su perfil:
+
+- `GET /api/v1/patients/{patientId}/consultations?page=0&size=20`: consulta paginada de las atenciones y consultas del paciente, ordenadas de la más reciente a la más antigua (`c.started_at DESC, c.id DESC`).
+  - **Aislamiento y seguridad**: requiere la autoridad `CONSULTATION_READ` (asignada al rol de sistema `VETERINARIO`). Valida que el paciente pertenezca estrictamente al tenant autenticado; si no existe o pertenece a otro tenant, responde `404 NOT_FOUND` para no revelar la existencia de recursos ajenos. Un usuario sin `CONSULTATION_READ` recibe `403 FORBIDDEN`.
+  - **Eficiencia y optimización de consultas**: paginación por lotes en exactamente 3–4 consultas SQL (`COUNT`, página acotada de consultas con `LEFT JOIN appointments` para resolución de motivo `COALESCE(c.reason, a.reason)`, diagnósticos con cláusula `IN` y prescripciones con ítems con cláusula `IN`), evitando problemas de N+1 y productos cartesianos que duplicarían registros paginados.
+  - **Contenido resumido**: incluye ID de consulta, fecha/hora de inicio, estado (`BORRADOR`, `FINALIZADA`), profesional veterinario asignado, sucursal, motivo clínico, lista de diagnósticos (código CIE/texto, tipo y descripción) y resumen de prescripciones emitidas con medicamentos, dosis, pauta y vía.
+
+### Interfaz clínica y navegación
+
+- **Integración en Perfil de Paciente**: la pestaña/sección de "Historia clínica" sustituye la visualización plana anterior y presenta tarjetas cronológicas detalladas por consulta, conservando en cabecera el resumen de identificación del paciente, alertas médicas y alergias.
+- **Acceso a detalle en solo lectura**: cada tarjeta provee la acción "Ver detalle" que abre la interfaz de evaluación clínica en modo de solo lectura (`readOnly: true`), inhabilitando controles de edición (guardar, finalizar, agregar diagnósticos o recetas) para consultas finalizadas o revisión histórica, mostrando de forma confiable las alertas médicas y alergias del paciente sin cruce entre historiales, y sin disparar mutaciones accidentales en el backend.
+- **Retorno contextual**: la navegación permite volver al perfil del paciente preservando el paciente activo seleccionado y el estado de la página de historia.
+- **Manejo de estados y resiliencia**: soporta estados visuales explícitos de carga (`#patient-profile-history-loading`), sin registros (`#patient-profile-history-empty`), error con identificador de correlación y botón de reintento (`#patient-profile-history-error`), y permiso denegado (`#patient-profile-history-forbidden`) ante falta de autoridad.
+
 ## Entorno local con Docker Compose
 
 La configuración levanta tres servicios:

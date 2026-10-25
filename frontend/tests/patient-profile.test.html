@@ -160,6 +160,22 @@
           <span id="patient-profile-record-meta"></span>
           <p id="patient-profile-record-history"></p>
 
+          <span id="patient-profile-history-count" hidden></span>
+          <div id="patient-profile-history-loading" role="status" hidden>Cargando historia clínica…</div>
+          <div id="patient-profile-history-forbidden" role="alert" tabindex="-1" hidden>▲ Permiso insuficiente: Tu rol actual no cuenta con la autoridad CONSULTATION_READ para consultar la historia clínica de este paciente.</div>
+          <div id="patient-profile-history-error" role="alert" tabindex="-1" hidden>
+            <div id="patient-profile-history-error-message"></div>
+            <div id="patient-profile-history-error-correlation" hidden></div>
+            <button id="patient-profile-history-retry" type="button">Reintentar</button>
+          </div>
+          <div id="patient-profile-history-empty" role="status" hidden>Sin consultas registradas.</div>
+          <div id="patient-profile-history-list" hidden></div>
+          <nav id="patient-profile-history-pagination" hidden>
+            <p id="patient-profile-history-page-info"></p>
+            <button id="patient-profile-history-prev" type="button" disabled>Anterior</button>
+            <button id="patient-profile-history-next" type="button" disabled>Siguiente</button>
+          </nav>
+
           <div id="patient-profile-diagnoses-loading" hidden>Cargando diagnósticos...</div>
           <div id="patient-profile-diagnoses-error" role="alert" hidden>
             <div id="patient-profile-diagnoses-error-message"></div>

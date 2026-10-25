@@ -5,6 +5,11 @@ import com.petcare.enterprise.clinical.application.ConsultationRepository;
 import com.petcare.enterprise.clinical.application.ConsultationResourceNotFoundException;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.ConsultationSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.DiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationDiagnosisSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationItemSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationPage;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationPrescriptionItemSummary;
+import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientConsultationPrescriptionSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PatientDiagnosisSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionItemSummary;
 import com.petcare.enterprise.clinical.application.ConsultationUseCase.PrescriptionSummary;
@@ -16,7 +21,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -555,6 +564,182 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
                         rs.getTimestamp("created_at").toInstant()));
     }
 
+    @Override
+    public PatientConsultationPage findConsultationsByPatientId(UUID tenantId, UUID patientId, int page, int size) {
+        String countSql = "SELECT COUNT(*) FROM consultations WHERE tenant_id = :tenant_id AND patient_id = :patient_id";
+        Long totalElements = jdbc.queryForObject(
+                countSql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("patient_id", patientId),
+                Long.class);
+        if (totalElements == null) {
+            totalElements = 0L;
+        }
+        int totalPages = size > 0 ? (int) Math.ceil((double) totalElements / (double) size) : 0;
+        if (totalElements == 0) {
+            return new PatientConsultationPage(List.of(), page, size, 0L, 0);
+        }
+
+        int offset = page * size;
+        String consultationsSql = """
+                SELECT
+                    c.id,
+                    c.appointment_id,
+                    c.started_at,
+                    c.status,
+                    COALESCE(c.reason, a.reason) AS reason,
+                    c.veterinarian_id,
+                    btrim(v.first_name || ' ' || v.last_name) AS veterinarian_full_name,
+                    c.branch_id,
+                    b.name AS branch_name
+                FROM consultations c
+                JOIN users v
+                  ON v.tenant_id = c.tenant_id
+                 AND v.id = c.veterinarian_id
+                JOIN branches b
+                  ON b.tenant_id = c.tenant_id
+                 AND b.id = c.branch_id
+                LEFT JOIN appointments a
+                  ON a.tenant_id = c.tenant_id
+                 AND a.id = c.appointment_id
+                WHERE c.tenant_id = :tenant_id
+                  AND c.patient_id = :patient_id
+                ORDER BY c.started_at DESC, c.id DESC
+                LIMIT :limit OFFSET :offset
+                """;
+
+        List<PatientConsultationRow> consultationRows = jdbc.query(
+                consultationsSql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("patient_id", patientId)
+                        .addValue("limit", size)
+                        .addValue("offset", offset),
+                (rs, rowNum) -> new PatientConsultationRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("appointment_id", UUID.class),
+                        rs.getTimestamp("started_at").toInstant(),
+                        rs.getString("status"),
+                        rs.getString("reason"),
+                        rs.getObject("veterinarian_id", UUID.class),
+                        rs.getString("veterinarian_full_name"),
+                        rs.getObject("branch_id", UUID.class),
+                        rs.getString("branch_name")));
+
+        if (consultationRows.isEmpty()) {
+            return new PatientConsultationPage(List.of(), page, size, totalElements, totalPages);
+        }
+
+        List<UUID> consultationIds = consultationRows.stream().map(PatientConsultationRow::id).toList();
+
+        String diagnosesSql = """
+                SELECT
+                    d.id,
+                    d.consultation_id,
+                    d.code,
+                    d.description,
+                    d.diagnosis_type
+                FROM diagnoses d
+                WHERE d.tenant_id = :tenant_id
+                  AND d.consultation_id IN (:consultation_ids)
+                ORDER BY d.consultation_id, d.created_at ASC, d.id ASC
+                """;
+
+        Map<UUID, List<PatientConsultationDiagnosisSummary>> diagnosesByConsultationId = new HashMap<>();
+        jdbc.query(
+                diagnosesSql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("consultation_ids", consultationIds),
+                rs -> {
+                    UUID cid = rs.getObject("consultation_id", UUID.class);
+                    diagnosesByConsultationId.computeIfAbsent(cid, k -> new ArrayList<>())
+                            .add(new PatientConsultationDiagnosisSummary(
+                                    rs.getObject("id", UUID.class),
+                                    rs.getString("code"),
+                                    rs.getString("description"),
+                                    rs.getString("diagnosis_type")));
+                });
+
+        String prescriptionsSql = """
+                SELECT
+                    p.id AS prescription_id,
+                    p.consultation_id,
+                    p.status,
+                    p.issued_at,
+                    pi.id AS item_id,
+                    pi.medication_name,
+                    pi.dosage,
+                    pi.frequency,
+                    pi.duration,
+                    pi.route
+                FROM prescriptions p
+                LEFT JOIN prescription_items pi
+                  ON pi.tenant_id = p.tenant_id
+                 AND pi.prescription_id = p.id
+                WHERE p.tenant_id = :tenant_id
+                  AND p.consultation_id IN (:consultation_ids)
+                ORDER BY p.consultation_id, p.created_at ASC, p.id ASC, pi.item_order ASC, pi.id ASC
+                """;
+
+        Map<UUID, LinkedHashMap<UUID, PatientPrescriptionBuilder>> prescriptionsByConsultation = new LinkedHashMap<>();
+        jdbc.query(
+                prescriptionsSql,
+                new MapSqlParameterSource()
+                        .addValue("tenant_id", tenantId)
+                        .addValue("consultation_ids", consultationIds),
+                rs -> {
+                    UUID cid = rs.getObject("consultation_id", UUID.class);
+                    UUID pid = rs.getObject("prescription_id", UUID.class);
+                    String status = rs.getString("status");
+                    Timestamp issuedTimestamp = rs.getTimestamp("issued_at");
+                    Instant issuedAt = issuedTimestamp != null ? issuedTimestamp.toInstant() : null;
+
+                    LinkedHashMap<UUID, PatientPrescriptionBuilder> map =
+                            prescriptionsByConsultation.computeIfAbsent(cid, k -> new LinkedHashMap<>());
+                    PatientPrescriptionBuilder builder =
+                            map.computeIfAbsent(pid, k -> new PatientPrescriptionBuilder(pid, status, issuedAt));
+
+                    UUID itemId = rs.getObject("item_id", UUID.class);
+                    if (itemId != null) {
+                        builder.items.add(new PatientConsultationPrescriptionItemSummary(
+                                itemId,
+                                rs.getString("medication_name"),
+                                rs.getString("dosage"),
+                                rs.getString("frequency"),
+                                rs.getString("duration"),
+                                rs.getString("route")));
+                    }
+                });
+
+        List<PatientConsultationItemSummary> items = new ArrayList<>(consultationRows.size());
+        for (PatientConsultationRow row : consultationRows) {
+            List<PatientConsultationDiagnosisSummary> diagList =
+                    diagnosesByConsultationId.getOrDefault(row.id(), List.of());
+            LinkedHashMap<UUID, PatientPrescriptionBuilder> prescribers =
+                    prescriptionsByConsultation.get(row.id());
+            List<PatientConsultationPrescriptionSummary> prescList = prescribers == null
+                    ? List.of()
+                    : prescribers.values().stream().map(PatientPrescriptionBuilder::toSummary).toList();
+
+            items.add(new PatientConsultationItemSummary(
+                    row.id(),
+                    row.appointmentId(),
+                    row.startedAt(),
+                    row.status(),
+                    row.reason(),
+                    row.veterinarianId(),
+                    row.veterinarianFullName(),
+                    row.branchId(),
+                    row.branchName(),
+                    diagList,
+                    prescList));
+        }
+
+        return new PatientConsultationPage(items, page, size, totalElements, totalPages);
+    }
+
     private DiagnosisSummary mapDiagnosisRow(ResultSet rs, int rowNum) throws SQLException {
         return new DiagnosisSummary(
                 rs.getObject("id", UUID.class),
@@ -869,5 +1054,34 @@ class JdbcConsultationRepositoryAdapter implements ConsultationRepository {
             String generalInstructions,
             String status,
             Instant createdAt) {
+    }
+
+    private record PatientConsultationRow(
+            UUID id,
+            UUID appointmentId,
+            Instant startedAt,
+            String status,
+            String reason,
+            UUID veterinarianId,
+            String veterinarianFullName,
+            UUID branchId,
+            String branchName) {
+    }
+
+    private static class PatientPrescriptionBuilder {
+        final UUID id;
+        final String status;
+        final Instant issuedAt;
+        final List<PatientConsultationPrescriptionItemSummary> items = new ArrayList<>();
+
+        PatientPrescriptionBuilder(UUID id, String status, Instant issuedAt) {
+            this.id = id;
+            this.status = status;
+            this.issuedAt = issuedAt;
+        }
+
+        PatientConsultationPrescriptionSummary toSummary() {
+            return new PatientConsultationPrescriptionSummary(id, status, issuedAt, List.copyOf(items));
+        }
     }
 }
