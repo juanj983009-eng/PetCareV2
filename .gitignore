@@ -98,7 +98,12 @@ venv/
 playwright-report/
 blob-report/
 
-# Local agent scratch/configuration (AGENTS.md remains versioned)
+# Local agent instructions and internal review reports
+AGENTS.md
+/PETCARE_AUDITORIA*.md
+/AUDITORIA*.md
+
+# Local agent scratch/configuration
 .codex/
 .gemini/
 .agents/
