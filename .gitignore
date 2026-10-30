@@ -66,3 +66,40 @@ temp/
 
 # macOS metadata occasionally introduced by collaborators
 .DS_Store
+
+# Local credentials and service-account files
+.envrc
+.npmrc
+.netrc
+*.jks
+*.keystore
+credentials.json
+service-account*.json
+
+# Database snapshots and local data (keep Flyway .sql migrations tracked)
+*.dump
+*.backup
+*.sql.gz
+*.sql.zip
+*.sqlite
+*.sqlite3
+pgdata/
+postgres_data/
+backups/
+
+# Frontend / Python tool caches and browser reports
+node_modules/
+.cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+playwright-report/
+blob-report/
+
+# Local agent scratch/configuration (AGENTS.md remains versioned)
+.codex/
+.gemini/
+.agents/
+scratch/

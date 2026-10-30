@@ -1,0 +1,27 @@
+/* Keep text selection and touch interactions native. */
+@media (hover: hover) and (pointer: fine) {
+  html, body, body * {
+    cursor: url('/assets/img/paw-cursor.svg') 16 16, auto !important;
+  }
+  body :is(input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), textarea, [contenteditable=true]),
+  body :is(input, textarea, [contenteditable=true]) * {
+    cursor: text !important;
+  }
+}
+.pc-paw-trail {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  z-index: 2147483647;
+  background: url('/assets/img/paw-cursor.svg') center / contain no-repeat;
+  opacity: .3;
+  transform: translate(-50%, -50%) rotate(var(--paw-angle));
+  animation: pc-paw-fade 850ms ease-out forwards;
+}
+@keyframes pc-paw-fade {
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-paw-trail { display: none; animation: none; }
+}

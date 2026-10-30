@@ -1409,6 +1409,44 @@ test("con CONSULTATION_READ muestra botón 'Ver consulta' en citas FINALIZADA y 
   controller.sessionEnded();
 });
 
+
+test("indicadores usan los totales del servidor y se ocultan ante error y cierre de sesión", async () => {
+  let fail = false;
+  const controller = createAppointmentsController({ document, client: { requestJson: async url => {
+    if (url.endsWith('/options')) return { branches: [], veterinarians: [] };
+    if (fail) throw new Error('Unavailable');
+    return { content: [{ id: 'metric-test', patientName: 'Luna', status: 'FINALIZADA' }],
+      page: 0, totalPages: 3, totalElements: 25, confirmedCount: 12, waitingCount: 8, noShowCount: 2 };
+  } } });
+  controller.sessionReady({ authorities: ['APPOINTMENT_READ'] });
+  await controller.openAppointmentsView();
+  const overview = document.querySelector('#appointments-overview');
+  assert(!overview.hidden, 'El resumen debe mostrarse con resultados');
+  for (const [key, value] of Object.entries({ total: '25', confirmed: '12', waiting: '8', noShow: '2' })) {
+    assert(overview.querySelector('[data-agenda-count="' + key + '"]').textContent === value, 'Debe usar el total global de ' + key);
+  }
+  fail = true;
+  document.querySelector('#appointment-search-form').dispatchEvent(new Event('submit', { cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert(overview.hidden, 'Un error no debe dejar cifras anteriores visibles');
+  controller.sessionEnded();
+  assert(overview.hidden, 'El cierre de sesión debe ocultar el resumen');
+});
+
+test("agenda vacía muestra ceros reales y no inventa estadísticas ausentes", async () => {
+  const controller = createAppointmentsController({ document, client: { requestJson: async url =>
+    url.endsWith('/options') ? { branches: [], veterinarians: [] } :
+      { content: [], page: 0, totalPages: 0, totalElements: 0, waitingCount: 0, noShowCount: 0 }
+  } });
+  controller.sessionReady({ authorities: ['APPOINTMENT_READ'] });
+  await controller.openAppointmentsView();
+  const overview = document.querySelector('#appointments-overview');
+  assert(!overview.hidden, 'El estado vacío debe mostrar el resumen recibido');
+  assert(overview.querySelector('[data-agenda-count="total"]').textContent === '0', 'El cero es válido');
+  assert(overview.querySelector('[data-agenda-count="confirmed"]').textContent === '—', 'No debe estimar un agregado ausente');
+  controller.sessionEnded();
+});
+
 async function run() {
   let passed = 0;
   for (const t of tests) {

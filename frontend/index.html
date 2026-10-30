@@ -7,94 +7,53 @@
   <title>PetCare Enterprise — Expediente y Operación Clínica</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="/assets/css/app.css" rel="stylesheet">
+  <link href="/assets/css/home-workspace.css?v=ui-034-20261027-01" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/css/agenda-workspace.css">
+    <link rel="stylesheet" href="/assets/css/patient-profile-workspace.css">
+    <link rel="stylesheet" href="/assets/css/patient-search-workspace.css">
+    <link rel="stylesheet" href="/assets/css/owner-search-workspace.css?v=owners-20261026-04">
+    <link rel="stylesheet" href="/assets/css/login-workspace.css?v=compact-sage-20261029">
+    <link rel="stylesheet" href="/assets/css/module-headings.css">
+    <link rel="stylesheet" href="/assets/css/surface-depth.css?v=filters-20261026-01">
+    <link rel="stylesheet" href="/assets/css/users-workspace.css?v=users-20261027-01">
+    <link rel="stylesheet" href="/assets/css/module-workspaces.css?v=roles-20261026-02">
+    <link rel="stylesheet" href="/assets/css/module-imagery.css?v=cutouts-20261026-02">
+    <link rel="stylesheet" href="/assets/css/roles-workspace.css?v=roles-reference-20261026-01">
+    <link rel="stylesheet" href="/assets/css/workspace-zones.css?v=zones-20261027-01">
+    <link rel="stylesheet" href="/assets/css/clinical-design.css?v=20261029-53">
+    <link rel="stylesheet" href="/assets/css/paw-cursor.css">
 </head>
 <body>
   <main class="min-vh-100 d-flex flex-column w-100" id="main-content">
     <div class="container-fluid p-0 flex-grow-1 d-flex flex-column">
       <!-- VISTA 01: LOGIN EDITORIAL MULTI-TENANT (HU-005) -->
-      <section id="login-view" class="container my-auto py-4" aria-labelledby="login-title" hidden>
-        <div class="row justify-content-center">
-          <div class="col-12 col-lg-10 col-xl-9">
-            <div class="pc-editorial-login-frame auth-card">
-            <div class="row g-0">
-              <aside class="col-12 col-lg-5 pc-editorial-aside p-4 p-md-5 d-flex flex-column justify-content-between"
-                aria-label="Identidad institucional PetCare Enterprise">
-                <div>
-                  <div class="d-flex align-items-center gap-3 mb-4">
-                    <div class="brand-mark" aria-hidden="true">P</div>
-                    <div>
-                      <p class="text-uppercase fw-semibold small mb-0 pc-aside-muted">Sistema Clínico Veterinario</p>
-                      <span class="pc-brand-title h4 mb-0 d-block">PetCare Enterprise</span>
-                    </div>
-                  </div>
-                  <h2 class="h3 mb-3">Registro clínico y gestión operativa por clínica</h2>
-                  <p class="pc-aside-muted mb-0">
-                    Accede al entorno aislado de tu clínica con tu identificador institucional, correo y contraseña.
-                  </p>
-                </div>
-                <div class="pt-4 mt-4 border-top border-light border-opacity-25">
-                  <p class="small pc-aside-muted mb-0">
-                    Folio de acceso multi-tenant · Control de sesión por autoridad
-                  </p>
-                </div>
-              </aside>
-
-              <div class="col-12 col-lg-7 bg-white">
-                <div class="card-body p-4 p-md-5">
-                  <div class="mb-4 pb-3 border-bottom">
-                    <p class="text-uppercase text-primary fw-semibold small mb-1">Autenticación de personal</p>
-                    <h1 id="login-title" class="h2 mb-1">Inicia sesión</h1>
-                    <p class="text-secondary mb-0">Ingresa los datos de tu clínica para abrir tu sesión de trabajo.</p>
-                  </div>
-
-                  <div id="login-errors" aria-live="assertive"></div>
-
-                  <form id="login-form" novalidate>
-                    <div class="mb-3">
-                      <label for="clinicSlug" class="form-label">Clínica</label>
-                      <input id="clinicSlug" name="clinicSlug" class="form-control" type="text"
-                        autocomplete="organization" inputmode="url" minlength="3" maxlength="80"
-                        placeholder="ej. clinica-miraflores"
-                        pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                        aria-describedby="clinicSlugHelp clinicSlugFeedback" required>
-                      <div id="clinicSlugHelp" class="form-text">Usa el identificador (`clinicSlug`) asignado a tu clínica.</div>
-                      <div id="clinicSlugFeedback" class="invalid-feedback">Ingresa un identificador válido en minúsculas (ej. clinica-miraflores).</div>
-                    </div>
-
-                    <div class="mb-3">
-                      <label for="email" class="form-label">Correo electrónico</label>
-                      <input id="email" name="email" class="form-control" type="email"
-                        autocomplete="username" maxlength="180"
-                        placeholder="usuario@clinica.petcare.demo"
-                        aria-describedby="emailFeedback" required>
-                      <div id="emailFeedback" class="invalid-feedback">Ingresa un correo electrónico válido.</div>
-                    </div>
-
-                    <div class="mb-4">
-                      <label for="password" class="form-label">Contraseña</label>
-                      <div class="input-group has-validation">
-                        <input id="password" name="password" class="form-control" type="password"
-                          autocomplete="current-password" maxlength="200"
-                          aria-describedby="passwordFeedback" required>
-                        <button id="toggle-password-button" class="btn btn-outline-secondary" type="button"
-                          aria-controls="password" aria-pressed="false" aria-label="Mostrar contraseña">
-                          Mostrar
-                        </button>
-                        <div id="passwordFeedback" class="invalid-feedback">Ingresa tu contraseña.</div>
-                      </div>
-                    </div>
-
-                    <button id="login-button" class="btn btn-primary w-100" type="submit">
-                      <span id="login-button-label">Iniciar sesión</span>
-                      <span id="login-spinner" class="spinner-border spinner-border-sm ms-2"
-                        aria-hidden="true" hidden></span>
-                    </button>
-                  </form>
-                </div>
-              </div>
+      <section id="login-view" class="pc-login-page" aria-labelledby="login-title" hidden>
+        <div class="pc-login-frame">
+          <aside class="pc-login-story" aria-label="PetCare Enterprise, gestión veterinaria">
+            <div class="pc-login-brand"><span class="pc-login-brandmark"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="17" rx="7" ry="10" transform="rotate(-25 15 17)"/><ellipse cx="29" cy="11" rx="7" ry="10"/><ellipse cx="44" cy="14" rx="7" ry="10" transform="rotate(18 44 14)"/><ellipse cx="54" cy="28" rx="6" ry="9" transform="rotate(35 54 28)"/><path d="M15 44c1-8 10-16 17-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-16-3-11-13Z"/><path fill="#fff" d="M25 33h14v5h5v14H30v-5h-5Z"/><path fill="#12463c" d="M31 35h6v5h5v6h-5v5h-6v-5h-5v-6h5Z"/></svg></span><div><strong>PetCare<span>+</span></strong><p>Veterinaria SaaS</p></div></div>
+            <div class="pc-login-story-copy"><h2>Gestiona tu<br>veterinaria<br><span>en un solo lugar</span></h2><p>Agenda citas, administra pacientes,<br>historias clínicas, inventario y más,<br>desde una plataforma moderna y segura.</p></div>
+            <div class="pc-login-features" aria-label="Visión de la plataforma"><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18M8 15h1m6 0h1m-8 3h1"/></svg><span>Citas y<br>agenda</span></div><div><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="17" rx="7" ry="10" transform="rotate(-25 15 17)"/><ellipse cx="29" cy="11" rx="7" ry="10"/><ellipse cx="44" cy="14" rx="7" ry="10" transform="rotate(18 44 14)"/><ellipse cx="54" cy="28" rx="6" ry="9" transform="rotate(35 54 28)"/><path d="M15 44c1-8 10-16 17-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-16-3-11-13Z"/><path fill="#fff" d="M25 33h14v5h5v14H30v-5h-5Z"/><path fill="#12463c" d="M31 35h6v5h5v6h-5v5h-6v-5h-5v-6h5Z"/></svg><span>Historias<br>clínicas</span></div><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 10v10M3 7l9 5 9-5M8 4l9 5"/></svg><span>Inventario<br>y farmacia</span></div><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg><span>Reportes y<br>estadísticas</span></div></div>
+            <span class="pc-login-story-paw" aria-hidden="true"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="17" rx="7" ry="10" transform="rotate(-25 15 17)"/><ellipse cx="29" cy="11" rx="7" ry="10"/><ellipse cx="44" cy="14" rx="7" ry="10" transform="rotate(18 44 14)"/><ellipse cx="54" cy="28" rx="6" ry="9" transform="rotate(35 54 28)"/><path d="M15 44c1-8 10-16 17-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-16-3-11-13Z"/><path fill="#fff" d="M25 33h14v5h5v14H30v-5h-5Z"/><path fill="#12463c" d="M31 35h6v5h5v6h-5v5h-6v-5h-5v-6h5Z"/></svg></span>
+          </aside>
+          <div class="pc-login-access">
+            <span class="pc-login-form-paw" aria-hidden="true"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="17" rx="7" ry="10" transform="rotate(-25 15 17)"/><ellipse cx="29" cy="11" rx="7" ry="10"/><ellipse cx="44" cy="14" rx="7" ry="10" transform="rotate(18 44 14)"/><ellipse cx="54" cy="28" rx="6" ry="9" transform="rotate(35 54 28)"/><path d="M15 44c1-8 10-16 17-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-16-3-11-13Z"/><path fill="#fff" d="M25 33h14v5h5v14H30v-5h-5Z"/><path fill="#12463c" d="M31 35h6v5h5v6h-5v5h-6v-5h-5v-6h5Z"/></svg></span>
+            <div class="pc-login-form-content">
+              <header class="pc-login-heading"><h1 id="login-title">Bienvenido de nuevo</h1><p>Ingresa a tu cuenta de <strong>PetCare+</strong></p></header>
+              <div id="login-errors" aria-live="assertive"></div>
+              <form id="login-form" novalidate>
+                <div class="pc-login-field-group"><label for="clinicSlug" class="form-label">Clínica</label><div class="pc-login-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5h16v16M2 21h20M9 3h6v6H9zM9 13h2m2 0h2m-6 4h2m2 0h2"/></svg><input id="clinicSlug" name="clinicSlug" class="form-control" type="text" autocomplete="organization" inputmode="url" minlength="3" maxlength="80" placeholder="Identificador de tu clínica" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" aria-describedby="clinicSlugHelp clinicSlugFeedback" required><div id="clinicSlugFeedback" class="invalid-feedback">Ingresa un identificador válido en minúsculas (ej. clinica-demo).</div></div><div id="clinicSlugHelp" class="form-text">Usa el identificador asignado a tu clínica.</div></div>
+                <div class="pc-login-field-group"><label for="email" class="form-label">Correo electrónico</label><div class="pc-login-input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg><input id="email" name="email" class="form-control" type="email" autocomplete="username" maxlength="180" placeholder="tu@veterinaria.com" aria-describedby="emailFeedback" required><div id="emailFeedback" class="invalid-feedback">Ingresa un correo electrónico válido.</div></div></div>
+                <div class="pc-login-field-group"><div class="pc-login-password-label"><label for="password" class="form-label">Contraseña</label><button class="pc-login-coming-link" type="button" disabled title="Próximamente" aria-describedby="login-upcoming-note">¿Olvidaste tu contraseña?</button></div><div class="pc-login-input pc-login-password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg><input id="password" name="password" class="form-control" type="password" autocomplete="current-password" maxlength="200" aria-describedby="passwordFeedback" required><button id="toggle-password-button" type="button" aria-controls="password" aria-pressed="false" aria-label="Mostrar contraseña">Mostrar</button><div id="passwordFeedback" class="invalid-feedback">Ingresa tu contraseña.</div></div></div>
+                <label class="pc-login-remember"><input type="checkbox" disabled aria-describedby="login-upcoming-note"><span>Recordarme en este dispositivo</span></label>
+                <button id="login-button" class="btn pc-login-submit w-100" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-8M3 12h12m-4-4 4 4-4 4"/></svg><span id="login-button-label">Iniciar sesión</span><span id="login-spinner" class="spinner-border spinner-border-sm" aria-hidden="true" hidden></span></button>
+              </form>
+              <div class="pc-login-divider"><span>O continúa con</span></div>
+              <div class="pc-login-social"><button type="button" disabled aria-describedby="login-upcoming-note"><span class="pc-login-google" aria-hidden="true">G</span>Google</button><button type="button" disabled aria-describedby="login-upcoming-note"><span class="pc-login-ms" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Microsoft</button></div>
+              <p id="login-upcoming-note" class="pc-login-upcoming">Acceso social, recuperación y sesión recordada: próximamente.</p>
+              <p class="pc-login-register">¿Aún no tienes una cuenta? <button type="button" disabled title="Próximamente">Regístrate gratis</button></p>
             </div>
           </div>
         </div>
@@ -142,7 +101,7 @@
       </section>
 
       <!-- VISTA 04: SHELL AUTENTICADO Y MÓDULOS HABILITADOS -->
-      <section id="dashboard-view" class="pc-app-workspace w-100 flex-grow-1" aria-labelledby="dashboard-title" hidden>
+      <section id="dashboard-view" class="pc-home-theme pc-app-workspace w-100 flex-grow-1" aria-labelledby="dashboard-title" hidden>
         <!-- Backdrop para móvil -->
         <div id="mobile-nav-backdrop" class="pc-nav-backdrop" hidden></div>
 
@@ -150,7 +109,7 @@
         <aside id="editorial-offcanvas-nav" class="pc-shell-nav" aria-label="Navegación principal de la clínica">
           <div class="pc-sidebar-header d-flex align-items-center justify-content-between p-3 border-bottom">
             <div class="d-flex align-items-center gap-2">
-              <div class="brand-mark" aria-hidden="true">P</div>
+              <div class="pc-home-brandmark"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="21" rx="7" ry="10" transform="rotate(-25 15 21)"/><ellipse cx="29" cy="12" rx="7" ry="10"/><ellipse cx="44" cy="15" rx="7" ry="10" transform="rotate(18 44 15)"/><ellipse cx="54" cy="29" rx="6" ry="9" transform="rotate(35 54 29)"/><path d="M16 43c1-8 9-16 16-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-15-3-10-13Z"/></svg><span>+</span></div>
               <div>
                 <span class="pc-brand-title h6 mb-0 d-block">PetCare</span>
                 <span class="text-uppercase text-secondary small fw-bold pc-tracking-wide" style="font-size: 0.7rem;">Enterprise</span>
@@ -162,180 +121,221 @@
             </button>
           </div>
 
+          <div class="pc-home-clinic"><span class="pc-clinic-monogram" aria-hidden="true">P</span><div class="min-w-0"><span class="pc-clinic-caption">Clínica de la sesión</span><strong id="home-sidebar-clinic">PetCare Enterprise</strong><span id="header-clinic-name" class="visually-hidden">PetCare Enterprise</span><span id="header-user-identity" class="pc-sidebar-user">Sesión autenticada</span></div></div>
           <div class="pc-sidebar-body p-3 flex-grow-1 overflow-y-auto">
             <p class="text-uppercase text-secondary fw-bold small px-2 mb-2 pc-tracking-wide" style="font-size: 0.72rem;">
-              Módulos Clínicos
+              Tu espacio clínico
             </p>
             <div class="pc-shell-nav-list">
               <button id="dashboard-nav-button" class="btn btn-outline-primary" type="button" aria-current="page">
-                <span class="me-2" aria-hidden="true">▦</span> Inicio
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span>Inicio</span>
               </button>
               <button id="appointments-nav-button" class="btn btn-outline-primary" type="button" hidden>
-                <span class="me-2" aria-hidden="true">📅</span> Agenda de citas
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span>Agenda de citas</span>
               </button>
               <button id="patients-nav-button" class="btn btn-outline-primary" type="button" hidden>
-                <span class="me-2" aria-hidden="true">🐾</span> Pacientes
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                <span>Pacientes</span>
               </button>
               <button id="owners-nav-button" class="btn btn-outline-primary" type="button" hidden>
-                <span class="me-2" aria-hidden="true">👥</span> Propietarios
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Propietarios</span>
               </button>
               <button id="users-nav-button" class="btn btn-outline-primary" type="button" hidden>
-                <span class="me-2" aria-hidden="true">👤</span> Usuarios
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Usuarios</span>
               </button>
               <button id="roles-nav-button" class="btn btn-outline-primary" type="button" hidden>
-                <span class="me-2" aria-hidden="true">🛡️</span> Roles y permisos
+                <svg class="pc-icon pc-nav-icon me-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Roles y permisos</span>
               </button>
             </div>
           </div>
 
-          <div class="pc-sidebar-footer p-3 border-top bg-light">
-            <div class="d-flex align-items-center justify-content-between small text-secondary">
-              <span class="d-flex align-items-center gap-1">
-                <span class="pc-status-dot" aria-hidden="true"></span>
-                <span>Sesión autenticada</span>
-              </span>
-              <span class="pc-data-mono">v1.0</span>
+          <div class="pc-sidebar-art" aria-hidden="true"><span class="pc-sidebar-paw"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="21" rx="7" ry="10" transform="rotate(-25 15 21)"/><ellipse cx="29" cy="12" rx="7" ry="10"/><ellipse cx="44" cy="15" rx="7" ry="10" transform="rotate(18 44 15)"/><ellipse cx="54" cy="29" rx="6" ry="9" transform="rotate(35 54 29)"/><path d="M16 43c1-8 9-16 16-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-15-3-10-13Z"/></svg></span><img src="/assets/img/petcare-companions.webp" alt="" width="480" height="457" loading="lazy"></div>
+          <div class="pc-sidebar-footer p-3 border-top">
+            <div class="pc-sidebar-bottom-nav">
+              <button id="logout-button" class="btn btn-sm pc-sidebar-logout" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H4v16h5M8 12h13m-5-5 5 5-5 5"/></svg>
+                Cerrar sesión
+              </button>
+              <button id="sidebar-notifications-button" class="pc-sidebar-notifications" type="button" disabled aria-label="Notificaciones: próximamente" title="Notificaciones: próximamente">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+              </button>
             </div>
           </div>
         </aside>
 
         <!-- Contenedor Principal (Main Workspace) -->
         <div class="pc-editorial-main flex-grow-1 min-w-0 d-flex flex-column">
-          <!-- Cabecera Superior del Shell -->
-          <header class="pc-shell-header px-2 px-sm-3 px-md-4 py-2 border-bottom d-flex align-items-center justify-content-between gap-2">
-            <div class="d-flex align-items-center gap-2 min-w-0 flex-grow-1">
-              <button id="mobile-nav-toggle" class="btn btn-outline-secondary btn-sm d-lg-none flex-shrink-0" type="button"
-                aria-controls="editorial-offcanvas-nav" aria-expanded="false" aria-label="Abrir menú de navegación">
-                ☰ <span class="d-none d-sm-inline">Menú</span>
-              </button>
-              <div class="min-w-0 flex-grow-1">
-                <p class="text-uppercase text-primary fw-semibold small mb-0 text-truncate" style="font-size: 0.72rem; letter-spacing: 0.05em;" id="header-session-identity">
-                  <span id="header-clinic-name">PetCare Enterprise</span>
-                  <span class="text-secondary opacity-75">·</span>
-                  <span id="header-user-identity" class="text-secondary fw-normal">Sesión autenticada</span>
-                </p>
-                <h1 id="dashboard-title" class="h5 mb-0 text-truncate pc-clinical-heading" tabindex="-1">
-                  Atención Clínica Veterinaria
-                </h1>
-              </div>
-            </div>
-            <div class="d-flex align-items-center gap-2 flex-shrink-0">
-              <span class="badge text-bg-success d-none d-sm-inline-flex align-items-center gap-1" id="session-status-badge">
-                <span class="pc-status-dot" aria-hidden="true"></span>Acceso autenticado
-              </span>
-              <button id="logout-button" class="btn btn-outline-danger btn-sm" type="button">
-                Cerrar sesión
-              </button>
-            </div>
-          </header>
-
           <!-- Cuerpo Operativo del Folio -->
-          <div class="pc-editorial-body flex-grow-1 p-3 p-md-4 overflow-y-auto">
+          <div class="pc-editorial-body flex-grow-1 p-3 p-md-4 overflow-y-auto" role="region" aria-label="Contenido de la clínica" tabindex="0">
+          <h1 id="dashboard-title" class="visually-hidden" tabindex="-1">Atención Clínica Veterinaria</h1>
+          <button id="mobile-nav-toggle" class="btn pc-mobile-menu-launcher d-lg-none" type="button"
+            aria-controls="editorial-offcanvas-nav" aria-expanded="false" aria-label="Abrir menú de navegación">
+            <span aria-hidden="true">☰</span> Menú
+          </button>
+
+
             <!-- Vista Resumen de Sesión / Dashboard inicial (Inicio) -->
             <div id="dashboard-home">
-              <!-- Banner de Bienvenida Operativa -->
-              <div class="card border mb-4 bg-white">
-                <div class="card-body p-3 p-md-4">
-                  <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-                    <div>
-                      <div class="d-flex align-items-center gap-2 mb-1">
-                        <span class="badge text-bg-success-subtle text-success border border-success-subtle">
-                          <span class="pc-status-dot me-1"></span>Sesión autenticada
-                        </span>
-                        <span class="text-secondary small">PetCare Enterprise · Sistema Clínico</span>
+              <div class="pc-home-layout">
+                <div class="pc-home-primary">
+                  <section class="pc-home-hero" aria-labelledby="home-welcome-title">
+                    <div class="pc-home-hero-copy">
+                      <div class="pc-home-eyebrow"><span>PetCare Enterprise</span></div>
+                      <h2 id="home-welcome-title">Bienvenida a la<br><span>atención clínica</span></h2>
+                      <p>Gestiona citas, pacientes, propietarios y su historia clínica desde un solo lugar.</p>
+                      <div id="home-quick-actions" class="pc-home-hero-actions">
+                        <button id="home-new-owner-button" type="button" class="btn pc-home-outline" hidden><span aria-hidden="true">＋</span> Registrar propietario</button>
+                        <button id="home-new-patient-button" type="button" class="btn pc-home-solid" hidden>Registrar paciente <span aria-hidden="true">↗</span></button>
+                        <button id="home-new-appointment-button" type="button" class="btn pc-home-outline" hidden><span aria-hidden="true">＋</span> Nueva cita</button>
                       </div>
-                      <h2 class="h4 mb-1 text-primary pc-clinical-heading">Bienvenida a la atención clínica</h2>
-                      <p class="text-secondary mb-0">
-                        Accede a las operaciones diarias del hospital veterinario según tus permisos asignados.
-                      </p>
                     </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2" id="home-quick-actions">
-                      <button id="home-new-owner-button" type="button" class="btn btn-sm btn-outline-primary" hidden>
-                        + Registrar propietario
-                      </button>
-                      <button id="home-new-patient-button" type="button" class="btn btn-sm btn-primary" hidden>
-                        + Registrar paciente
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div id="patient-notice" class="alert alert-success mt-2 mb-4" role="status" tabindex="-1" hidden></div>
-
-              <!-- Hub de Accesos Rápidos Operativos -->
-              <div class="row g-3 mb-4">
+                    <div class="pc-home-hero-art" aria-hidden="true"><div class="pc-home-art-arch"></div><span class="pc-home-sunburst">✦</span><img src="/assets/img/dashboard-pets-transparent.png" width="1300" height="1200" alt="" fetchpriority="high"></div>
+                  </section>
+                  <div id="patient-notice" class="alert alert-success mt-3" role="status" tabindex="-1" hidden></div>
+                  <section id="home-agenda-metrics" class="pc-home-metrics" aria-label="Citas de hoy según la agenda autorizada" hidden>
+                    <div class="pc-home-metric pc-home-metric-mint"><span class="pc-home-metric-symbol" aria-hidden="true">▦</span><div><span>Citas de hoy</span><strong data-home-count="total">—</strong></div></div>
+                    <div class="pc-home-metric pc-home-metric-gold"><span class="pc-home-metric-symbol" aria-hidden="true">✓</span><div><span>Confirmadas</span><strong data-home-count="confirmed">—</strong></div></div>
+                    <div class="pc-home-metric pc-home-metric-sage"><span class="pc-home-metric-symbol" aria-hidden="true">◷</span><div><span>En espera</span><strong data-home-count="waiting">—</strong></div></div>
+                    <div class="pc-home-metric pc-home-metric-lilac"><span class="pc-home-metric-symbol" aria-hidden="true">▤</span><div><span>Programadas</span><strong data-home-count="scheduled">—</strong></div></div>
+                  </section>
+                  <div class="pc-home-section-title"><h3>Accesos rápidos</h3><span>Todo lo que necesitas, a mano</span></div>
+                  <!-- Hub de Accesos Rápidos Operativos -->
+              <div class="row g-3 mb-0 pc-home-shortcuts">
                 <!-- Tarjeta 1: Agenda de citas -->
-                <div class="col-12 col-sm-6 col-xl-3" id="home-card-appointments">
-                  <div class="card h-100 border p-3 bg-white pc-shortcut-card">
+                <div class="col-12 col-sm-6 col-xxl-3" id="home-card-appointments">
+                  <div class="card h-100 p-3 bg-white pc-shortcut-card">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                      <span class="badge text-bg-light border text-primary fw-semibold">Agenda</span>
-                      <span class="pc-card-icon" aria-hidden="true">📅</span>
+                      <div class="pc-shortcut-icon-wrap" aria-hidden="true">
+                        <svg class="pc-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                      </div>
+                      <span class="pc-shortcut-kicker">Agenda</span>
                     </div>
                     <h3 class="h6 fw-semibold text-primary mb-1">Agenda de citas</h3>
                     <p class="text-secondary small flex-grow-1 mb-3">
-                      Consulta los turnos del día por sede y veterinario, confirma llegadas y reprograma citas.
+                      Turnos del día, confirmación de llegadas y reprogramación.
                     </p>
-                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="home-action-appointments">
-                      Abrir agenda →
+                    <button type="button" class="btn btn-sm pc-shortcut-btn w-100" id="home-action-appointments">
+                      <span>Abrir agenda</span> <span class="pc-arrow" aria-hidden="true">→</span>
                     </button>
                   </div>
                 </div>
 
                 <!-- Tarjeta 2: Padrón de pacientes -->
-                <div class="col-12 col-sm-6 col-xl-3" id="home-card-patients">
-                  <div class="card h-100 border p-3 bg-white pc-shortcut-card">
+                <div class="col-12 col-sm-6 col-xxl-3" id="home-card-patients">
+                  <div class="card h-100 p-3 bg-white pc-shortcut-card">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                      <span class="badge text-bg-light border text-primary fw-semibold">Pacientes</span>
-                      <span class="pc-card-icon" aria-hidden="true">🐾</span>
+                      <div class="pc-shortcut-icon-wrap" aria-hidden="true">
+                        <svg class="pc-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                      </div>
+                      <span class="pc-shortcut-kicker">Pacientes</span>
                     </div>
                     <h3 class="h6 fw-semibold text-primary mb-1">Padrón de pacientes</h3>
                     <p class="text-secondary small flex-grow-1 mb-3">
-                      Búsqueda de pacientes por nombre o documento, historial clínico y diagnósticos previos.
+                      Búsqueda por nombre o DNI, expediente e historia clínica.
                     </p>
-                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="home-action-patients">
-                      Ver pacientes →
+                    <button type="button" class="btn btn-sm pc-shortcut-btn w-100" id="home-action-patients">
+                      <span>Ver pacientes</span> <span class="pc-arrow" aria-hidden="true">→</span>
                     </button>
                   </div>
                 </div>
 
                 <!-- Tarjeta 3: Padrón de propietarios -->
-                <div class="col-12 col-sm-6 col-xl-3" id="home-card-owners">
-                  <div class="card h-100 border p-3 bg-white pc-shortcut-card">
+                <div class="col-12 col-sm-6 col-xxl-3" id="home-card-owners">
+                  <div class="card h-100 p-3 bg-white pc-shortcut-card">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                      <span class="badge text-bg-light border text-primary fw-semibold">Propietarios</span>
-                      <span class="pc-card-icon" aria-hidden="true">👥</span>
+                      <div class="pc-shortcut-icon-wrap" aria-hidden="true">
+                        <svg class="pc-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      </div>
+                      <span class="pc-shortcut-kicker">Propietarios</span>
                     </div>
                     <h3 class="h6 fw-semibold text-primary mb-1">Buscar propietarios</h3>
                     <p class="text-secondary small flex-grow-1 mb-3">
-                      Registro y edición de titulares, información de contacto de emergencia y mascotas vinculadas.
+                      Datos de contacto y pacientes vinculados.
                     </p>
-                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="home-action-owners">
-                      Ver propietarios →
+                    <button type="button" class="btn btn-sm pc-shortcut-btn w-100" id="home-action-owners">
+                      <span>Ver propietarios</span> <span class="pc-arrow" aria-hidden="true">→</span>
                     </button>
                   </div>
                 </div>
 
                 <!-- Tarjeta 4: Personal y accesos -->
-                <div class="col-12 col-sm-6 col-xl-3" id="home-card-users">
-                  <div class="card h-100 border p-3 bg-white pc-shortcut-card">
+                <div class="col-12 col-sm-6 col-xxl-3" id="home-card-users">
+                  <div class="card h-100 p-3 bg-white pc-shortcut-card">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                      <span class="badge text-bg-light border text-primary fw-semibold">Identidad</span>
-                      <span class="pc-card-icon" aria-hidden="true">🛡️</span>
+                      <div class="pc-shortcut-icon-wrap" aria-hidden="true">
+                        <svg class="pc-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      </div>
+                      <span class="pc-shortcut-kicker">Identidad</span>
                     </div>
                     <h3 class="h6 fw-semibold text-primary mb-1">Personal y permisos</h3>
                     <p class="text-secondary small flex-grow-1 mb-3">
-                      Administración de cuentas médicas, asignación a sedes y configuración de permisos RBAC.
+                      Equipo de la clínica, sedes y permisos.
                     </p>
-                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="home-action-users">
-                      Gestionar personal →
+                    <button type="button" class="btn btn-sm pc-shortcut-btn w-100" id="home-action-users">
+                      <span>Gestionar personal</span> <span class="pc-arrow" aria-hidden="true">→</span>
                     </button>
                   </div>
                 </div>
               </div>
 
+              <!-- Gráfico de Actividad de la clínica (HU-034 avance parcial) -->
+              <section id="home-activity-card" class="card bg-white mt-4 pc-home-activity-card" aria-labelledby="home-activity-title" hidden>
+                <div class="pc-home-activity-header">
+                  <div class="min-w-0">
+                    <h3 id="home-activity-title" class="h6 fw-semibold text-primary mb-1">Actividad de la clínica</h3>
+                    <p id="home-activity-subtitle" class="text-secondary small mb-0">Citas por fecha programada · últimos 7 días</p>
+                  </div>
+                  <div class="pc-home-activity-legend" aria-label="Leyenda de series">
+                    <span class="pc-legend-item"><span class="pc-legend-swatch pc-legend-completed" aria-hidden="true"></span>Finalizadas</span>
+                    <span class="pc-legend-item"><span class="pc-legend-swatch pc-legend-other" aria-hidden="true"></span>Otras citas</span>
+                  </div>
+                </div>
+
+                <div id="home-activity-loading" class="pc-home-activity-state text-secondary" role="status">
+                  Consultando actividad de la clínica…
+                </div>
+
+                <div id="home-activity-error" class="pc-home-activity-state pc-home-error" role="alert" hidden>
+                  <p id="home-activity-error-text" class="mb-2"></p>
+                  <button type="button" id="home-activity-retry" class="btn btn-sm btn-outline-primary">Reintentar</button>
+                </div>
+
+                <div id="home-activity-empty" class="pc-home-activity-state text-secondary" hidden>
+                  No se registraron citas en los últimos 7 días.
+                </div>
+
+                <div id="home-activity-body" class="pc-home-activity-body" hidden>
+                  <div id="home-activity-bars" class="pc-home-activity-bars" role="region" aria-label="Gráfico de barras de actividad"></div>
+
+                  <div id="home-activity-selection" class="pc-home-activity-selection" hidden>
+                    <div class="pc-activity-selection-info min-w-0">
+                      <strong id="home-activity-selected-date" class="d-block text-primary"></strong>
+                      <span id="home-activity-selected-counts" class="text-secondary small"></span>
+                    </div>
+                    <button type="button" id="home-activity-open-agenda" class="pc-home-link">
+                      <span id="home-activity-open-agenda-label">Ver agenda del día</span> <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+
+                  <div class="visually-hidden">
+                  <table id="home-activity-table" aria-label="Resumen de actividad de los últimos 7 días">
+                    <caption>Citas programadas por fecha en los últimos 7 días</caption>
+                    <thead>
+                      <tr><th scope="col">Fecha</th><th scope="col">Finalizadas</th><th scope="col">Otras citas</th><th scope="col">Total</th></tr>
+                    </thead>
+                    <tbody id="home-activity-table-body"></tbody>
+                  </table>
+                  </div>
+                </div>
+              </section>
+
               <!-- Bloque Secundario Colapsable: Información Técnica de Autoridades (RBAC) -->
-              <details class="card border bg-white mt-4" id="home-session-details">
+              <details class="card border bg-white mt-4" id="home-session-details" hidden>
                 <summary class="pc-folio-header p-3 d-flex align-items-center justify-content-between text-secondary" style="cursor: pointer; list-style: none;">
                   <span class="d-flex align-items-center gap-2">
                     <span class="small fw-semibold text-primary">Detalles de seguridad y permisos asignados</span>
@@ -350,16 +350,43 @@
                   <div id="authority-list" class="d-flex flex-wrap gap-2" aria-live="polite"></div>
                 </div>
               </details>
+                </div>
+                <aside id="home-day-panel" class="pc-home-rail" aria-label="Actividad de la clínica">
+                  <section id="home-user-profile-card" class="pc-shared-profile" aria-label="Perfil de la sesión" hidden>
+                    <div class="pc-agenda-profile-header"><span id="home-profile-avatar" class="pc-agenda-profile-avatar" aria-hidden="true"></span><div><span class="pc-shared-profile-caption">Mi perfil</span><strong id="home-profile-name"></strong><span id="home-profile-email"></span></div></div>
+                    <div class="pc-agenda-profile-row"><span>Roles</span><strong id="home-profile-roles"></strong></div>
+                    <div class="pc-agenda-profile-row"><span>Clínica</span><strong id="home-profile-clinic"></strong></div>
+                    <div class="pc-agenda-profile-row"><span>Sede</span><strong id="home-profile-branch"></strong></div>
+                  </section>
+                  <section id="home-appointments-panel" class="pc-home-appointments" aria-labelledby="home-agenda-title" hidden>
+                    <div class="pc-home-panel-heading">
+                      <div class="min-w-0">
+                        <h3 id="home-agenda-title">Próximas atenciones</h3>
+                        <p id="home-today-label" class="pc-home-agenda-date"></p>
+                      </div>
+                      <button type="button" id="home-open-agenda" class="pc-home-link">Ver agenda <span aria-hidden="true">→</span></button>
+                    </div>
+                    <div id="home-agenda-loading" class="pc-home-message" role="status">Consultando la agenda…</div>
+                    <div id="home-agenda-error" class="pc-home-message pc-home-error" role="alert" hidden><p id="home-agenda-error-text"></p><button type="button" id="home-agenda-retry" class="btn btn-sm btn-outline-primary">Reintentar</button></div>
+                    <p id="home-agenda-empty" class="pc-home-message" hidden>No hay atenciones pendientes para hoy.</p>
+                    <ol id="home-agenda-list" class="pc-home-agenda-list" hidden></ol>
+                    <p class="pc-home-agenda-note">Fecha por sede · Horas mostradas en Lima</p>
+                  </section>
+                  <section class="pc-home-care-card"><div><span>El centro de tu trabajo</span><h3>Cuidamos su bienestar,<br><em>contigo.</em></h3><p>Una historia conectada.<br>Una atención más cercana.</p></div><img src="/assets/img/petcare-companions.webp" alt="" width="480" height="457" loading="lazy"></section>
+                </aside>
+              </div>
+
             </div>
 
               <!-- Subvista: Usuarios (HU-007) -->
               <section id="users-view" aria-labelledby="users-title" hidden>
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                <div class="pc-module-hero d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
                   <div>
                     <button id="users-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
-                    <h2 id="users-title" class="h2 mb-1" tabindex="-1">Usuarios</h2>
-                    <p class="text-secondary mb-0">Administra el acceso del personal de esta clínica.</p>
+                    <h2 id="users-title" class="pc-module-title" tabindex="-1">Usuarios</h2>
+                    <p class="text-secondary mb-0">Tu equipo, sus roles y accesos. Todo el personal de tu clínica en un solo lugar.</p>
                   </div>
+                  <figure class="pc-module-art" aria-hidden="true"><img src="/assets/img/veterinary-team-cutout.png" alt="" width="720" height="600" loading="lazy"></figure>
                   <button id="new-user-button" class="btn btn-primary align-self-lg-end" type="button" hidden>
                     Registrar usuario
                   </button>
@@ -367,11 +394,23 @@
 
                 <div id="users-notice" class="alert alert-success" role="status" tabindex="-1" hidden></div>
 
-                <form id="user-filters" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search">
+                <div id="users-overview" class="pc-users-overview" aria-label="Resumen de la búsqueda de usuarios" hidden>
+                  <article class="pc-users-metric pc-users-metric-total"><span class="pc-users-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 11v-3a6 6 0 0 0-2-4"/></svg></span><div><span>Usuarios encontrados</span><strong id="users-summary-total">—</strong><small>Total de esta búsqueda</small></div></article>
+                  <article class="pc-users-metric pc-users-metric-active"><span class="pc-users-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg></span><div><span>Acceso activo</span><strong id="users-summary-active">—</strong><small>En esta página</small></div></article>
+                  <article class="pc-users-metric pc-users-metric-inactive"><span class="pc-users-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg></span><div><span>Sin acceso activo</span><strong id="users-summary-inactive">—</strong><small>Inactivos o bloqueados · página</small></div></article>
+                  <article class="pc-users-metric pc-users-metric-branches"><span class="pc-users-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V3h14v18M2 21h20M9 7h2m2 0h2m-6 4h2m2 0h2m-6 4h2m2 0h2"/></svg></span><div><span>Sedes representadas</span><strong id="users-summary-branches">—</strong><small>En esta página</small></div></article>
+                </div>
+
+                <div class="pc-work-region pc-directory-work-region">
+<form id="user-filters" class="row g-3 align-items-end mb-4 p-3 rounded border bg-white pc-filter-card" role="search">
+                  <div class="pc-users-filter-heading"><span class="pc-users-filter-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 4h18l-7 8v7l-4 2v-9Z"/></svg></span><div><h3>Filtros de búsqueda</h3><p>Encuentra al personal por nombre, correo, rol o estado.</p></div>
+                    <div class="pc-users-filter-actions d-flex gap-2"><button class="btn btn-primary" type="submit">Aplicar filtros</button><button id="clear-user-filters" class="btn btn-outline-secondary" type="button">Limpiar</button></div>
+                  </div>
                   <div class="col-12 col-lg-4">
-                    <label for="user-search" class="form-label">Buscar</label>
+                    <label for="user-search" class="form-label">Buscar usuarios</label>
                     <input id="user-search" class="form-control" type="search" maxlength="180"
-                      placeholder="Nombre o correo">
+                      placeholder="Nombre o correo" aria-describedby="user-search-help">
+                    <div id="user-search-help" class="form-text">Opcional. Busca por nombre o correo electrónico.</div>
                   </div>
                   <div class="col-12 col-sm-6 col-lg-2">
                     <label for="user-role-filter" class="form-label">Rol</label>
@@ -403,12 +442,12 @@
                       <option value="desc">Descendente</option>
                     </select>
                   </div>
-                  <div class="col-12 d-flex flex-wrap gap-2">
-                    <button class="btn btn-primary" type="submit">Aplicar filtros</button>
-                    <button id="clear-user-filters" class="btn btn-outline-secondary" type="button">Limpiar</button>
-                  </div>
                 </form>
 
+                <div id="users-initial" class="pc-empty-state p-3 mb-3" role="status">
+                  <h3 class="h6">Busca al personal de tu clínica</h3>
+                  <p class="mb-0 text-secondary">Aplica los filtros para consultar usuarios. Puedes buscar sin filtros para ver el directorio completo.</p>
+                </div>
                 <div id="users-loading" class="text-center py-5" role="status" hidden>
                   <div class="spinner-border text-primary" aria-hidden="true"></div>
                   <p class="mt-2 mb-0">Cargando usuarios…</p>
@@ -424,6 +463,7 @@
                 </div>
 
                 <div id="users-content" hidden>
+                  <div class="pc-users-results-heading"><div><span class="pc-users-section-label">DIRECTORIO DEL EQUIPO</span><h3>Personal de la clínica</h3></div><span id="users-result-count" role="status"></span></div>
                   <div class="table-responsive d-none d-md-block border rounded">
                     <table class="table table-hover align-middle">
                       <caption class="visually-hidden">Usuarios de la clínica autenticada</caption>
@@ -438,25 +478,34 @@
                     aria-label="Paginación de usuarios">
                     <p id="users-page-status" class="small text-secondary mb-0" aria-live="polite"></p>
                     <div class="btn-group">
-                      <button id="users-previous-page" class="btn btn-outline-primary" type="button">Anterior</button>
-                      <button id="users-next-page" class="btn btn-outline-primary" type="button">Siguiente</button>
+                      <button id="users-previous-page" class="btn btn-outline-primary pc-directory-page-arrow" type="button" aria-label="Página anterior" title="Página anterior">‹</button>
+                      <button id="users-next-page" class="btn btn-outline-primary pc-directory-page-arrow" type="button" aria-label="Página siguiente" title="Página siguiente">›</button>
                     </div>
                   </nav>
                 </div>
+</div>
               </section>
 
               <!-- Subvista: Roles y Permisos (HU-008) -->
               <section id="roles-view" aria-labelledby="roles-title" hidden>
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                <div class="pc-role-page-heading pc-directory-role-hero">
                   <div>
                     <button id="roles-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
-                    <h2 id="roles-title" class="h2 mb-1" tabindex="-1">Roles y permisos</h2>
-                    <p class="text-secondary mb-0">Configura las autoridades de los roles de esta clínica.</p>
+                    <h2 id="roles-title" class="pc-module-title" tabindex="-1">Roles y permisos</h2>
+                    <p class="text-secondary mb-0">Consulta las funciones y permisos de cada rol.</p>
                   </div>
-                  <button id="assign-user-roles-button" class="btn btn-primary align-self-lg-end" type="button" hidden>
+                  <figure class="pc-module-art" aria-hidden="true"><img src="/assets/img/veterinary-team-cutout.png" alt="" width="720" height="600" loading="lazy"></figure>
+                  <div class="pc-role-page-tools">
+                    <button id="assign-user-roles-button" class="btn btn-outline-primary" type="button" hidden>
                     Asignar roles a usuario
-                  </button>
+                    </button>
+                  </div>
                 </div>
+                <div id="roles-summary" class="pc-role-summary" role="status" hidden>
+                  <div><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 11v-3a6 6 0 0 0-2-4"/></svg></span><span><strong id="roles-total">0</strong><small>Roles en tu clínica</small></span></div>
+                  <div title="Suma de asignaciones entre roles; un permiso puede aparecer en varios."><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5"/><path d="m12 12 9 9m-5-5 3-3m-1 5 3-3M6.5 7h.01"/></svg></span><span><strong id="roles-permissions-total">0</strong><small>Asignaciones de permisos</small></span></div>
+                </div>
+                <h3 class="pc-roles-section-title">Roles de tu clínica</h3>
                 <div id="roles-notice" class="alert alert-success" role="status" tabindex="-1" hidden></div>
                 <div id="roles-loading" class="text-center py-5" role="status" hidden>
                   <div class="spinner-border text-primary" aria-hidden="true"></div><p class="mt-2 mb-0">Cargando roles…</p>
@@ -472,26 +521,42 @@
 
               <!-- Subvista: Propietarios y Pacientes (HU-009 / HU-010 / HU-011) -->
               <section id="owners-view" aria-labelledby="owners-title" hidden>
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
-                  <div>
+                <div class="pc-owner-search-hero d-flex flex-column flex-lg-row justify-content-between gap-3">
+                  <div class="pc-owner-hero-copy">
                     <button id="owners-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
-                    <h2 id="owners-title" class="h2 mb-1" tabindex="-1">Buscar propietarios</h2>
+                    <h2 id="owners-title" class="pc-module-title" tabindex="-1">Buscar propietarios</h2>
                     <p class="text-secondary mb-0">Busca por nombre, documento o teléfono dentro de la clínica.</p>
                   </div>
-                  <div class="d-flex flex-wrap gap-2 align-self-lg-end">
+                  <div class="pc-owner-hero-actions d-flex flex-wrap gap-2 align-self-lg-end">
                     <button id="new-patient-button" class="btn btn-outline-primary" type="button" hidden>Nuevo paciente</button>
                     <button id="new-owner-button" class="btn btn-primary" type="button" hidden>Nuevo propietario</button>
                   </div>
+                  <div class="pc-owner-hero-art" aria-hidden="true"><span></span><img src="/assets/img/petcare-companions.webp" alt="" width="480" height="457"></div>
                 </div>
 
-                <form id="owner-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" novalidate>
-                  <div class="col-12 col-md-5">
-                    <label class="form-label" for="owner-search">Buscar propietario</label>
-                    <input id="owner-search" class="form-control" type="search" minlength="2" maxlength="100"
-                      required placeholder="Nombre, documento o teléfono" aria-describedby="owner-search-feedback">
-                    <div id="owner-search-feedback" class="invalid-feedback">Ingresa al menos 2 caracteres para buscar.</div>
+                <div id="owners-overview" class="pc-owners-overview" aria-label="Resumen de la búsqueda de propietarios">
+                  <article class="pc-owners-metric pc-owners-metric-total"><span class="pc-owners-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 11v-3a6 6 0 0 0-2-4"/></svg></span><div><span>Propietarios encontrados</span><strong id="owners-summary-total">—</strong><small>Total de esta búsqueda</small></div></article>
+                  <article class="pc-owners-metric"><span class="pc-owners-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3h4l2 5-3 2a13 13 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2A18 18 0 0 1 3 5a2 2 0 0 1 2-2Z"/></svg></span><div><span>Con teléfono</span><strong id="owners-summary-phone">—</strong><small>En esta página</small></div></article>
+                  <article class="pc-owners-metric pc-owners-metric-email"><span class="pc-owners-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 6 9 7 9-7"/></svg></span><div><span>Con correo</span><strong id="owners-summary-email">—</strong><small>En esta página</small></div></article>
+                  <article class="pc-owners-metric pc-owners-metric-document"><span class="pc-owners-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8" cy="10" r="2"/><path d="M5 16v-1a3 3 0 0 1 6 0v1m3-7h4m-4 4h4"/></svg></span><div><span>Con documento</span><strong id="owners-summary-document">—</strong><small>En esta página</small></div></article>
+                </div>
+
+                <div class="pc-work-region pc-directory-work-region">
+<form id="owner-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-white pc-filter-card" role="search" novalidate>
+                  <div class="pc-owner-search-band"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></span><h3>Buscar propietario</h3>
+                    <div class="pc-owner-search-actions d-flex gap-2">
+                      <button id="owner-search-submit" class="btn btn-primary" type="submit">Buscar</button>
+                      <button id="clear-owner-search" class="btn btn-outline-secondary" type="button">Limpiar</button>
+                    </div>
                   </div>
-                  <div class="col-6 col-md-3">
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label" for="owner-search">Nombre, documento o teléfono</label>
+                    <input id="owner-search" class="form-control" type="search" minlength="2" maxlength="100"
+                      placeholder="Nombre, documento o teléfono" aria-describedby="owner-search-help owner-search-feedback">
+                    <div id="owner-search-help" class="form-text">Vacío para ver todos, o mínimo 2 caracteres para filtrar.</div>
+                    <div id="owner-search-feedback" class="invalid-feedback">Ingresa al menos 2 caracteres o deja el campo vacío para ver todos.</div>
+                  </div>
+                  <div class="col-6 col-lg-3">
                     <label class="form-label" for="owner-sort">Ordenar por</label>
                     <select id="owner-sort" class="form-select" aria-label="Ordenar propietarios">
                       <option value="name">Nombre</option>
@@ -499,18 +564,20 @@
                       <option value="phone">Teléfono</option>
                     </select>
                   </div>
-                  <div class="col-6 col-md-2">
+                  <div class="col-6 col-lg-3">
                     <label class="form-label" for="owner-direction">Dirección</label>
                     <select id="owner-direction" class="form-select" aria-label="Dirección de orden">
                       <option value="asc">Ascendente</option>
                       <option value="desc">Descendente</option>
                     </select>
                   </div>
-                  <div class="col-12 col-md-2">
-                    <button class="btn btn-primary w-100" type="submit">Buscar</button>
-                  </div>
                 </form>
 
+                <div id="owners-initial" class="pc-empty-state pc-owner-initial mb-3" role="status">
+                  <span class="pc-owner-initial-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="21" cy="21" r="12"/><path d="m30 30 10 10"/><path d="M16 21h10m-5-5v10"/></svg></span>
+                  <div><h3>Encuentra a un propietario de tu clínica</h3>
+                  <p>Pulsa Buscar sin filtros para ver todos, o escribe al menos dos caracteres de su nombre, documento o teléfono.</p></div>
+                </div>
                 <div id="owner-notice" class="alert alert-success mb-3" role="status" tabindex="-1" hidden>
                   Datos del propietario actualizados correctamente.
                 </div>
@@ -527,12 +594,13 @@
                   <button id="retry-owners" class="btn btn-outline-danger mt-3" type="button">Reintentar</button>
                 </div>
                 <div id="owners-content" hidden>
+                  <div class="pc-owner-results-band"><div><span class="pc-owner-section-label">DIRECTORIO DE PROPIETARIOS</span><h3>Personas que confían en tu clínica</h3></div><span id="owners-result-count" role="status"></span></div>
                   <div id="owners-cards" class="row g-3 d-md-none"></div>
                   <div class="table-responsive d-none d-md-block border rounded">
                     <table class="table table-hover align-middle">
                       <caption class="visually-hidden">Propietarios encontrados</caption>
                       <thead>
-                        <tr><th>Propietario</th><th>Documento</th><th>Teléfono</th><th class="text-end">Acciones</th></tr>
+                        <tr><th>Propietario</th><th>Documento</th><th>Teléfono</th><th>Correo</th><th class="text-end">Acciones</th></tr>
                       </thead>
                       <tbody id="owners-table-body"></tbody>
                     </table>
@@ -544,24 +612,34 @@
                     <button id="owners-next-page" class="btn btn-outline-secondary" type="button">Siguiente</button>
                   </nav>
                 </div>
+</div>
               </section>
 
               <!-- Subvista: Búsqueda de Pacientes (HU-012) -->
               <section id="patients-view" aria-labelledby="patients-title" hidden>
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
+                <div class="pc-patient-directory-layout">
+                <div class="pc-patient-directory-main">
+                <div class="pc-patient-search-hero d-flex flex-column flex-lg-row justify-content-between gap-3">
                   <div>
                     <button id="patients-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
-                    <h2 id="patients-title" class="h2 mb-1" tabindex="-1">Buscar pacientes</h2>
+                    <h2 id="patients-title" class="pc-module-title" tabindex="-1">Buscar pacientes</h2>
                     <p class="text-secondary mb-0">Consulta el padrón clínico por mascota, propietario, documento o microchip.</p>
-                  </div>
-                  <div class="d-flex flex-wrap gap-2 align-self-lg-end">
                     <button id="patients-new-patient-button" class="btn btn-primary" type="button" hidden>Nuevo paciente</button>
                   </div>
+                <div class="pc-patient-search-art" aria-hidden="true"><span></span><img src="/assets/img/profile-companions.webp" alt="" width="480" height="457"></div>
                 </div>
 
-                <form id="patient-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search" novalidate>
+                <div class="pc-work-region pc-directory-work-region">
+                <div class="pc-patient-directory-metrics" aria-label="Resumen de la búsqueda de pacientes">
+                  <article><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="5" cy="8" rx="2" ry="3"/><ellipse cx="10" cy="5" rx="2" ry="3"/><ellipse cx="16" cy="5" rx="2" ry="3"/><ellipse cx="21" cy="9" rx="2" ry="3"/><path d="M6 17c0-4 4-7 7-7s7 4 7 7-3 4-7 2c-4 2-7 1-7-2Z"/></svg></span><div>Pacientes encontrados<strong id="patient-metric-total">—</strong><small>Total de esta búsqueda</small></div></article>
+                  <article><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg></span><div>Activos<strong id="patient-metric-active">—</strong><small>En esta página</small></div></article>
+                  <article><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg></span><div>Otros estados<strong id="patient-metric-other">—</strong><small>En esta página</small></div></article>
+                  <article><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4M9 9h6v6H9z"/></svg></span><div>Con microchip<strong id="patient-metric-chip">—</strong><small>En esta página</small></div></article>
+                </div>
+<form id="patient-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-white pc-filter-card" role="search" novalidate>
+                  <div class="pc-patient-search-band"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></span><h3>Búsqueda clínica</h3></div>
                   <div class="col-12 col-lg-4">
-                    <label class="form-label" for="patient-search-query">Búsqueda clínica</label>
+                    <label class="form-label" for="patient-search-query">Buscar pacientes</label>
                     <input id="patient-search-query" class="form-control" type="search" maxlength="100"
                       placeholder="Mascota, propietario, documento o microchip"
                       aria-describedby="patient-search-query-help patient-search-query-feedback">
@@ -615,7 +693,7 @@
 
                 <div id="patients-initial" class="pc-empty-state py-4 px-3 mb-3 text-center" role="status">
                   <h3 class="h5 mb-1">Consulta de pacientes de la clínica</h3>
-                  <p class="text-secondary mb-0">Ingresa el nombre de la mascota, propietario, documento o microchip, o aplica filtros por especie y estado.</p>
+                  <p class="text-secondary mb-0">Pulsa «Buscar pacientes» sin filtros para ver los registros de tu clínica, o busca por mascota, propietario, documento o microchip.</p>
                 </div>
 
                 <div id="patients-validation" class="alert alert-danger" role="alert" tabindex="-1" hidden>
@@ -644,6 +722,7 @@
                 </div>
 
                 <div id="patients-content" hidden>
+                  <div class="pc-patient-results-band"><div><span class="pc-module-kicker">DIRECTORIO CLÍNICO</span><h3>Pacientes de tu clínica</h3></div><span id="patients-result-count" role="status" aria-live="polite"></span></div>
                   <div class="table-responsive d-none d-md-block border rounded">
                     <table class="table table-hover align-middle">
                       <caption class="visually-hidden">Pacientes registrados en la clínica autenticada</caption>
@@ -667,28 +746,63 @@
                   aria-label="Paginación de pacientes">
                   <p id="patients-page-status" class="small text-secondary mb-0" role="status" aria-live="polite">Sin resultados</p>
                   <div class="btn-group">
-                    <button id="patients-previous-page" class="btn btn-outline-secondary" type="button" disabled>Anterior</button>
-                    <button id="patients-next-page" class="btn btn-outline-secondary" type="button" disabled>Siguiente</button>
+                    <button id="patients-previous-page" class="btn btn-outline-secondary pc-patient-page-arrow" type="button" aria-label="Página anterior" title="Página anterior" disabled><span aria-hidden="true">‹</span></button>
+                    <button id="patients-next-page" class="btn btn-outline-secondary pc-patient-page-arrow" type="button" aria-label="Página siguiente" title="Página siguiente" disabled><span aria-hidden="true">›</span></button>
                   </div>
                 </nav>
+</div>
+                </div>
+                <aside class="pc-context-column pc-patient-directory-rail" aria-label="Perfil y ayuda de búsqueda">
+                  <section class="pc-patient-search-tips" aria-labelledby="patient-tips-title">
+                    <h3 id="patient-tips-title">Consejos de búsqueda</h3>
+                    <ul>
+                      <li>Busca por mascota, propietario, documento o microchip.</li>
+                      <li>Acota los resultados por especie o estado.</li>
+                      <li>Ordena el listado según la información que necesites.</li>
+                      <li>Abre «Ver perfil» para consultar la información disponible del paciente.</li>
+                    </ul>
+                  </section>
+                </aside>
+                </div>
               </section>
 
               <section id="patient-profile-view" class="mt-4" aria-labelledby="patient-profile-title" hidden>
-                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4 pb-3 border-bottom">
-                  <div>
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-                      <p class="pc-kicker mb-0">Expediente clínico del paciente</p>
-                      <span id="patient-profile-status-badge" class="badge text-bg-light border">Estado</span>
+
+                <div class="pc-patient-profile-hero d-flex flex-column flex-md-row flex-wrap align-items-md-center justify-content-between gap-3">
+                  <button id="patient-profile-back-button" class="btn btn-link text-decoration-none px-2 text-secondary" type="button">
+                    ← Volver a resultados
+                  </button>
+                  <div class="d-flex align-items-center gap-3">
+                    <div id="patient-profile-species-avatar" class="pc-species-avatar flex-shrink-0" aria-hidden="true">
+                      <svg class="pc-species-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="11" cy="4" r="2"/>
+                        <circle cx="18" cy="8" r="2"/>
+                        <circle cx="20" cy="16" r="2"/>
+                        <path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 20.42A3.5 3.5 0 0 1 2 15a5 5 0 0 1 7-5Z"/>
+                      </svg>
                     </div>
-                    <h2 id="patient-profile-title" class="h4 mb-1" tabindex="-1">Perfil del paciente</h2>
-                    <p id="patient-profile-subtitle" class="text-secondary mb-0">Ficha de identificación, propietario e historia clínica base.</p>
+                    <div>
+                      <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                        <h2 id="patient-profile-title" class="pc-module-title pc-clinical-heading" tabindex="-1">Perfil del paciente</h2>
+                        <span id="patient-profile-status-badge" class="badge text-bg-light border">Estado</span>
+                      </div>
+                      <div id="patient-profile-subtitle" class="d-flex flex-wrap align-items-center gap-2 text-secondary small">
+                        <!-- Especie, sexo y edad como datos secundarios bien separados -->
+                      </div>
+                    </div>
                   </div>
-                  <div class="d-flex flex-wrap gap-2">
-                    <button id="patient-profile-edit-button" class="btn btn-primary" type="button" hidden>Editar paciente</button>
-                    <button id="patient-profile-new-consultation-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva consulta</button>
-                    <button id="patient-profile-new-appointment-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>Nueva cita</button>
-                    <button id="patient-profile-back-button" class="btn btn-outline-secondary" type="button">Volver a resultados</button>
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button id="patient-profile-new-appointment-button" class="btn btn-primary" type="button" disabled aria-disabled="true" hidden>
+                      + Nueva cita
+                    </button>
+                    <button id="patient-profile-edit-button" class="btn btn-outline-primary" type="button" hidden>
+                      Editar paciente
+                    </button>
+                    <button id="patient-profile-new-consultation-button" class="btn btn-outline-secondary" type="button" disabled aria-disabled="true" hidden>
+                      Nueva consulta
+                    </button>
                   </div>
+                <div class="pc-patient-profile-art" aria-hidden="true"><img src="/assets/img/profile-companions.webp" alt="" width="480" height="457"></div>
                 </div>
 
                 <div id="patient-profile-notice" class="alert alert-success mb-3" role="status" tabindex="-1" hidden>
@@ -716,13 +830,21 @@
                 </div>
 
                 <div id="patient-profile-content" hidden>
-                  <div id="patient-profile-medical-alerts-banner" class="alert alert-danger mb-4" role="alert" hidden>
-                    <h3 class="h6 fw-bold mb-2">● Alertas médicas y alergias registradas</h3>
-                    <div id="patient-profile-allergies-row" class="mb-1" hidden>
-                      <span class="fw-semibold">Alergias:</span> <span id="patient-profile-allergies-value"></span>
+                  <!-- Alertas Médicas y Clínicas Críticas (Compactas y visibles en todo el recorrido) -->
+                  <div id="patient-profile-medical-alerts-banner" class="alert alert-danger mb-4 p-3 pc-alerts-banner" role="alert" hidden>
+                    <div class="d-flex align-items-center gap-2 mb-2 pb-1 border-bottom border-danger-subtle">
+                      <svg class="pc-icon text-danger flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      <strong class="small text-uppercase tracking-wide text-danger mb-0">Alertas clínicas y precauciones</strong>
                     </div>
-                    <div id="patient-profile-alerts-row" class="mb-0" hidden>
-                      <span class="fw-semibold">Alertas médicas:</span> <span id="patient-profile-alerts-value"></span>
+                    <div class="d-grid gap-2">
+                      <div id="patient-profile-allergies-row" class="small d-flex align-items-baseline gap-2" hidden>
+                        <span class="fw-semibold pc-badge-tag-allergy flex-shrink-0">Alergias</span>
+                        <span id="patient-profile-allergies-value" class="text-dark"></span>
+                      </div>
+                      <div id="patient-profile-alerts-row" class="small d-flex align-items-baseline gap-2" hidden>
+                        <span class="fw-semibold pc-badge-tag-warning flex-shrink-0">Alertas médicas</span>
+                        <span id="patient-profile-alerts-value" class="text-dark"></span>
+                      </div>
                     </div>
                   </div>
 
@@ -730,160 +852,135 @@
                     Sin alergias ni alertas médicas críticas registradas en la historia clínica base.
                   </div>
 
-                  <div class="row g-3 mb-4">
-                    <div class="col-12 col-lg-6">
-                      <div class="card border h-100">
+                  <!-- Composición Editorial: Contenido clínico (col-lg-8) y Datos de identificación/propietario (col-lg-4) -->
+                  <div class="row g-4 align-items-start pc-context-layout pc-profile-zones">
+                    <!-- Columna clínica principal (8 cols escritorio / orden 1 móvil) -->
+                    <div class="col-12 col-lg-8 order-1 pc-work-region">
+                      <!-- Historia clínica cronológica (HU-025) -->
+                      <div class="card border mb-4">
+                        <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                          <div class="d-flex align-items-center gap-2">
+                            <h3 class="h6 mb-0 fw-semibold">Historia clínica</h3>
+                            <span id="patient-profile-history-count" class="badge text-bg-light border pc-data-mono"></span>
+                          </div>
+                        </div>
+                        <div class="card-body">
+                          <!-- Estado de carga -->
+                          <div id="patient-profile-history-loading" class="text-center py-4 text-secondary small" role="status" aria-live="polite" hidden>
+                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            Cargando historia clínica…
+                          </div>
+
+                          <!-- Permiso insuficiente -->
+                          <div id="patient-profile-history-forbidden" class="alert alert-warning py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
+                            <strong>▲ Permiso insuficiente:</strong> Tu rol actual no cuenta con la autoridad <code>CONSULTATION_READ</code> para consultar la historia clínica de este paciente.
+                          </div>
+
+                          <!-- Estado de error accesible con correlation ID y reintento -->
+                          <div id="patient-profile-history-error" class="alert alert-danger py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
+                            <p class="fw-semibold mb-1">● No fue posible consultar la historia clínica</p>
+                            <div id="patient-profile-history-error-message"></div>
+                            <div id="patient-profile-history-error-correlation" class="pc-data-mono text-secondary small mt-1" hidden></div>
+                            <button id="patient-profile-history-retry" class="btn btn-sm btn-outline-danger mt-2" type="button">Reintentar</button>
+                          </div>
+
+                          <!-- Estado vacío -->
+                          <div id="patient-profile-history-empty" class="pc-empty-state py-4 px-3 text-center small text-secondary" role="status" hidden>
+                            Sin consultas registradas.
+                          </div>
+
+                          <!-- Listado de consultas cronológicas -->
+                          <div id="patient-profile-history-list" class="d-grid gap-3" hidden></div>
+
+                          <!-- Paginación -->
+                          <nav id="patient-profile-history-pagination" class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-3 pt-3 border-top" aria-label="Paginación de historia clínica" hidden>
+                            <p id="patient-profile-history-page-info" class="small text-secondary mb-0" role="status" aria-live="polite"></p>
+                            <div class="btn-group">
+                              <button id="patient-profile-history-prev" class="btn btn-sm btn-outline-secondary pc-history-page-arrow" type="button" aria-label="Página anterior" title="Página anterior" disabled><span aria-hidden="true">‹</span></button>
+                              <button id="patient-profile-history-next" class="btn btn-sm btn-outline-secondary pc-history-page-arrow" type="button" aria-label="Página siguiente" title="Página siguiente" disabled><span aria-hidden="true">›</span></button>
+                            </div>
+                          </nav>
+
+                          <!-- Contenedor oculto para compatibilidad de elementos legados -->
+                          <div id="patient-profile-diagnoses-compatibility" hidden>
+                            <div id="patient-profile-diagnoses-loading" hidden></div>
+                            <div id="patient-profile-diagnoses-error" hidden>
+                              <div id="patient-profile-diagnoses-error-message"></div>
+                              <div id="patient-profile-diagnoses-error-correlation" hidden></div>
+                              <button id="patient-profile-diagnoses-retry" type="button">Reintentar</button>
+                            </div>
+                            <p id="patient-profile-consultations-empty" hidden></p>
+                            <div id="patient-profile-diagnoses-list" hidden></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Columna lateral: Ficha de identificación y datos del propietario (4 cols escritorio / orden 2 móvil) -->
+                    <div class="col-12 col-lg-4 order-2 pc-context-column" role="complementary" aria-label="Identificación y propietario"><h3 class="pc-zone-title">Datos de referencia</h3>
+                      <!-- Ficha de identificación -->
+                      <div class="card border mb-4">
                         <div class="pc-folio-header">
                           <h3 class="h6 mb-0 fw-semibold">Ficha de identificación</h3>
                         </div>
                         <div class="card-body">
                           <dl id="patient-profile-identification" class="row mb-0 gy-2 small">
-                            <dt class="col-5 text-secondary">Nombre</dt>
+                            <dt class="col-5 text-secondary fw-normal">Nombre</dt>
                             <dd id="patient-profile-name" class="col-7 fw-semibold mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Especie</dt>
+                            <dt class="col-5 text-secondary fw-normal">Especie</dt>
                             <dd id="patient-profile-species" class="col-7 mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Raza</dt>
+                            <dt class="col-5 text-secondary fw-normal">Raza</dt>
                             <dd id="patient-profile-breed" class="col-7 mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Sexo</dt>
+                            <dt class="col-5 text-secondary fw-normal">Sexo</dt>
                             <dd id="patient-profile-sex" class="col-7 mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Nacimiento</dt>
+                            <dt class="col-5 text-secondary fw-normal">Nacimiento</dt>
                             <dd id="patient-profile-birth-date" class="col-7 pc-data-mono mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Color</dt>
+                            <dt class="col-5 text-secondary fw-normal">Color</dt>
                             <dd id="patient-profile-color" class="col-7 mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Microchip</dt>
+                            <dt class="col-5 text-secondary fw-normal">Microchip</dt>
                             <dd id="patient-profile-microchip" class="col-7 pc-data-mono mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Esterilizado</dt>
+                            <dt class="col-5 text-secondary fw-normal">Esterilizado</dt>
                             <dd id="patient-profile-sterilized" class="col-7 mb-0">-</dd>
                           </dl>
                         </div>
                       </div>
-                    </div>
 
-                    <div class="col-12 col-lg-6">
-                      <div class="card border h-100">
+                      <!-- Datos del propietario -->
+                      <div class="card border mb-4">
                         <div class="pc-folio-header">
                           <h3 class="h6 mb-0 fw-semibold">Datos del propietario</h3>
                         </div>
                         <div class="card-body">
                           <dl id="patient-profile-owner" class="row mb-0 gy-2 small">
-                            <dt class="col-5 text-secondary">Nombre completo</dt>
+                            <dt class="col-5 text-secondary fw-normal">Nombre</dt>
                             <dd id="patient-profile-owner-name" class="col-7 fw-semibold mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Documento</dt>
+                            <dt class="col-5 text-secondary fw-normal">Documento</dt>
                             <dd id="patient-profile-owner-document" class="col-7 pc-data-mono mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Teléfono</dt>
+                            <dt class="col-5 text-secondary fw-normal">Teléfono</dt>
                             <dd id="patient-profile-owner-phone" class="col-7 pc-data-mono mb-0">-</dd>
-                            <dt class="col-5 text-secondary">Correo electrónico</dt>
-                            <dd id="patient-profile-owner-email" class="col-7 mb-0">-</dd>
+                            <dt class="col-5 text-secondary fw-normal">Correo</dt>
+                            <dd id="patient-profile-owner-email" class="col-7 mb-0 text-break">-</dd>
                           </dl>
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div class="card border mb-4">
-                    <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                      <h3 class="h6 mb-0 fw-semibold">Historia clínica base</h3>
-                      <span id="patient-profile-record-meta" class="small text-secondary pc-data-mono"></span>
-                    </div>
-                    <div class="card-body small">
-                      <p class="text-secondary fw-semibold mb-1">Antecedentes generales</p>
-                      <p id="patient-profile-record-history" class="mb-0">Sin antecedentes clínicos registrados.</p>
-                    </div>
-                  </div>
-
-                  <!-- Historia clínica cronológica (HU-025) -->
-                  <div class="card border mb-4">
-                    <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                      <div class="d-flex align-items-center gap-2">
-                        <h3 class="h6 mb-0 fw-semibold">Historia clínica</h3>
-                        <span id="patient-profile-history-count" class="badge text-bg-light border pc-data-mono"></span>
-                      </div>
-                    </div>
-                    <div class="card-body">
-                      <!-- Estado de carga -->
-                      <div id="patient-profile-history-loading" class="text-center py-4 text-secondary small" role="status" aria-live="polite" hidden>
-                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                        Cargando historia clínica…
-                      </div>
-
-                      <!-- Permiso insuficiente -->
-                      <div id="patient-profile-history-forbidden" class="alert alert-warning py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
-                        <strong>▲ Permiso insuficiente:</strong> Tu rol actual no cuenta con la autoridad <code>CONSULTATION_READ</code> para consultar la historia clínica de este paciente.
-                      </div>
-
-                      <!-- Estado de error accesible con correlation ID y reintento -->
-                      <div id="patient-profile-history-error" class="alert alert-danger py-2 px-3 small mb-0" role="alert" tabindex="-1" hidden>
-                        <p class="fw-semibold mb-1">● No fue posible consultar la historia clínica</p>
-                        <div id="patient-profile-history-error-message"></div>
-                        <div id="patient-profile-history-error-correlation" class="pc-data-mono text-secondary small mt-1" hidden></div>
-                        <button id="patient-profile-history-retry" class="btn btn-sm btn-outline-danger mt-2" type="button">Reintentar</button>
-                      </div>
-
-                      <!-- Estado vacío -->
-                      <div id="patient-profile-history-empty" class="pc-empty-state py-4 px-3 text-center small text-secondary" role="status" hidden>
-                        Sin consultas registradas.
-                      </div>
-
-                      <!-- Listado de consultas cronológicas -->
-                      <div id="patient-profile-history-list" class="d-grid gap-3" hidden></div>
-
-                      <!-- Paginación -->
-                      <nav id="patient-profile-history-pagination" class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-3 pt-3 border-top" aria-label="Paginación de historia clínica" hidden>
-                        <p id="patient-profile-history-page-info" class="small text-secondary mb-0" role="status" aria-live="polite"></p>
-                        <div class="btn-group">
-                          <button id="patient-profile-history-prev" class="btn btn-sm btn-outline-secondary" type="button" disabled>Anterior</button>
-                          <button id="patient-profile-history-next" class="btn btn-sm btn-outline-secondary" type="button" disabled>Siguiente</button>
+                      <!-- Historia clínica base y antecedentes generales -->
+                      <div class="card border mb-4">
+                        <div class="pc-folio-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                          <h3 class="h6 mb-0 fw-semibold">Antecedentes generales</h3>
+                          <span id="patient-profile-record-meta" class="small text-secondary pc-data-mono"></span>
                         </div>
-                      </nav>
-
-                      <!-- Contenedor oculto para compatibilidad de elementos legados -->
-                      <div id="patient-profile-diagnoses-compatibility" hidden>
-                        <div id="patient-profile-diagnoses-loading" hidden></div>
-                        <div id="patient-profile-diagnoses-error" hidden>
-                          <div id="patient-profile-diagnoses-error-message"></div>
-                          <div id="patient-profile-diagnoses-error-correlation" hidden></div>
-                          <button id="patient-profile-diagnoses-retry" type="button">Reintentar</button>
+                        <div class="card-body small">
+                          <p id="patient-profile-record-history" class="mb-0 text-secondary">Sin antecedentes clínicos registrados.</p>
                         </div>
-                        <p id="patient-profile-consultations-empty" hidden></p>
-                        <div id="patient-profile-diagnoses-list" hidden></div>
+
                       </div>
-                    </div>
-                  </div>
 
-                  <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                      <div class="card border h-100">
-                        <div class="pc-folio-header">
-                          <h3 class="h6 mb-0 fw-semibold">Citas programadas e históricas</h3>
-                        </div>
-                        <div class="card-body">
-                          <p id="patient-profile-appointments-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
-                            Sin citas registradas (módulo de agenda y citas pendiente en Sprint 2 — HU-015 / HU-016).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="col-12 col-md-6">
-                      <div class="card border h-100">
-                        <div class="pc-folio-header">
-                          <h3 class="h6 mb-0 fw-semibold">Vacunas</h3>
-                        </div>
-                        <div class="card-body">
-                          <p id="patient-profile-vaccines-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
-                            Sin registros de vacunación en el expediente actual.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="col-12 col-md-6" hidden>
-                      <div class="card border h-100">
-                        <div class="card-body">
-                          <p id="patient-profile-prescriptions-empty" class="pc-empty-state py-3 px-3 mb-0 small text-secondary">
-                            Sin prescripciones emitidas.
-                          </p>
-                        </div>
+                      <!-- Contenedor oculto de compatibilidad con módulos no habilitados -->
+                      <div hidden>
+                        <p id="patient-profile-appointments-empty"></p>
+                        <p id="patient-profile-vaccines-empty"></p>
+                        <p id="patient-profile-prescriptions-empty"></p>
                       </div>
                     </div>
                   </div>
@@ -892,26 +989,25 @@
 
               <!-- Subvista: Agenda de citas (HU-015) -->
               <section id="appointments-view" aria-labelledby="appointments-title" hidden>
-                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4 pb-3 border-bottom">
-                  <div>
-                    <button id="appointments-back-button" class="btn btn-link px-0 mb-1" type="button">← Volver al dashboard</button>
-                    <h2 id="appointments-title" class="h2 mb-1" tabindex="-1">Agenda de citas</h2>
-                    <p class="text-secondary mb-0">Consulta cronológica de citas programadas por fecha, sede y profesional veterinario.</p>
+                <div class="pc-agenda-workspace">
+<div class="pc-work-region">
+                <div class="pc-agenda-hero">
+                  <div class="pc-agenda-hero-copy">
+                    <button id="appointments-back-button" class="btn btn-link px-0" type="button">← Volver al dashboard</button>
+                    <h2 id="appointments-title" class="pc-module-title" tabindex="-1">Agenda de citas</h2>
+                    <p>Consulta cronológica de citas por fecha, sede y profesional veterinario.</p>
+                    <button id="new-appointment-view-button" class="btn pc-agenda-create" type="button" disabled hidden aria-disabled="true">+ Nueva cita</button>
                   </div>
-                  <div class="d-flex flex-wrap gap-2 align-self-lg-end">
-                    <button id="new-appointment-view-button" class="btn btn-primary btn-sm" type="button" disabled hidden aria-disabled="true">
-                      Nueva cita
-                    </button>
-                  </div>
+                  <div class="pc-agenda-hero-art" aria-hidden="true"><span></span><i class="pc-agenda-paw pc-agenda-paw-one"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="21" rx="7" ry="10" transform="rotate(-25 15 21)"/><ellipse cx="29" cy="12" rx="7" ry="10"/><ellipse cx="44" cy="15" rx="7" ry="10" transform="rotate(18 44 15)"/><ellipse cx="54" cy="29" rx="6" ry="9" transform="rotate(35 54 29)"/><path d="M16 43c1-8 9-16 16-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-15-3-10-13Z"/></svg></i><i class="pc-agenda-paw pc-agenda-paw-two"><svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true"><ellipse cx="15" cy="21" rx="7" ry="10" transform="rotate(-25 15 21)"/><ellipse cx="29" cy="12" rx="7" ry="10"/><ellipse cx="44" cy="15" rx="7" ry="10" transform="rotate(18 44 15)"/><ellipse cx="54" cy="29" rx="6" ry="9" transform="rotate(35 54 29)"/><path d="M16 43c1-8 9-16 16-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-15-3-10-13Z"/></svg></i><img src="/assets/img/agenda-companions.webp" alt="" width="480" height="457"></div>
                 </div>
-
-                <div id="appointments-notice" class="alert alert-success" role="status" tabindex="-1" hidden>
+<div id="appointments-notice" class="alert alert-success" role="status" tabindex="-1" hidden>
                   Cita programada correctamente.
                 </div>
 
                 <div id="appointments-status-error" class="alert alert-danger" role="alert" tabindex="-1" hidden></div>
 
-                <form id="appointment-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-light" role="search" novalidate>
+                <form id="appointment-search-form" class="row g-3 align-items-end mb-4 p-3 rounded border bg-white pc-filter-card" role="search" novalidate>
+                  <div class="pc-module-filter-heading"><span class="pc-module-kicker">ORGANIZA LA JORNADA</span><h3>Consulta tu agenda</h3></div>
                   <div class="col-12 col-sm-6 col-lg-3">
                     <label for="appointment-date-filter" class="form-label">Fecha</label>
                     <input id="appointment-date-filter" class="form-control" type="date" required
@@ -933,8 +1029,8 @@
                   <div class="col-12 col-sm-6 col-lg-3">
                     <label for="appointment-direction-filter" class="form-label">Orden horario</label>
                     <select id="appointment-direction-filter" class="form-select">
-                      <option value="asc">Ascendente (primero las más tempranas)</option>
-                      <option value="desc">Descendente (primero las más tardías)</option>
+                      <option value="asc">Más tempranas primero</option>
+                      <option value="desc">Más tardías primero</option>
                     </select>
                   </div>
                   <div class="col-12 d-flex flex-wrap justify-content-end gap-2 pt-2">
@@ -972,12 +1068,16 @@
                 </div>
 
                 <div id="appointments-results" hidden>
-                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                  <div class="pc-module-directory-heading"><div><span class="pc-module-kicker">ATENCIÓN DEL DÍA</span><h3>Citas de la jornada</h3></div></div>
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pc-agenda-result-summary">
                     <p id="appointments-summary" class="text-secondary small mb-0" role="status" aria-live="polite"></p>
-                    <div id="appointments-status-indicators" class="d-flex flex-wrap gap-2" role="status" aria-label="Indicadores de estado de agenda"></div>
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="small text-secondary fw-semibold">En filtro:</span>
+                      <div id="appointments-status-indicators" class="d-flex flex-wrap gap-2" role="status" aria-label="Indicadores de estado de citas en filtro"></div>
+                    </div>
                   </div>
 
-                  <div class="table-responsive d-none d-md-block">
+                  <div class="table-responsive d-none d-md-block pc-agenda-table-surface">
                     <table class="table table-hover align-middle mb-3" aria-label="Agenda cronológica de citas">
                       <thead class="table-light">
                         <tr>
@@ -999,23 +1099,44 @@
                   <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 pt-2 border-top">
                     <span id="appointments-pagination" class="text-secondary small"></span>
                     <div class="d-flex gap-2">
-                      <button id="appointments-previous-page" class="btn btn-outline-secondary btn-sm" type="button">Anterior</button>
-                      <button id="appointments-next-page" class="btn btn-outline-secondary btn-sm" type="button">Siguiente</button>
+                      <button id="appointments-previous-page" class="btn btn-outline-secondary btn-sm pc-agenda-page-arrow" type="button" aria-label="Página anterior" title="Página anterior"><span aria-hidden="true">‹</span></button>
+                      <button id="appointments-next-page" class="btn btn-outline-secondary btn-sm pc-agenda-page-arrow" type="button" aria-label="Página siguiente" title="Página siguiente"><span aria-hidden="true">›</span></button>
                     </div>
                   </div>
                 </div>
+</div>
+<aside class="pc-context-column pc-agenda-context" aria-label="Perfil y resumen de la agenda">
+                <section id="agenda-user-profile" class="pc-agenda-profile pc-shared-profile" aria-label="Perfil de la sesión" hidden>
+                  <div class="pc-agenda-profile-header"><span id="agenda-profile-avatar" class="pc-agenda-profile-avatar" aria-hidden="true"></span><div><span class="pc-shared-profile-caption">Mi perfil</span><strong id="agenda-profile-name"></strong><span id="agenda-profile-email"></span></div></div>
+                  <div class="pc-agenda-profile-row"><span>Roles</span><strong id="agenda-profile-roles"></strong></div>
+                  <div class="pc-agenda-profile-row"><span>Clínica</span><strong id="agenda-profile-clinic"></strong></div>
+                  <div class="pc-agenda-profile-row"><span>Sede</span><strong id="agenda-profile-branch"></strong></div>
+                </section>
+                <h3 class="pc-zone-title">Resumen de la agenda</h3><p class="pc-agenda-context-pending small text-secondary" role="status">Aplica una fecha y filtros para consultar el resumen de la agenda.</p>
+                <section id="appointments-overview" class="pc-agenda-overview" aria-label="Resumen de la fecha y filtros consultados" hidden>
+                  <p class="pc-agenda-overview-label">En la fecha y filtros consultados</p>
+                  <div class="pc-agenda-stat-grid">
+                    <div class="pc-agenda-stat pc-agenda-stat--mint"><span class="pc-agenda-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 11h18M8 15h2m4 0h2m-8 3h2"/></svg></span><div><span>Citas</span><strong data-agenda-count="total">—</strong></div></div>
+                    <div class="pc-agenda-stat pc-agenda-stat--green"><span class="pc-agenda-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span><div><span>Confirmadas</span><strong data-agenda-count="confirmed">—</strong></div></div>
+                    <div class="pc-agenda-stat pc-agenda-stat--gold"><span class="pc-agenda-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg></span><div><span>En espera</span><strong data-agenda-count="waiting">—</strong></div></div>
+                    <div class="pc-agenda-stat pc-agenda-stat--neutral"><span class="pc-agenda-stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg></span><div><span>No asistieron</span><strong data-agenda-count="noShow">—</strong></div></div>
+                  </div>
+                </section>
+</aside>
+</div>
               </section>
 
               <!-- VISTA: EVALUACIÓN CLÍNICA (HU-021) -->
               <section id="consultation-evaluation-view" aria-labelledby="consultation-evaluation-title" hidden>
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div class="pc-module-hero d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                   <div>
-                    <button id="consultation-evaluation-back-button" class="btn btn-outline-secondary btn-sm mb-2" type="button">
+                    <button id="consultation-evaluation-back-button" class="btn btn-link px-0 mb-1" type="button">
                       ← Volver a la agenda
                     </button>
-                    <p class="text-uppercase text-primary fw-semibold small mb-1">Atención clínica</p>
-                    <h2 id="consultation-evaluation-title" class="h4 mb-0">Evaluación clínica</h2>
+                    <h2 id="consultation-evaluation-title" class="pc-module-title" tabindex="-1">Evaluación clínica</h2>
+                    <p class="text-secondary mb-0">Registra los hallazgos, diagnósticos y prescripciones de esta atención.</p>
                   </div>
+                  <figure class="pc-module-art" aria-hidden="true"><img src="/assets/img/veterinary-consultation-cutout.png" alt="" width="676" height="600" loading="lazy"></figure>
                 </div>
 
                 <!-- ALERTA DE CARGA / ESTADOS -->
@@ -1049,8 +1170,15 @@
                     <div class="card-body p-3 p-md-4">
                       <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
                         <div class="d-flex align-items-center gap-3 min-w-0">
-                          <div class="pc-patient-avatar flex-shrink-0" aria-label="Avatar del paciente">
-                            <span class="pc-patient-avatar-placeholder" aria-hidden="true">🐾</span>
+                          <div id="evaluation-context-avatar" class="pc-patient-avatar flex-shrink-0" aria-label="Avatar del paciente">
+                            <span class="pc-patient-avatar-placeholder d-flex align-items-center justify-content-center" aria-hidden="true">
+                              <svg class="pc-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="12" y1="18" x2="12" y2="12"/>
+                                <line x1="9" y1="15" x2="15" y2="15"/>
+                              </svg>
+                            </span>
                           </div>
                           <div class="min-w-0">
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
@@ -1059,7 +1187,7 @@
                             </div>
                             <h2 id="evaluation-context-patient" class="h4 mb-0 text-primary pc-clinical-heading text-truncate">—</h2>
                             <p class="text-secondary small mb-0 mt-1">
-                              Expediente y consulta clínica en curso
+                              Información de esta atención clínica
                             </p>
                           </div>
                         </div>
@@ -1092,9 +1220,9 @@
                   </div>
 
                   <!-- COMPOSICIÓN ASIMÉTRICA: 75% TRABAJO CLÍNICO / 25% CONTEXTO -->
-                  <div class="row g-4">
+                  <div class="row g-4 pc-context-layout pc-evaluation-zones">
                     <!-- COLUMNA PRINCIPAL DE TRABAJO CLÍNICO (75% EN DESKTOP) -->
-                    <div class="col-12 col-xl-9 d-flex flex-column gap-4">
+                    <div class="col-12 col-xl-9 d-flex flex-column gap-4 pc-work-region">
                       <!-- FORMULARIO DE EVALUACIÓN CLÍNICA -->
                       <form id="consultation-evaluation-form" class="card border bg-white p-3 p-md-4" novalidate>
                         <input id="evaluation-consultation-id" type="hidden">
@@ -1104,7 +1232,7 @@
                             <h3 class="h5 fw-semibold text-primary pc-clinical-heading mb-0">Evaluación médica y examen físico</h3>
                             <p class="text-secondary small mb-0">Registro estructurado de constantes fisiológicas, anamnesis y hallazgos.</p>
                           </div>
-                          <span class="badge text-bg-light border text-secondary align-self-start align-self-sm-center">Borrador clínico</span>
+                          <span class="badge text-bg-light border text-secondary align-self-start align-self-sm-center">Registro clínico</span>
                         </div>
 
                         <!-- CONSTANTES FISIOLÓGICAS Y SIGNOS VITALES -->
@@ -1116,7 +1244,10 @@
                           <div class="pc-vitals-grid">
                             <!-- Temperatura -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-temperature">Temperatura</label>
+                              <label class="form-label mb-1" for="evaluation-temperature">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                                Temperatura
+                              </label>
                               <div class="input-group input-group-sm">
                                 <input type="number" step="0.1" min="30.0" max="45.0" id="evaluation-temperature" name="temperatureCelsius" class="form-control pc-data-mono" aria-describedby="evaluation-temperature-error" placeholder="38.5">
                                 <span class="input-group-text">°C</span>
@@ -1126,7 +1257,10 @@
 
                             <!-- Peso -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-weight">Peso actual</label>
+                              <label class="form-label mb-1" for="evaluation-weight">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3"/></svg>
+                                Peso actual
+                              </label>
                               <div class="input-group input-group-sm">
                                 <input type="number" step="0.01" min="0.01" max="500.0" id="evaluation-weight" name="weightKg" class="form-control pc-data-mono" aria-describedby="evaluation-weight-error" placeholder="12.50">
                                 <span class="input-group-text">kg</span>
@@ -1136,7 +1270,10 @@
 
                             <!-- FC -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-heart-rate">Frec. cardíaca</label>
+                              <label class="form-label mb-1" for="evaluation-heart-rate">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                Frec. cardíaca
+                              </label>
                               <div class="input-group input-group-sm">
                                 <input type="number" step="1" min="20" max="400" id="evaluation-heart-rate" name="heartRateBpm" class="form-control pc-data-mono" aria-describedby="evaluation-heart-rate-error" placeholder="110">
                                 <span class="input-group-text">lpm</span>
@@ -1146,7 +1283,10 @@
 
                             <!-- FR -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-respiratory-rate">Frec. respiratoria</label>
+                              <label class="form-label mb-1" for="evaluation-respiratory-rate">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>
+                                Frec. respiratoria
+                              </label>
                               <div class="input-group input-group-sm">
                                 <input type="number" step="1" min="5" max="200" id="evaluation-respiratory-rate" name="respiratoryRateBpm" class="form-control pc-data-mono" aria-describedby="evaluation-respiratory-rate-error" placeholder="24">
                                 <span class="input-group-text">rpm</span>
@@ -1156,17 +1296,23 @@
 
                             <!-- TLLC -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-crt">T. llenado capilar</label>
+                              <label class="form-label mb-1" for="evaluation-crt">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                T. llenado capilar
+                              </label>
                               <div class="input-group input-group-sm">
                                 <input type="number" step="0.1" min="0.1" max="10.0" id="evaluation-crt" name="capillaryRefillTimeSeconds" class="form-control pc-data-mono" aria-describedby="evaluation-crt-error" placeholder="1.5">
-                                <span class="input-group-text">seg</span>
+                                <span class="input-group-text">s</span>
                               </div>
                               <div id="evaluation-crt-error" class="invalid-feedback small">Entre 0.1 y 10.0 s.</div>
                             </div>
 
                             <!-- Mucosas -->
                             <div class="pc-vital-card">
-                              <label class="form-label mb-1" for="evaluation-mucous-membranes">Mucosas</label>
+                              <label class="form-label mb-1" for="evaluation-mucous-membranes">
+                                <svg class="pc-vital-icon me-1" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/></svg>
+                                Mucosas
+                              </label>
                               <select id="evaluation-mucous-membranes" name="mucousMembranes" class="form-select form-select-sm" aria-describedby="evaluation-mucous-error">
                                 <option value="">No evaluado</option>
                                 <option value="ROSADAS">Rosadas (normal)</option>
@@ -1391,20 +1537,20 @@
                     </div>
 
                     <!-- COLUMNA LATERAL CONTEXTUAL (25% EN DESKTOP) -->
-                    <aside class="col-12 col-xl-3 d-flex flex-column gap-3 pc-context-rail">
+                    <aside class="col-12 col-xl-3 d-flex flex-column gap-3 pc-context-rail pc-context-column" aria-label="Contexto de la atención"><h3 class="pc-zone-title">Contexto de la atención</h3>
                       <!-- Tarjeta 1: Estado y Guía de Consulta -->
-                      <div class="card border bg-white pc-context-rail-card">
+                      <div class="card border bg-white pc-context-rail-card" hidden>
                         <div class="pc-folio-header py-2 px-3 border-bottom">
-                          <h4 class="h6 mb-0 fw-semibold text-primary pc-clinical-heading">Estado de consulta</h4>
+                          <h4 class="h6 mb-0 fw-semibold text-primary pc-clinical-heading">Guía de la atención</h4>
                         </div>
                         <div class="card-body p-3">
                           <p class="small text-secondary mb-2">
-                            La consulta permanece en modo <strong class="text-dark">BORRADOR</strong> hasta su finalización formal.
+                            El estado actual se muestra en la ficha de esta atención. Las consultas finalizadas se conservan en solo lectura.
                           </p>
                           <ul class="list-unstyled small text-secondary mb-0 d-flex flex-column gap-2">
                             <li class="d-flex align-items-start gap-2">
                               <span class="text-primary fw-bold">✓</span>
-                              <span>La evaluación general puede guardarse incrementalmente sin perder datos.</span>
+                              <span>Durante el borrador, guarda la evaluación antes de finalizar la atención.</span>
                             </li>
                             <li class="d-flex align-items-start gap-2">
                               <span class="text-primary fw-bold">✓</span>
@@ -1861,6 +2007,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="/assets/js/auth.js"></script>
+  <script type="module" src="/assets/js/paw-cursor.js"></script>
+  <script type="module" src="/assets/js/auth.js?v=owners-list-all-20261029"></script>
 </body>
 </html>

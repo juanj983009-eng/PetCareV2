@@ -95,7 +95,12 @@ class AuthControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(fixture.userId().toString()))
                 .andExpect(jsonPath("$.tenantId").value(fixture.tenantId().toString()))
-                .andExpect(jsonPath("$.branchId").value(fixture.branchId().toString()));
+                .andExpect(jsonPath("$.branchId").value(fixture.branchId().toString()))
+                .andExpect(jsonPath("$.profile.displayName").value("Alex Fictional"))
+                .andExpect(jsonPath("$.profile.email").value(fixture.email()))
+                .andExpect(jsonPath("$.profile.roles[0]").value("ADMINISTRADOR"))
+                .andExpect(jsonPath("$.profile.clinicName").value("Fictional Clinic"))
+                .andExpect(jsonPath("$.profile.branchName").value("Main Branch"));
 
         assertThat(jdbcTemplate.queryForObject(
                 """
@@ -208,6 +213,213 @@ class AuthControllerIntegrationTest extends PostgreSqlIntegrationTest {
                         .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void sessionReturnsProfileWithoutBranchWhenUnassigned() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        String slug = "nobranch-" + UUID.randomUUID().toString().substring(0, 8);
+        String email = "vet@example.test";
+
+        jdbcTemplate.update("""
+                INSERT INTO tenants (id, name, slug, plan, status, created_at)
+                VALUES (?, 'Clínica Sin Sede', ?, 'STARTER', 'ACTIVO', now())
+                """, tenantId, slug);
+        jdbcTemplate.update("""
+                INSERT INTO users (id, tenant_id, first_name, last_name, email, password_hash, status, created_at)
+                VALUES (?, ?, 'Valeria', 'Rios', ?, ?, 'ACTIVO', now())
+                """, userId, tenantId, email, passwordEncoder.encode(PASSWORD));
+        jdbcTemplate.update("""
+                INSERT INTO roles (id, tenant_id, name, system, created_at)
+                VALUES (?, ?, 'VETERINARIO', true, now())
+                """, roleId, tenantId);
+        jdbcTemplate.update("""
+                INSERT INTO user_roles (tenant_id, user_id, role_id, assigned_at)
+                VALUES (?, ?, ?, now())
+                """, tenantId, userId, roleId);
+
+        String token = token(login(slug, email, PASSWORD, UUID.randomUUID()).andReturn());
+
+        mockMvc.perform(get(SESSION).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userId.toString()))
+                .andExpect(jsonPath("$.tenantId").value(tenantId.toString()))
+                .andExpect(jsonPath("$.branchId").doesNotExist())
+                .andExpect(jsonPath("$.profile.displayName").value("Valeria Rios"))
+                .andExpect(jsonPath("$.profile.email").value(email))
+                .andExpect(jsonPath("$.profile.roles[0]").value("VETERINARIO"))
+                .andExpect(jsonPath("$.profile.clinicName").value("Clínica Sin Sede"))
+                .andExpect(jsonPath("$.profile.branchName").doesNotExist());
+    }
+
+    @Test
+    void sessionCanBeQueriedByNonAdminUserWithoutUserReadOrManagePermissions() throws Exception {
+        UUID tenantId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        String slug = "reception-" + UUID.randomUUID().toString().substring(0, 8);
+        String email = "receptionist@example.test";
+
+        jdbcTemplate.update("""
+                INSERT INTO tenants (id, name, slug, plan, status, created_at)
+                VALUES (?, 'Clínica Las Flores', ?, 'STARTER', 'ACTIVO', now())
+                """, tenantId, slug);
+        jdbcTemplate.update("""
+                INSERT INTO branches (id, tenant_id, name, time_zone, active, created_at)
+                VALUES (?, ?, 'Sede Sur', 'America/Lima', true, now())
+                """, branchId, tenantId);
+        jdbcTemplate.update("""
+                INSERT INTO users (id, tenant_id, first_name, last_name, email, password_hash, status, created_at)
+                VALUES (?, ?, 'Renato', 'Vargas', ?, ?, 'ACTIVO', now())
+                """, userId, tenantId, email, passwordEncoder.encode(PASSWORD));
+        jdbcTemplate.update("""
+                INSERT INTO roles (id, tenant_id, name, system, created_at)
+                VALUES (?, ?, 'RECEPCIONISTA', false, now())
+                """, roleId, tenantId);
+        jdbcTemplate.update("""
+                INSERT INTO user_roles (tenant_id, user_id, role_id, assigned_at)
+                VALUES (?, ?, ?, now())
+                """, tenantId, userId, roleId);
+        jdbcTemplate.update("""
+                INSERT INTO user_branches (tenant_id, user_id, branch_id, primary_branch, assigned_at)
+                VALUES (?, ?, ?, true, now())
+                """, tenantId, userId, branchId);
+
+        String token = token(login(slug, email, PASSWORD, UUID.randomUUID()).andReturn());
+
+        mockMvc.perform(get("/api/v1/users").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get(SESSION).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile.displayName").value("Renato Vargas"))
+                .andExpect(jsonPath("$.profile.email").value(email))
+                .andExpect(jsonPath("$.profile.roles[0]").value("RECEPCIONISTA"))
+                .andExpect(jsonPath("$.profile.clinicName").value("Clínica Las Flores"))
+                .andExpect(jsonPath("$.profile.branchName").value("Sede Sur"));
+    }
+
+    @Test
+    void sessionProfileEnforcesStrictTenantIsolationBetweenDistinctTenants() throws Exception {
+        // Tenant A: Clínica Los Olivos
+        UUID tenantAId = UUID.randomUUID();
+        UUID branchAId = UUID.randomUUID();
+        UUID userAId = UUID.randomUUID();
+        UUID roleA1Id = UUID.randomUUID();
+        UUID roleA2Id = UUID.randomUUID();
+        String slugA = "olivos-" + UUID.randomUUID().toString().substring(0, 8);
+        String emailA = "carlos.mendoza@olivos.test";
+        String clinicNameA = "Clínica Veterinaria Los Olivos";
+        String branchNameA = "Sede Central Olivos";
+
+        jdbcTemplate.update("""
+                INSERT INTO tenants (id, name, slug, plan, status, created_at)
+                VALUES (?, ?, ?, 'STARTER', 'ACTIVO', now())
+                """, tenantAId, clinicNameA, slugA);
+        jdbcTemplate.update("""
+                INSERT INTO branches (id, tenant_id, name, time_zone, active, created_at)
+                VALUES (?, ?, ?, 'America/Lima', true, now())
+                """, branchAId, tenantAId, branchNameA);
+        jdbcTemplate.update("""
+                INSERT INTO users (id, tenant_id, first_name, last_name, email, password_hash, status, created_at)
+                VALUES (?, ?, 'Carlos', 'Mendoza', ?, ?, 'ACTIVO', now())
+                """, userAId, tenantAId, emailA, passwordEncoder.encode(PASSWORD));
+        jdbcTemplate.update("""
+                INSERT INTO roles (id, tenant_id, name, system, created_at)
+                VALUES (?, ?, 'ADMINISTRADOR', true, now())
+                """, roleA1Id, tenantAId);
+        jdbcTemplate.update("""
+                INSERT INTO roles (id, tenant_id, name, system, created_at)
+                VALUES (?, ?, 'VETERINARIO', true, now())
+                """, roleA2Id, tenantAId);
+        jdbcTemplate.update("""
+                INSERT INTO user_roles (tenant_id, user_id, role_id, assigned_at)
+                VALUES (?, ?, ?, now())
+                """, tenantAId, userAId, roleA1Id);
+        jdbcTemplate.update("""
+                INSERT INTO user_roles (tenant_id, user_id, role_id, assigned_at)
+                VALUES (?, ?, ?, now())
+                """, tenantAId, userAId, roleA2Id);
+        jdbcTemplate.update("""
+                INSERT INTO user_branches (tenant_id, user_id, branch_id, primary_branch, assigned_at)
+                VALUES (?, ?, ?, true, now())
+                """, tenantAId, userAId, branchAId);
+
+        // Tenant B: Clínica Miraflores
+        UUID tenantBId = UUID.randomUUID();
+        UUID branchBId = UUID.randomUUID();
+        UUID userBId = UUID.randomUUID();
+        UUID roleBId = UUID.randomUUID();
+        String slugB = "miraflores-" + UUID.randomUUID().toString().substring(0, 8);
+        String emailB = "beatriz.silva@miraflores.test";
+        String clinicNameB = "Clínica Veterinaria Miraflores";
+        String branchNameB = "Sede Costanera";
+
+        jdbcTemplate.update("""
+                INSERT INTO tenants (id, name, slug, plan, status, created_at)
+                VALUES (?, ?, ?, 'PROFESSIONAL', 'ACTIVO', now())
+                """, tenantBId, clinicNameB, slugB);
+        jdbcTemplate.update("""
+                INSERT INTO branches (id, tenant_id, name, time_zone, active, created_at)
+                VALUES (?, ?, ?, 'America/Lima', true, now())
+                """, branchBId, tenantBId, branchNameB);
+        jdbcTemplate.update("""
+                INSERT INTO users (id, tenant_id, first_name, last_name, email, password_hash, status, created_at)
+                VALUES (?, ?, 'Beatriz', 'Silva', ?, ?, 'ACTIVO', now())
+                """, userBId, tenantBId, emailB, passwordEncoder.encode(PASSWORD));
+        jdbcTemplate.update("""
+                INSERT INTO roles (id, tenant_id, name, system, created_at)
+                VALUES (?, ?, 'RECEPCIONISTA', false, now())
+                """, roleBId, tenantBId);
+        jdbcTemplate.update("""
+                INSERT INTO user_roles (tenant_id, user_id, role_id, assigned_at)
+                VALUES (?, ?, ?, now())
+                """, tenantBId, userBId, roleBId);
+        jdbcTemplate.update("""
+                INSERT INTO user_branches (tenant_id, user_id, branch_id, primary_branch, assigned_at)
+                VALUES (?, ?, ?, true, now())
+                """, tenantBId, userBId, branchBId);
+
+        String tokenA = token(login(slugA, emailA, PASSWORD, UUID.randomUUID()).andReturn());
+        String tokenB = token(login(slugB, emailB, PASSWORD, UUID.randomUUID()).andReturn());
+
+        // Comprobación Tenant A: resuelve su propio perfil y no filtra datos de Tenant B
+        mockMvc.perform(get(SESSION).header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userAId.toString()))
+                .andExpect(jsonPath("$.tenantId").value(tenantAId.toString()))
+                .andExpect(jsonPath("$.branchId").value(branchAId.toString()))
+                .andExpect(jsonPath("$.profile.displayName").value("Carlos Mendoza"))
+                .andExpect(jsonPath("$.profile.email").value(emailA))
+                .andExpect(jsonPath("$.profile.roles").value(org.hamcrest.Matchers.containsInAnyOrder("ADMINISTRADOR", "VETERINARIO")))
+                .andExpect(jsonPath("$.profile.clinicName").value(clinicNameA))
+                .andExpect(jsonPath("$.profile.branchName").value(branchNameA))
+                .andExpect(jsonPath("$.profile.displayName").value(org.hamcrest.Matchers.not("Beatriz Silva")))
+                .andExpect(jsonPath("$.profile.email").value(org.hamcrest.Matchers.not(emailB)))
+                .andExpect(jsonPath("$.profile.clinicName").value(org.hamcrest.Matchers.not(clinicNameB)))
+                .andExpect(jsonPath("$.profile.branchName").value(org.hamcrest.Matchers.not(branchNameB)))
+                .andExpect(jsonPath("$.profile.roles").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("RECEPCIONISTA"))));
+
+        // Comprobación Tenant B: resuelve su propio perfil y no filtra datos de Tenant A
+        mockMvc.perform(get(SESSION).header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userBId.toString()))
+                .andExpect(jsonPath("$.tenantId").value(tenantBId.toString()))
+                .andExpect(jsonPath("$.branchId").value(branchBId.toString()))
+                .andExpect(jsonPath("$.profile.displayName").value("Beatriz Silva"))
+                .andExpect(jsonPath("$.profile.email").value(emailB))
+                .andExpect(jsonPath("$.profile.roles").value(org.hamcrest.Matchers.contains("RECEPCIONISTA")))
+                .andExpect(jsonPath("$.profile.clinicName").value(clinicNameB))
+                .andExpect(jsonPath("$.profile.branchName").value(branchNameB))
+                .andExpect(jsonPath("$.profile.displayName").value(org.hamcrest.Matchers.not("Carlos Mendoza")))
+                .andExpect(jsonPath("$.profile.email").value(org.hamcrest.Matchers.not(emailA)))
+                .andExpect(jsonPath("$.profile.clinicName").value(org.hamcrest.Matchers.not(clinicNameA)))
+                .andExpect(jsonPath("$.profile.branchName").value(org.hamcrest.Matchers.not(branchNameA)))
+                .andExpect(jsonPath("$.profile.roles").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("ADMINISTRADOR"))))
+                .andExpect(jsonPath("$.profile.roles").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("VETERINARIO"))));
     }
 
     private void assertUnauthorized(String token) throws Exception {

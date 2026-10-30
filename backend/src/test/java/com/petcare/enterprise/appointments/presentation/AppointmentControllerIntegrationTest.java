@@ -2560,6 +2560,113 @@ class AppointmentControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void getActivityWithoutAuthenticationReturns401() throws Exception {
+        mvc.perform(get("/api/v1/appointments/activity"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getActivityWithoutAppointmentReadReturns403() throws Exception {
+        TenantFixture f = createTenantFixture("act-no-perm");
+        mvc.perform(get("/api/v1/appointments/activity")
+                        .with(authentication(auth(f, "PATIENT_READ"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getActivityReturnsSevenDaysExcludingCancelledAndAggregatingCorrectly() throws Exception {
+        TenantFixture f = createTenantFixture("act-ok");
+        UUID vetId = insertUserWithRole(f.tenantId, "Doc", "Vet", "doc.act@test.demo", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(f.tenantId, vetId, f.branchId);
+        UUID ownerId = insertOwner(f.tenantId, "Dueño", "Mascota", "DNI", "11223344");
+        UUID patientId = insertPatient(f.tenantId, ownerId, "Rocky", "CANINO", "Mestizo");
+
+        ZoneId lima = ZoneId.of("America/Lima");
+        LocalDate today = LocalDate.now(lima);
+
+        // Hoy: 1 FINALIZADA, 1 CONFIRMADA, 1 PROGRAMADA, 1 CANCELADA (debe excluirse)
+        Instant todayStart = today.atTime(10, 0).atZone(lima).toInstant();
+        Instant todayEnd = today.atTime(10, 30).atZone(lima).toInstant();
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, todayStart, todayEnd, "CONSULTA_GENERAL", "FINALIZADA", "Motivo 1", "Notas 1");
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, todayStart.plusSeconds(3600), todayEnd.plusSeconds(3600), "CONSULTA_GENERAL", "CONFIRMADA", "Motivo 2", "Notas 2");
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, todayStart.plusSeconds(7200), todayEnd.plusSeconds(7200), "CONSULTA_GENERAL", "PROGRAMADA", "Motivo 3", "Notas 3");
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, todayStart.plusSeconds(10800), todayEnd.plusSeconds(10800), "CONSULTA_GENERAL", "CANCELADA", "Cancelada", "Notas 4");
+
+        // Hoy - 2 días: 1 FINALIZADA
+        LocalDate twoDaysAgo = today.minusDays(2);
+        Instant twoDaysAgoStart = twoDaysAgo.atTime(11, 0).atZone(lima).toInstant();
+        Instant twoDaysAgoEnd = twoDaysAgo.atTime(11, 30).atZone(lima).toInstant();
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, twoDaysAgoStart, twoDaysAgoEnd, "CONSULTA_GENERAL", "FINALIZADA", "Motivo pasado", null);
+
+        // Citas en otro tenant (aislamiento tenant)
+        TenantFixture otherTenant = createTenantFixture("act-other");
+        UUID otherVet = insertUserWithRole(otherTenant.tenantId, "Other", "Vet", "other.vet@test.demo", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(otherTenant.tenantId, otherVet, otherTenant.branchId);
+        UUID otherOwner = insertOwner(otherTenant.tenantId, "Otro", "Dueño", "DNI", "99887766");
+        UUID otherPatient = insertPatient(otherTenant.tenantId, otherOwner, "Misi", "FELINO", "Común");
+        insertAppointment(otherTenant.tenantId, otherTenant.branchId, otherPatient, otherVet, todayStart, todayEnd, "CONSULTA_GENERAL", "FINALIZADA", "Cita otro tenant", null);
+
+        mvc.perform(get("/api/v1/appointments/activity")
+                        .with(authentication(auth(f, "APPOINTMENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timeZone").value("America/Lima"))
+                .andExpect(jsonPath("$.startDate").value(today.minusDays(6).toString()))
+                .andExpect(jsonPath("$.endDate").value(today.toString()))
+                .andExpect(jsonPath("$.items.length()").value(7))
+                // Último día (hoy, index 6): 1 finalizada, 2 otras (confirmada + programada), total 3. Excluye cancelada y otro tenant
+                .andExpect(jsonPath("$.items[6].date").value(today.toString()))
+                .andExpect(jsonPath("$.items[6].completedCount").value(1))
+                .andExpect(jsonPath("$.items[6].otherCount").value(2))
+                .andExpect(jsonPath("$.items[6].totalCount").value(3))
+                // Día hoy - 2 (index 4): 1 finalizada, 0 otras, total 1
+                .andExpect(jsonPath("$.items[4].date").value(twoDaysAgo.toString()))
+                .andExpect(jsonPath("$.items[4].completedCount").value(1))
+                .andExpect(jsonPath("$.items[4].otherCount").value(0))
+                .andExpect(jsonPath("$.items[4].totalCount").value(1))
+                // Día hoy - 1 (index 5): 0 citas
+                .andExpect(jsonPath("$.items[5].date").value(today.minusDays(1).toString()))
+                .andExpect(jsonPath("$.items[5].completedCount").value(0))
+                .andExpect(jsonPath("$.items[5].otherCount").value(0))
+                .andExpect(jsonPath("$.items[5].totalCount").value(0));
+    }
+
+    @Test
+    void getActivityWithBranchFilterAndCrossTenantValidation() throws Exception {
+        TenantFixture f = createTenantFixture("act-branch");
+        UUID branch2 = insertBranch(f.tenantId, "Segunda Sede", "America/Lima", true);
+        UUID vetId = insertUserWithRole(f.tenantId, "Doc", "Vet", "doc.branch@test.demo", "VETERINARIO", "ACTIVO");
+        assignUserToBranch(f.tenantId, vetId, f.branchId);
+        assignUserToBranch(f.tenantId, vetId, branch2);
+        UUID ownerId = insertOwner(f.tenantId, "Dueño", "Mascota", "DNI", "11223344");
+        UUID patientId = insertPatient(f.tenantId, ownerId, "Rocky", "CANINO", "Mestizo");
+
+        ZoneId lima = ZoneId.of("America/Lima");
+        LocalDate today = LocalDate.now(lima);
+        Instant todayStart = today.atTime(10, 0).atZone(lima).toInstant();
+        Instant todayEnd = today.atTime(10, 30).atZone(lima).toInstant();
+
+        // 1 cita en branch1 y 1 cita en branch2
+        insertAppointment(f.tenantId, f.branchId, patientId, vetId, todayStart, todayEnd, "CONSULTA_GENERAL", "FINALIZADA", "Sede 1", null);
+        insertAppointment(f.tenantId, branch2, patientId, vetId, todayStart.plusSeconds(3600), todayEnd.plusSeconds(3600), "CONSULTA_GENERAL", "CONFIRMADA", "Sede 2", null);
+
+        // Consulta filtrando por branch2
+        mvc.perform(get("/api/v1/appointments/activity")
+                        .param("branchId", branch2.toString())
+                        .with(authentication(auth(f, "APPOINTMENT_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[6].completedCount").value(0))
+                .andExpect(jsonPath("$.items[6].otherCount").value(1))
+                .andExpect(jsonPath("$.items[6].totalCount").value(1));
+
+        // Consulta filtrando por sucursal ajena a este tenant (debe responder 404)
+        TenantFixture foreign = createTenantFixture("act-foreign");
+        mvc.perform(get("/api/v1/appointments/activity")
+                        .param("branchId", foreign.branchId.toString())
+                        .with(authentication(auth(f, "APPOINTMENT_READ"))))
+                .andExpect(status().isNotFound());
+    }
+
     private String appointmentPayload(UUID branchId, UUID patientId, UUID veterinarianId, String startTime, String endTime) {
         return """
                 {

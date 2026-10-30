@@ -1,0 +1,97 @@
+/* Continuidad visual de Inicio/Usuarios en los módulos clínicos existentes. */
+#dashboard-view :is(#appointments-view,#patients-view,#patient-profile-view,#roles-view,#consultation-evaluation-view) {
+  --workspace-ink: #073e2c;
+  --workspace-border: #d4e7dd;
+  --workspace-shadow: 0 2px 4px #174c3f08,0 10px 24px #174c3f12;
+}
+.pc-module-kicker { display: block; margin-bottom: 4px; color: #637a6f; font: 650 .65rem/1.3 'Source Sans 3','Segoe UI',sans-serif; letter-spacing: .09em; }
+.pc-module-directory-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 20px; margin: 0 4px 18px; }
+.pc-module-directory-heading h3,.pc-module-filter-heading h3 { margin: 0; color: #0a4935; font: 700 1.1rem/1.3 'Source Sans 3','Segoe UI',sans-serif; }
+.pc-module-directory-heading > p { margin: 0; font-size: .85rem; color: #587367; }
+#appointments-view #appointment-search-form > .pc-module-filter-heading { grid-column: 1 / -1; width: 100%; padding: 10px 12px !important; margin: 0 0 4px !important; border-radius: 12px; background: #e9f7f0; }
+#appointments-view .pc-agenda-stat--mint { background: linear-gradient(125deg,#00533e,#003b2d); border-color: #00533e; }
+#appointments-view .pc-agenda-stat--mint :is(strong,div>span) { color: #fff; }
+#appointments-view .pc-agenda-stat--mint .pc-agenda-stat-icon { background: #ffffff16; color: #ffd066; }
+#appointments-view #appointments-results { padding: 18px 16px 12px; border: 1px solid var(--workspace-border); border-radius: 18px; background: #fff; box-shadow: var(--workspace-shadow); }
+#appointments-view .pc-agenda-table-surface { padding: 0; border: 0; box-shadow: none; }
+#appointments-view .pc-agenda-result-summary { padding: 12px; border-radius: 12px; background: #f4faf7; }
+#appointments-view .pc-filter-chip { padding: 5px 8px; font-size: .72rem; }
+#appointments-view .table { font-size: .9rem; }
+#appointments-view .table td { padding: 16px 12px; }
+#appointments-view .pc-agenda-actions-toggle { background: #f0f8f4; border-color: #9bbfad; color: #07543c; }
+#appointments-view .pc-agenda-actions-toggle:hover { background: #dff0e6; }
+#patients-view #patient-search-form { margin-left: 0; margin-right: 0; margin-top: 0; width: 100%; border-color: var(--workspace-border) !important; box-shadow: var(--workspace-shadow); }
+#patients-view #patients-content { padding: 18px 16px 12px; border-color: var(--workspace-border); box-shadow: var(--workspace-shadow); }
+#patients-view .pc-patient-results-band { padding: 0 4px; margin-bottom: 18px; border-radius: 0; background: transparent; }
+#patients-view #patients-content .table { font-size: .9rem; }
+#patients-view #patients-content .table th { padding: 13px 16px; font-size: .74rem; background: #e9f3ee; }
+#patients-view #patients-content .table td { padding: 14px 16px; }
+#patients-view #patients-content .table-responsive { border-radius: 12px !important; }
+#patients-view #patients-initial { border: 1px solid var(--workspace-border); border-radius: 18px; background: #fff; box-shadow: var(--workspace-shadow); }
+#patients-view #patients-content #patients-pagination { padding: 12px 4px 0; border-top: 1px solid #e6eee9; }
+#patients-view #patients-cards .card { border: 1px solid var(--workspace-border); border-radius: 16px; background: #f9fcfa; }
+#patient-profile-view { margin-top: 0 !important; }
+#patient-profile-view .pc-patient-profile-hero::before,#patient-profile-view .pc-patient-profile-art { display: none; }
+#patient-profile-view .pc-history-card { box-shadow: none; border-color: #dce8e1 !important; background: #fbfdfb !important; }
+#patient-profile-view .pc-folio-header { background: #00533e; padding: 14px 18px; }
+#patient-profile-view .pc-folio-header h3 { font-family: 'Source Sans 3','Segoe UI',sans-serif !important; }
+#patient-profile-view #patient-profile-content .card { border-color: var(--workspace-border) !important; box-shadow: var(--workspace-shadow); }
+#patient-profile-view .pc-history-card .pc-prescription-instructions dd { font-variant-numeric: tabular-nums; }
+#patient-profile-view #patient-profile-record-meta { overflow-wrap: anywhere; }
+#roles-view .pc-module-hero { border-color: #fff; box-shadow: var(--workspace-shadow); margin-bottom: 18px !important; }
+#roles-view #assign-user-roles-button { min-height: 44px; padding: .6rem 1rem; border-radius: 12px; font-weight: 650; white-space: normal; }
+#roles-view #roles-content { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+#roles-view #roles-content > .pc-module-directory-heading { margin: 0 4px 18px; }
+#roles-view #roles-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 22px; margin: 0; }
+#roles-view #roles-list > article { --role-accent: #157151; --role-tint: #e3f4eb; width: auto; padding: 0; margin: 0; }
+#roles-view #roles-list > article:nth-child(4n + 2) { --role-accent: #a4740e; --role-tint: #fff1cd; }
+#roles-view #roles-list > article:nth-child(4n + 3) { --role-accent: #08786d; --role-tint: #dff3ef; }
+#roles-view #roles-list > article:nth-child(4n + 4) { --role-accent: #69569b; --role-tint: #eee9f9; }
+#roles-view #roles-list .card { height: auto !important; overflow: hidden; border: 1px solid #bfd5c9 !important; border-top: 4px solid var(--role-accent) !important; border-radius: 18px; background: #fff; box-shadow: 0 2px 3px #174c3f0a,0 10px 22px #174c3f14 !important; }
+#roles-view #roles-list .card-body { display: flex; flex-direction: column; gap: 16px; padding: 22px; background: linear-gradient(180deg,#f8fcfa 0,#fff 110px); }
+#roles-view .pc-role-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+#roles-view .pc-role-heading h3 { margin: 0; color: #073e2c; font: 700 1.05rem/1.3 'Source Sans 3','Segoe UI',sans-serif; overflow-wrap: anywhere; }
+#roles-view .pc-role-monogram { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 14px; background: var(--role-tint); color: var(--role-accent); font-weight: 750; box-shadow: inset 0 1px 0 #fff,0 2px 4px #174c3f0a; }
+#roles-view #roles-list .card-body > p { margin: 0; line-height: 1.5; }
+#roles-view .pc-role-permissions { margin-bottom: 4px; }
+#roles-view .pc-role-permissions summary { padding: 13px 14px; border: 1px solid #c8ddd1; border-radius: 12px; background: #f2f8f5; color: #245b42; font-size: .9rem; font-weight: 650; cursor: pointer; }
+#roles-view .pc-role-permissions[open] summary { background: var(--role-tint); border-color: var(--role-accent); }
+#roles-view .pc-role-permissions summary:focus-visible { outline: 2px solid #0e7664; outline-offset: 3px; }
+#roles-view .pc-role-permissions ul { list-style: none; margin: 0; padding: 4px 2px; }
+#roles-view .pc-role-permissions li { display: grid; gap: 3px; padding: 10px; border-bottom: 1px solid #dfe9e2; color: #587367; font-size: .8rem; }
+#roles-view .pc-role-permissions code { color: #07543c; overflow-wrap: anywhere; font-size: .75rem; }
+#roles-view #roles-list .card-body > .btn { margin-top: auto; align-self: stretch; min-height: 44px; padding: .6rem .9rem; border-color: #8eb5a1; border-radius: 12px; background: #fff; color: #07543c; font-weight: 650; }
+#roles-view #roles-list .card-body > .btn:hover { background: #e3f3e9; }
+#role-permissions-dialog #role-permissions-list .form-check { padding: 12px 12px 12px 40px; border: 1px solid #dce9e1; border-radius: 10px; background: #f7fcf9; }
+#role-permissions-dialog .form-check-label { overflow-wrap: anywhere; font-size: .9rem; }
+#consultation-evaluation-view .pc-module-hero { min-height: 120px !important; box-shadow: var(--workspace-shadow); }
+#consultation-evaluation-view .pc-patient-header-card { border-radius: 18px; border-color: var(--workspace-border) !important; box-shadow: var(--workspace-shadow); background: linear-gradient(110deg,#fff,#f0f9f4) !important; }
+#consultation-evaluation-view .pc-patient-header-card .card-body { padding: 18px !important; }
+#consultation-evaluation-view #evaluation-context-patient { font-family: 'Source Sans 3','Segoe UI',sans-serif !important; }
+#consultation-evaluation-view #consultation-evaluation-form { border-radius: 18px; border-color: var(--workspace-border) !important; box-shadow: var(--workspace-shadow); }
+#consultation-evaluation-view #consultation-evaluation-form h3 { font: 700 1.15rem/1.3 'Source Sans 3','Segoe UI',sans-serif !important; color: #073e2c !important; }
+#consultation-evaluation-view .pc-vitals-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+#consultation-evaluation-view .pc-vital-card { padding: 13px; border: 1px solid #d5e8dc; border-radius: 13px; background: #f5fbf7; min-width: 0; }
+#consultation-evaluation-view .pc-vital-card .form-label { color: #285840; font-size: .82rem; min-height: 24px; }
+#consultation-evaluation-view .pc-vital-card .input-group-text { background: #e1f0e7; border-color: #caddd1; color: #365f4b; }
+#consultation-evaluation-view :is(input,select,textarea).form-control,#consultation-evaluation-view select.form-select { border-radius: 10px; border-color: #cadfd2; min-width: 0; }
+#consultation-evaluation-view textarea.form-control { padding: 12px; font-size: .92rem; line-height: 1.55; }
+#consultation-evaluation-view :is(input,select,textarea):disabled { color: #4a5d53; background-color: #f1f5f2; opacity: 1; }
+#consultation-evaluation-view #evaluation-medical-alerts-banner { border-radius: 16px; border-color: #edcd8a; background: #fff7e6; color: #7b3517; }
+#consultation-evaluation-view :is(#evaluation-diagnoses-section,#evaluation-prescriptions-section,.pc-context-rail-card) { border-radius: 17px; border-color: var(--workspace-border) !important; box-shadow: var(--workspace-shadow); }
+#consultation-evaluation-view .pc-context-rail-card .pc-folio-header { padding: 13px 16px !important; border-radius: 16px 16px 0 0; background: #e9f5ee; border-color: #d4e7dd !important; }
+#consultation-evaluation-view .pc-context-rail-card h4 { color: #073e2c !important; font-family: 'Source Sans 3','Segoe UI',sans-serif !important; }
+#consultation-evaluation-view :is(#evaluation-diagnoses-section,#evaluation-prescriptions-section) h4 { color: #073e2c !important; font-family: 'Source Sans 3','Segoe UI',sans-serif !important; }
+#consultation-evaluation-view :is(#evaluation-diagnoses-list,#evaluation-prescriptions-list) > div { border: 1px solid #dce9e1; border-radius: 12px; margin-bottom: 8px; background: #f9fcfa; }
+#consultation-evaluation-view :is(#evaluation-save-button,#evaluation-cancel-button,#evaluation-finalize-button) { min-height: 44px; padding: .6rem .9rem; border-radius: 11px; }
+@media (min-width:1600px) { #consultation-evaluation-view .pc-vitals-grid { grid-template-columns: repeat(6,minmax(0,1fr)); } }
+@media (max-width:767.98px) {
+  #appointments-view #appointments-results,#patients-view #patients-content { padding: 14px 10px 10px; }
+  #roles-view #roles-list { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  #roles-view #roles-list .card-body { padding: 16px; }
+  #roles-view #assign-user-roles-button { align-self: stretch; }
+  #consultation-evaluation-view .pc-vitals-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  #consultation-evaluation-view .pc-vital-card { padding: 10px; }
+  #consultation-evaluation-view .pc-module-hero { min-height: 0 !important; }
+  .pc-module-directory-heading { align-items: start; }
+}

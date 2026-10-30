@@ -12,6 +12,22 @@ const BRANCH_ID = "33333333-3333-4333-8333-333333333333";
 const CORRELATION_ID = "55555555-5555-4555-8555-555555555555";
 const tests = [];
 
+test("shell real sin cabecera superior: logout único en sidebar y menú móvil disponible", async () => {
+  const response = await fetch("../index.html");
+  assert(response.ok, "No se pudo leer el shell real");
+  const shell = new DOMParser().parseFromString(await response.text(), "text/html");
+  assert(shell.querySelectorAll("#logout-button").length === 1, "Logout debe ser único");
+  assert(Boolean(shell.querySelector("#editorial-offcanvas-nav #logout-button")), "Logout debe estar en la barra lateral");
+  assert(Boolean(shell.querySelector(".pc-sidebar-footer .pc-sidebar-bottom-nav #logout-button")), "Logout debe ocupar la fila inferior del menú");
+  assert(!shell.querySelector(".pc-sidebar-footer").textContent.includes("Sesión autenticada"), "Logout sustituye el estado redundante del pie");
+  assert(!shell.querySelector(".pc-sidebar-footer .pc-data-mono"), "La versión no debe ocupar la fila de logout");
+  assert(!shell.querySelector(".pc-shell-header"), "No debe quedar la cabecera superior compartida");
+  assert(Boolean(shell.querySelector("#mobile-nav-toggle[aria-controls='editorial-offcanvas-nav']")), "Debe conservarse la apertura del menú móvil");
+  const notifications = shell.querySelector("#editorial-offcanvas-nav #sidebar-notifications-button");
+  assert(notifications?.disabled, "Notificaciones pendientes no deben simular un centro activo");
+  assert(notifications.getAttribute("aria-label").includes("próximamente"), "Debe explicarse la disponibilidad de notificaciones");
+});
+
 test("asociación accesible de campos y control de contraseña en login y formularios", async () => {
   const requiredAssociations = [
     ["clinicSlug", "clinicSlugFeedback"],

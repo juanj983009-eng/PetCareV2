@@ -1,0 +1,167 @@
+/* Login: arte y composición de la referencia autorizada, aislados del sistema clínico. */
+body:has(#login-view:not([hidden])) { background: #e5f3f1; overflow-y: auto; height: auto; }
+#login-view.pc-login-page { position: relative; width: 100%; max-width: none; padding: 48px 5vw; margin: auto; isolation: isolate; font-family: 'Source Sans 3','Segoe UI',sans-serif; }
+#login-view::before { content: ''; position: fixed; z-index: -1; width: 390px; height: 390px; top: -170px; left: -90px; border-radius: 50%; background: linear-gradient(135deg,#edc42c,#dda908); pointer-events: none; }
+#login-view::after { content: ''; position: fixed; z-index: -1; width: 560px; height: 560px; bottom: -370px; left: -190px; border-radius: 50%; background: #bfdedb; pointer-events: none; }
+#login-view .pc-login-frame { display: grid; grid-template-columns: 57% 43%; width: 100%; max-width: 1180px; min-height: 650px; margin: 0 auto; background: #12463c; border-radius: 31px; overflow: hidden; box-shadow: 0 20px 50px #1c625c24; }
+#login-view .pc-login-story { position: relative; isolation: isolate; padding: 48px 40px 40px 48px; background: #12463c url('/assets/img/login-veterinary-scene.webp') center/cover no-repeat; overflow: hidden; color: #fff; }
+#login-view .pc-login-story::before { position: absolute; content: ''; z-index: -1; inset: 0; background: linear-gradient(90deg,#0d4038a6 0%,#0d403857 35%,transparent 65%); }
+#login-view .pc-login-story::after { content: ''; position: absolute; width: 230px; height: 230px; left: -130px; bottom: -140px; background: #e9b323; border-radius: 50%; z-index: 1; }
+#login-view .pc-login-brand { display: flex; align-items: center; gap: 13px; position: relative; z-index: 2; }
+#login-view .pc-login-brandmark { width: 72px; height: 72px; color: #f4bf2f; flex-shrink: 0; }
+#login-view .pc-login-brandmark svg { width: 100%; height: 100%; }
+#login-view .pc-login-brand strong { font-size: 2.5rem; font-weight: 750; letter-spacing: -.04em; line-height: 1; }
+#login-view .pc-login-brand strong > span { color: #edb620; }
+#login-view .pc-login-brand p { margin: 5px 0 0; font-size: 1.15rem; line-height: 1.2; color: #eef8f5; }
+#login-view .pc-login-story-copy { position: relative; z-index: 2; max-width: 390px; margin-top: 44px; }
+#login-view .pc-login-story-copy h2 { font: 750 clamp(2rem,3.2vw,3rem)/1.12 'Source Sans 3','Segoe UI',sans-serif !important; letter-spacing: -.025em; color: #fff; margin: 0 0 30px; }
+#login-view .pc-login-story-copy h2 > span { display: inline-block; color: #eeb61b; position: relative; }
+#login-view .pc-login-story-copy h2 > span::after { content: ''; position: absolute; left: 0; right: 0; bottom: -11px; height: 5px; border-radius: 50%; background: #eab117; transform: rotate(-2deg); }
+#login-view .pc-login-story-copy p { color: #f1f8f5; font-size: 1rem; line-height: 1.45; max-width: 320px; margin: 0; }
+#login-view .pc-login-features { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(2,112px); gap: 16px; margin-top: 28px; }
+#login-view .pc-login-features > div { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 105px; padding: 10px; border-radius: 18px; background: #ffffff10; color: #fff; text-align: center; }
+#login-view .pc-login-features svg { width: 35px; height: 35px; color: #e9bd54; }
+#login-view .pc-login-features > div:first-child svg { color: #eff9f4; }
+#login-view .pc-login-features span { font-size: .86rem; line-height: 1.15; }
+#login-view .pc-login-story-paw { position: absolute; top: 45px; right: 23%; width: 100px; height: 100px; color: #d9eee0; opacity: .07; transform: rotate(13deg); }
+#login-view .pc-login-story-paw svg { width: 100%; height: 100%; }
+#login-view .pc-login-access { position: relative; isolation: isolate; padding: 48px 46px 35px 32px; background: #fcfcfb; color: #193e37; }
+#login-view .pc-login-access::before { content: ''; position: absolute; z-index: -1; left: -53px; top: -4%; bottom: -4%; width: 95px; border-radius: 57% 0 0 42%; background: #fcfcfb; }
+#login-view .pc-login-form-content { position: relative; z-index: 1; max-width: 465px; margin: 0 auto; }
+#login-view .pc-login-form-paw { position: absolute; right: 28px; top: 24px; width: 70px; height: 70px; color: #c4d9d7; opacity: .45; transform: rotate(15deg); }
+#login-view .pc-login-form-paw svg { width: 100%; height: 100%; }
+#login-view .pc-login-heading { margin: 28px 0 26px; }
+#login-view #login-title { color: #173f36; font: 750 clamp(1.7rem,2.35vw,2.25rem)/1.12 'Source Sans 3','Segoe UI',sans-serif !important; letter-spacing: -.025em; margin: 0 0 8px; }
+#login-view .pc-login-heading p { margin: 0; color: #65706b; font-size: 1.05rem; }
+#login-view .pc-login-heading strong { color: #21483e; }
+#login-view .pc-login-field-group { margin-bottom: 16px; }
+#login-view .form-label { color: #21453d; font-size: .95rem; font-weight: 600; margin-bottom: 6px; }
+#login-view .pc-login-input { position: relative; }
+#login-view .pc-login-input > svg { position: absolute; width: 22px; height: 22px; top: 14px; left: 17px; color: #314d45; pointer-events: none; z-index: 1; }
+#login-view .form-control { border: 1px solid #ccd0cc; background: #fff; border-radius: 15px; min-height: 50px; padding: 11px 18px 11px 49px; color: #173f36; font-size: .97rem; box-shadow: inset 0 1px 2px #1b493d03; }
+#login-view .form-control::placeholder { color: #77817b; }
+#login-view .form-control:focus { border-color: #18705c; box-shadow: 0 0 0 3px #18705c22; }
+#login-view .form-text { color: #74847b; font-size: .71rem; margin-top: 4px; }
+#login-view .pc-login-password-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#login-view .pc-login-coming-link { color: #ac7800; background: none; border: 0; padding: 0; font-size: .81rem; opacity: 1; margin-bottom: 6px; }
+#login-view .pc-login-password .form-control { padding-right: 48px; }
+#login-view #toggle-password-button { position: absolute; top: 3px; right: 5px; width: 42px; height: 44px; font-size: 0 !important; border: 0; border-radius: 12px; background: transparent; color: #38554a; }
+#login-view #toggle-password-button::before { content: ''; display: block; width: 22px; height: 22px; margin: auto; background: center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23365548' stroke-width='1.8'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E"); }
+#login-view #toggle-password-button:hover { background: #eaf4ee; }
+#login-view #toggle-password-button:focus-visible { outline: 2px solid #18705c; outline-offset: -2px; }
+#login-view .pc-login-remember { display: flex; align-items: center; gap: 10px; color: #52665b; margin: 3px 0 20px; font-size: .85rem; }
+#login-view .pc-login-remember input { width: 20px; height: 20px; accent-color: #164d3b; }
+#login-view .pc-login-submit { display: flex; justify-content: center; align-items: center; gap: 12px; min-height: 52px; border: 0; border-radius: 15px; background: linear-gradient(110deg,#d39a05,#d6a006); color: #fff; font-size: 1.12rem; font-weight: 650; box-shadow: 0 4px 12px #98710812; }
+#login-view .pc-login-submit > svg { width: 24px; height: 24px; }
+#login-view .pc-login-submit:hover { background: #bd8900; color: #fff; }
+#login-view .pc-login-submit:focus-visible { outline: 3px solid #156a50; outline-offset: 3px; }
+#login-view .pc-login-submit:disabled { background: #c5a552; color: #fff; }
+#login-view .pc-login-divider { display: flex; align-items: center; gap: 14px; margin: 22px 0 18px; font-size: .85rem; color: #748078; }
+#login-view .pc-login-divider::before, #login-view .pc-login-divider::after { content: ''; height: 1px; background: #d5d9d5; flex: 1; }
+#login-view .pc-login-social { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#login-view .pc-login-social button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 49px; background: #fff; border: 1px solid #ccd0cc; border-radius: 15px; color: #253c33; font: 600 1rem/1 'Source Sans 3','Segoe UI',sans-serif; opacity: 1; }
+#login-view .pc-login-google { font: 800 28px/1 Arial,sans-serif; background: conic-gradient(#4285f4 0 25%,#34a853 25% 48%,#fbbc05 48% 68%,#ea4335 68% 83%,#4285f4 83%); background-clip: text; -webkit-text-fill-color: transparent; }
+#login-view .pc-login-ms { display: grid; grid-template-columns: 10px 10px; grid-template-rows: 10px 10px; gap: 2px; }
+#login-view .pc-login-ms i:nth-child(1) { background: #f35325; } #login-view .pc-login-ms i:nth-child(2) { background: #81bc06; } #login-view .pc-login-ms i:nth-child(3) { background: #05a6f0; } #login-view .pc-login-ms i:nth-child(4) { background: #ffba08; }
+#login-view .pc-login-upcoming { font-size: .68rem; color: #78847d; text-align: center; margin: 9px 0 18px; }
+#login-view .pc-login-register { font-size: .86rem; color: #68796d; text-align: center; margin: 0; }
+#login-view .pc-login-register button { border: 0; background: none; color: #a37500; padding: 0 0 0 4px; font-weight: 650; }
+#login-view button:disabled { cursor: default; }
+#login-view #login-errors:empty { display: none; }
+#login-view #login-errors .alert { border-radius: 12px; font-size: .84rem; }
+@media (max-height:900px) and (min-width:992px) {
+  #login-view.pc-login-page { padding: 28px 5vw; }
+  #login-view .pc-login-frame { min-height: 0; zoom: .9; }
+  #login-view .pc-login-story { padding: 26px 32px; }
+  #login-view .pc-login-brandmark { width: 55px; height: 55px; }
+  #login-view .pc-login-brand strong { font-size: 2rem; }
+  #login-view .pc-login-brand p { font-size: .95rem; }
+  #login-view .pc-login-story-copy { margin-top: 20px; }
+  #login-view .pc-login-story-copy h2 { font-size: 2.15rem !important; margin-bottom: 22px; }
+  #login-view .pc-login-story-copy p { font-size: .88rem; }
+  #login-view .pc-login-features { grid-template-columns: repeat(2,95px); gap: 10px; margin-top: 16px; }
+  #login-view .pc-login-features > div { min-height: 74px; }
+  #login-view .pc-login-features svg { width: 28px; height: 28px; }
+  #login-view .pc-login-access { padding: 18px 32px 18px 25px; }
+  #login-view .pc-login-heading { margin: 4px 0 14px; }
+  #login-view .pc-login-field-group { margin-bottom: 8px; }
+  #login-view .form-control { min-height: 40px; padding-top: 7px; padding-bottom: 7px; font-size: .9rem; }
+  #login-view .pc-login-input > svg { top: 9px; }
+  #login-view #toggle-password-button { top: 0; height: 40px; }
+  #login-view .form-label { font-size: .85rem; margin-bottom: 3px; }
+  #login-view .pc-login-remember { margin: 0 0 10px; font-size: .78rem; }
+  #login-view .pc-login-submit { min-height: 42px; font-size: 1rem; }
+  #login-view .pc-login-divider { margin: 11px 0 9px; }
+  #login-view .pc-login-social button { min-height: 40px; }
+  #login-view .pc-login-upcoming { margin-bottom: 8px; }
+}
+@media (max-width:1199.98px) and (min-width:992px) { #login-view .pc-login-story { padding-left: 28px; } #login-view .pc-login-story-copy h2 { font-size: 2rem !important; } #login-view .pc-login-features { grid-template-columns: repeat(2,90px); } #login-view .pc-login-access { padding-left: 15px; padding-right: 22px; } }
+@media (max-width:991.98px) {
+  #login-view.pc-login-page { padding: 22px; }
+  #login-view .pc-login-frame { grid-template-columns: 1fr; max-width: 600px; min-height: 0; border-radius: 24px; }
+  #login-view .pc-login-story { padding: 24px; background: #12463c; } #login-view .pc-login-story::after { display: none; }
+  #login-view .pc-login-story-copy, #login-view .pc-login-features, #login-view .pc-login-story-paw { display: none; }
+  #login-view .pc-login-brandmark { width: 49px; height: 49px; }
+  #login-view .pc-login-brand strong { font-size: 2rem; }
+  #login-view .pc-login-brand p { font-size: .9rem; }
+  #login-view .pc-login-access { padding: 28px; }
+  #login-view .pc-login-access::before { display: none; }
+  #login-view .pc-login-heading { margin-top: 0; }
+  #login-view .pc-login-form-paw { width: 48px; height: 48px; top: 15px; right: 14px; }
+}
+@media (max-width:420px) { #login-view.pc-login-page { padding: 12px; } #login-view .pc-login-access { padding: 24px 20px; } #login-view #login-title { font-size: 1.6rem !important; } #login-view .pc-login-heading p { font-size: .93rem; } #login-view .pc-login-coming-link { font-size: .71rem; } #login-view .pc-login-social { gap: 10px; } #login-view .pc-login-social button { font-size: .88rem; } #login-view .pc-login-register { font-size: .78rem; } }
+
+/* Acceso compacto con la paleta funcional de PetCare. */
+body:has(#login-view:not([hidden])) { background: #c7cec0; }
+#login-view.pc-login-page { padding: 32px 24px; }
+#login-view::before { background: #dda15e; opacity: .22; width: 300px; height: 300px; }
+#login-view::after { background: #ccd2c5; }
+#login-view .pc-login-frame { max-width: 930px; min-height: 0; zoom: 1; grid-template-columns: 53% 47%; border-radius: 24px; background: #2d6a4f; box-shadow: 0 12px 36px rgba(28,40,38,.16); }
+#login-view .pc-login-story { padding: 25px 26px; background-position: 54% center; }
+#login-view .pc-login-story::before { background: linear-gradient(90deg,#254e3fcc,#254e3f55 52%,transparent 80%); }
+#login-view .pc-login-story::after { background: #dda15e; }
+#login-view .pc-login-brandmark { width: 44px; height: 44px; color: #dda15e; }
+#login-view .pc-login-brand strong { font-size: 1.65rem; }
+#login-view .pc-login-brand strong > span { color: #dda15e; }
+#login-view .pc-login-brand p { font-size: .8rem; }
+#login-view .pc-login-story-copy { margin-top: 22px; }
+#login-view .pc-login-story-copy h2 { font-size: 1.8rem !important; margin-bottom: 20px; }
+#login-view .pc-login-story-copy h2 > span { color: #edc38b; }
+#login-view .pc-login-story-copy h2 > span::after { background: #dda15e; height: 3px; bottom: -7px; }
+#login-view .pc-login-story-copy p { font-size: .78rem; line-height: 1.4; }
+#login-view .pc-login-features { grid-template-columns: repeat(2,78px); gap: 8px; margin-top: 18px; }
+#login-view .pc-login-features > div { min-height: 66px; border-radius: 12px; padding: 8px; gap: 5px; }
+#login-view .pc-login-features svg { width: 24px; height: 24px; color: #edc38b; }
+#login-view .pc-login-features span { font-size: .7rem; }
+#login-view .pc-login-access { padding: 24px 26px 20px 20px; background: #fff; color: #1c2826; }
+#login-view .pc-login-access::before { background: #fff; }
+#login-view .pc-login-form-paw { width: 42px; height: 42px; right: 12px; top: 18px; color: #c7cec0; }
+#login-view .pc-login-heading { margin: 0 0 16px; }
+#login-view #login-title { font-size: 1.65rem !important; color: #1e2e24; }
+#login-view .pc-login-heading p { font-size: .85rem; }
+#login-view .pc-login-field-group { margin-bottom: 10px; }
+#login-view .form-label { font-size: .78rem; margin-bottom: 4px; color: #1c2826; }
+#login-view .form-control { min-height: 36px; height: auto; font-size: .8rem; padding-top: 7px; padding-bottom: 7px; border-color: #c7cec0; border-radius: 10px; }
+#login-view .pc-login-input > svg { width: 18px; height: 18px; top: 9px; color: #2d6a4f; }
+#login-view #toggle-password-button { height: 36px; }
+#login-view .form-text { font-size: .65rem; }
+#login-view .pc-login-coming-link { color: #924b36; font-size: .7rem; }
+#login-view .pc-login-remember { margin: 0 0 10px; font-size: .72rem; }
+#login-view .pc-login-remember input { width: 16px; height: 16px; }
+#login-view .pc-login-submit { min-height: 38px; background: #2d6a4f; border-radius: 11px; font-size: .9rem; }
+#login-view .pc-login-submit:hover { background: #24583f; }
+#login-view .pc-login-submit:disabled { background: #637e6b; }
+#login-view .pc-login-submit > svg { width: 20px; height: 20px; }
+#login-view .pc-login-divider { margin: 12px 0 10px; font-size: .72rem; }
+#login-view .pc-login-social { gap: 10px; }
+#login-view .pc-login-social button { min-height: 36px; border-radius: 10px; font-size: .8rem; border-color: #c7cec0; }
+#login-view .pc-login-upcoming { font-size: .62rem; margin: 8px 0; }
+#login-view .pc-login-register { font-size: .73rem; }
+#login-view .pc-login-register button { color: #924b36; }
+#login-view #login-errors .alert { padding: 10px 12px; font-size: .76rem; border-color: #d9ab98; background: #fcf0e9; color: #793f2e; }
+@media (max-width: 991.98px) {
+  #login-view.pc-login-page { padding: 20px 14px; }
+  #login-view .pc-login-frame { grid-template-columns: 1fr; max-width: 420px; }
+  #login-view .pc-login-story { padding: 16px 22px; background: #2d6a4f; }
+  #login-view .pc-login-access { padding: 22px; }
+}

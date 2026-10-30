@@ -1,3 +1,4 @@
+import { applyDemoPatientPortrait } from "./demo-patient-portraits.js";
 import { ApiRequestError } from "./api-client.js";
 
 const PATIENT_CREATE = "PATIENT_CREATE";
@@ -294,7 +295,7 @@ export function createPatientsController({ document, client, onCreateAppointment
     try {
       const params = new URLSearchParams({
         page: String(requestedPage),
-        size: "10",
+        size: "6",
         sortBy: s.sortSelect.value || "name",
         direction: s.directionSelect.value || "asc"
       });
@@ -505,48 +506,114 @@ export function createPatientsController({ document, client, onCreateAppointment
     }
   }
 
+  function calculateAgeString(birthDateStr) {
+    if (!birthDateStr || typeof birthDateStr !== "string") return null;
+    const trimmed = birthDateStr.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+    const [y, m, d] = trimmed.split("-").map(Number);
+    const birth = new Date(y, m - 1, d);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    if (birth > today) return null;
+
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    if (today.getDate() < birth.getDate()) {
+      months -= 1;
+    }
+    if (months < 0) {
+      years -= 1;
+      months += 12;
+    }
+
+    if (years === 0 && months === 0) {
+      const diffDays = Math.max(0, Math.floor((today - birth) / (1000 * 60 * 60 * 24)));
+      return `${diffDays} día${diffDays === 1 ? "" : "s"}`;
+    }
+    if (years === 0) {
+      return `${months} mes${months === 1 ? "" : "es"}`;
+    }
+    if (years === 1 && months > 0) {
+      return `1 año, ${months} m`;
+    }
+    return `${years} año${years === 1 ? "" : "s"}`;
+  }
+
+  function setDdValue(element, value, emptyPlaceholder = "No registrado") {
+    if (!element) return;
+    const str = (value ?? "").toString().trim();
+    if (str.length > 0 && str !== "-" && str.toLowerCase() !== "no especificado" && str.toLowerCase() !== "no especificada") {
+      element.textContent = str;
+      element.classList.remove("text-secondary", "fst-italic");
+      element.classList.add("text-dark");
+    } else {
+      element.textContent = emptyPlaceholder;
+      element.classList.add("text-secondary", "fst-italic");
+      element.classList.remove("text-dark");
+    }
+  }
+
   function renderPatientProfile(profile) {
     if (!p) return;
     const speciesKey = String(profile.species ?? "").toUpperCase();
-    const speciesLabel = SPECIES_LABELS[speciesKey] ?? profile.species ?? "No especificada";
-    const breedText = profile.breed?.trim() || "Sin raza registrada";
-    const sexLabel = SEX_LABELS[profile.sex] ?? profile.sex ?? "No especificado";
-    const birthDateText = profile.birthDate?.trim() || "No registrada";
-    const colorText = profile.color?.trim() || "No registrado";
-    const microchipText = profile.microchip?.trim() || "No registrado";
-    const sterilizedText = profile.sterilized === true
-      ? "Sí"
-      : profile.sterilized === false
-        ? "No"
-        : "No especificado";
+    const speciesLabel = SPECIES_LABELS[speciesKey] ?? (profile.species ? String(profile.species) : "");
+    const rawBreed = profile.breed?.trim() || "";
+    const sexLabel = SEX_LABELS[profile.sex] ?? (profile.sex ? String(profile.sex) : "");
+    const ageLabel = calculateAgeString(profile.birthDate);
+
     const statusInfo = STATUS_META[profile.status] ?? {
       label: profile.status || "Desconocido",
       badgeClass: "badge text-bg-light border"
     };
 
     p.title.textContent = profile.name;
-    p.subtitle.textContent = `${speciesLabel} · ${breedText} · ${sexLabel}`;
+    p.subtitle.replaceChildren();
+
+    // Solo datos reales presentes; los datos faltantes no se presentan como badges
+    const secondaryChips = [];
+    if (speciesLabel) secondaryChips.push(speciesLabel);
+    if (rawBreed) secondaryChips.push(rawBreed);
+    if (sexLabel) secondaryChips.push(sexLabel);
+    if (ageLabel) secondaryChips.push(ageLabel);
+
+    secondaryChips.forEach((chipText, idx) => {
+      const chipSpan = document.createElement("span");
+      chipSpan.className = "badge pc-meta-chip me-1 mb-1";
+      chipSpan.textContent = chipText;
+      p.subtitle.append(chipSpan);
+      if (idx < secondaryChips.length - 1) {
+        const sep = document.createElement("span");
+        sep.className = "visually-hidden";
+        sep.textContent = " · ";
+        p.subtitle.append(sep);
+      }
+    });
     p.statusBadge.className = statusInfo.badgeClass;
     p.statusBadge.textContent = statusInfo.label;
+    if (p.speciesAvatar) {
+      renderSpeciesAvatar(p.speciesAvatar, speciesKey);
+      applyDemoPatientPortrait(p.speciesAvatar, profile.id);
+    }
 
-    p.name.textContent = profile.name;
-    p.species.textContent = speciesLabel;
-    p.breed.textContent = breedText;
-    p.sex.textContent = sexLabel;
-    p.birthDate.textContent = birthDateText;
-    p.color.textContent = colorText;
-    p.microchip.textContent = microchipText;
-    p.sterilized.textContent = sterilizedText;
+    setDdValue(p.name, profile.name, "-");
+    setDdValue(p.species, speciesLabel, "No especificada");
+    setDdValue(p.breed, rawBreed, "No registrada");
+    setDdValue(p.sex, sexLabel, "No especificado");
+    setDdValue(p.birthDate, profile.birthDate, "No registrada");
+    setDdValue(p.color, profile.color, "No registrado");
+    setDdValue(p.microchip, profile.microchip, "No registrado");
+    const sterilizedText = profile.sterilized === true ? "Sí" : (profile.sterilized === false ? "No" : "");
+    setDdValue(p.sterilized, sterilizedText, "No especificado");
 
-    const ownerName = profile.owner?.fullName?.trim() || "Sin propietario";
-    const ownerDoc = [profile.owner?.documentType, profile.owner?.documentNumber].filter(Boolean).join(" ") || "Sin documento";
-    const ownerPhone = profile.owner?.phone?.trim() || "No registrado";
-    const ownerEmail = profile.owner?.email?.trim() || "No registrado";
+    const ownerName = profile.owner?.fullName?.trim() || "";
+    const ownerDoc = [profile.owner?.documentType, profile.owner?.documentNumber].filter(Boolean).join(" ");
+    const ownerPhone = profile.owner?.phone?.trim() || "";
+    const ownerEmail = profile.owner?.email?.trim() || "";
 
-    p.ownerName.textContent = ownerName;
-    p.ownerDocument.textContent = ownerDoc;
-    p.ownerPhone.textContent = ownerPhone;
-    p.ownerEmail.textContent = ownerEmail;
+    setDdValue(p.ownerName, ownerName, "Sin propietario");
+    setDdValue(p.ownerDocument, ownerDoc, "Sin documento");
+    setDdValue(p.ownerPhone, ownerPhone, "No registrado");
+    setDdValue(p.ownerEmail, ownerEmail, "No registrado");
 
     const allergies = profile.medicalRecord?.allergies?.trim() || "";
     const medicalAlerts = profile.medicalRecord?.medicalAlerts?.trim() || "";
@@ -565,6 +632,22 @@ export function createPatientsController({ document, client, onCreateAppointment
       ? `Folio: ${recordId}${recordDate ? ` · Apertura: ${recordDate}` : ""}`
       : "Historia clínica base vinculada";
     p.recordHistory.textContent = profile.medicalRecord?.history?.trim() || "Sin antecedentes clínicos registrados.";
+  }
+
+  function renderSpeciesAvatar(container, speciesKey) {
+    if (!container) return;
+    container.dataset.species = speciesKey;
+    let svgContent = "";
+    if (speciesKey === "CANINO") {
+      svgContent = '<svg class="pc-species-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5.172C10 3.782 8.423 2.679 6.5 3c-2.823.47-4.113 6.006-4 7 .08.703 1.725 1.722 3.5 1 1.695-.69 4-3.5 4-5.828z"/><path d="M14 5.172C14 3.782 15.577 2.679 17.5 3c2.823.47 4.113 6.006 4 7-.08.703-1.725 1.722-3.5 1-1.695-.69-4-3.5-4-5.828z"/><circle cx="8" cy="11" r="1.5"/><circle cx="16" cy="11" r="1.5"/><ellipse cx="12" cy="15.5" rx="2" ry="1.25"/></svg>';
+    } else if (speciesKey === "FELINO") {
+      svgContent = '<svg class="pc-species-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5c.67 0 8 4 8 11 0 4-4 6-8 6s-8-2-8-6c0-7 7.33-11 8-11Z"/><path d="m5 6 3 3"/><path d="m19 6-3 3"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M12 16v1"/></svg>';
+    } else if (speciesKey === "AVE") {
+      svgContent = '<svg class="pc-species-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 18"/><path d="m20 7 2 .5-2 1.5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>';
+    } else {
+      svgContent = '<svg class="pc-species-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 20.42A3.5 3.5 0 0 1 2 15a5 5 0 0 1 7-5Z"/></svg>';
+    }
+    container.innerHTML = svgContent;
   }
 
   function renderPatientDiagnoses(diagnoses) {
@@ -781,7 +864,7 @@ export function createPatientsController({ document, client, onCreateAppointment
 
   function createConsultationHistoryCard(item) {
     const card = document.createElement("div");
-    card.className = "card border rounded p-3 bg-white mb-2 pc-history-card";
+    card.className = "card border p-3 bg-white mb-2 pc-history-card";
     card.dataset.consultationId = item.id;
 
     // Encabezado de la consulta
@@ -805,8 +888,10 @@ export function createPatientsController({ document, client, onCreateAppointment
 
     if (item.id) {
       const idBadge = document.createElement("span");
-      idBadge.className = "badge text-bg-light border pc-data-mono small text-secondary";
-      idBadge.textContent = `ID: ${item.id.substring(0, 8)}`;
+      idBadge.className = "badge pc-folio-badge pc-data-mono small";
+      idBadge.textContent = `Folio #${item.id.substring(0, 8)}`;
+      idBadge.title = `Folio completo: ${item.id}`;
+      idBadge.setAttribute("aria-label", `Folio completo: ${item.id}`);
       headerLeft.append(idBadge);
     }
     header.append(headerLeft);
@@ -815,7 +900,7 @@ export function createPatientsController({ document, client, onCreateAppointment
     const detailButton = document.createElement("button");
     detailButton.type = "button";
     detailButton.className = "btn btn-sm btn-outline-primary";
-    detailButton.textContent = "Ver detalle";
+    detailButton.textContent = "Ver consulta";
     detailButton.dataset.action = "view-consultation-detail";
     detailButton.dataset.consultationId = item.id;
     detailButton.addEventListener("click", () => {
@@ -866,21 +951,25 @@ export function createPatientsController({ document, client, onCreateAppointment
 
     // Bloques clínicos: Diagnósticos y Prescripciones
     const detailsRow = document.createElement("div");
-    detailsRow.className = "row g-3";
+    detailsRow.className = "row g-3 pc-history-clinical-sections";
 
     // Diagnósticos
     const colDiag = document.createElement("div");
     colDiag.className = "col-12 col-lg-6";
     const diagBox = document.createElement("div");
-    diagBox.className = "p-2 rounded bg-light border h-100";
+    diagBox.className = "p-3 rounded border h-100 pc-history-sub-box";
     const diagTitle = document.createElement("h4");
     diagTitle.className = "h6 fw-semibold mb-2 small text-secondary";
     diagTitle.textContent = "Diagnósticos";
+    const diagnosisCount = document.createElement('span');
+    diagnosisCount.className = 'pc-clinical-section-count';
+    diagnosisCount.textContent = String(Array.isArray(item.diagnoses) ? item.diagnoses.length : 0);
+    diagTitle.append(diagnosisCount);
     diagBox.append(diagTitle);
 
     if (Array.isArray(item.diagnoses) && item.diagnoses.length > 0) {
       const diagList = document.createElement("ul");
-      diagList.className = "list-unstyled mb-0 small";
+      diagList.className = "list-unstyled mb-0 small pc-history-diagnoses";
       for (const d of item.diagnoses) {
         const li = document.createElement("li");
         li.className = "mb-1 pb-1 border-bottom";
@@ -890,16 +979,20 @@ export function createPatientsController({ document, client, onCreateAppointment
           ? "badge text-bg-primary me-1"
           : "badge text-bg-warning text-dark me-1";
         typeBadge.textContent = d.diagnosisType || "PRESUNTIVO";
-        li.append(typeBadge);
+        const diagnosisMeta = document.createElement('div');
+        diagnosisMeta.className = 'pc-diagnosis-meta';
+        diagnosisMeta.append(typeBadge);
 
         if (d.code) {
           const codeBadge = document.createElement("span");
           codeBadge.className = "badge text-bg-light border pc-data-mono me-1";
           codeBadge.textContent = d.code;
-          li.append(codeBadge);
+          diagnosisMeta.append(codeBadge);
         }
 
-        const descSpan = document.createElement("span");
+        li.append(diagnosisMeta);
+        const descSpan = document.createElement("p");
+        descSpan.className = "pc-diagnosis-description";
         descSpan.textContent = d.description || "";
         li.append(descSpan);
 
@@ -918,7 +1011,7 @@ export function createPatientsController({ document, client, onCreateAppointment
     const colPresc = document.createElement("div");
     colPresc.className = "col-12 col-lg-6";
     const prescBox = document.createElement("div");
-    prescBox.className = "p-2 rounded bg-light border h-100";
+    prescBox.className = "p-3 rounded border h-100 pc-history-sub-box";
     const prescTitle = document.createElement("h4");
     prescTitle.className = "h6 fw-semibold mb-2 small text-secondary";
     prescTitle.textContent = "Prescripciones";
@@ -935,27 +1028,33 @@ export function createPatientsController({ document, client, onCreateAppointment
       }
     }
 
+    const prescriptionCount = document.createElement('span');
+    prescriptionCount.className = 'pc-clinical-section-count';
+    prescriptionCount.textContent = String(allItems.length);
+    prescTitle.append(prescriptionCount);
+
     if (allItems.length > 0) {
       const prescList = document.createElement("ul");
-      prescList.className = "list-unstyled mb-0 small";
+      prescList.className = "list-unstyled mb-0 small pc-history-prescriptions";
       for (const pi of allItems) {
         const li = document.createElement("li");
         li.className = "mb-2 pb-1 border-bottom";
 
         const medTitle = document.createElement("div");
-        medTitle.className = "fw-medium";
+        medTitle.className = "pc-prescription-medication";
         medTitle.textContent = pi.medicationName || "Medicamento";
         li.append(medTitle);
 
-        const medMeta = document.createElement("div");
-        medMeta.className = "text-secondary small";
-        const parts = [
-          pi.dosage,
-          pi.frequency,
-          pi.duration,
-          pi.route ? `Vía: ${pi.route}` : null
-        ].filter(Boolean);
-        medMeta.textContent = parts.join(" · ");
+        const medMeta = document.createElement('dl');
+        medMeta.className = 'pc-prescription-instructions';
+        for (const [label, value] of [['Dosis', pi.dosage], ['Frecuencia', pi.frequency], ['Duración', pi.duration], ['Vía', pi.route]]) {
+          if (!value) continue;
+          const term = document.createElement('dt');
+          term.textContent = label;
+          const detail = document.createElement('dd');
+          detail.textContent = value;
+          medMeta.append(term, detail);
+        }
         li.append(medMeta);
 
         prescList.append(li);
@@ -1020,7 +1119,17 @@ export function createPatientsController({ document, client, onCreateAppointment
       const breedMeta = document.createElement("div");
       breedMeta.className = "small text-secondary";
       breedMeta.textContent = breedText;
-      nameCell.append(nameStrong, breedMeta);
+      const nameDetails = document.createElement('div');
+      nameDetails.append(nameStrong, breedMeta);
+      const avatar = document.createElement('span');
+      avatar.className = 'pc-demo-patient-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      if (applyDemoPatientPortrait(avatar, patientId)) {
+        const photoRow = document.createElement('div');
+        photoRow.className = 'd-flex align-items-center gap-2';
+        photoRow.append(avatar, nameDetails);
+        nameCell.append(photoRow);
+      } else nameCell.append(nameDetails);
 
       const speciesCell = document.createElement("td");
       const speciesPrimary = document.createElement("div");
@@ -1070,6 +1179,10 @@ export function createPatientsController({ document, client, onCreateAppointment
       const cardSubtitle = document.createElement("p");
       cardSubtitle.className = "small text-secondary mb-0";
       cardSubtitle.textContent = `${speciesLabel} · ${breedText} · ${sexLabel}`;
+      const mobileAvatar = document.createElement('span');
+      mobileAvatar.className = 'pc-demo-patient-avatar';
+      mobileAvatar.setAttribute('aria-hidden', 'true');
+      if (applyDemoPatientPortrait(mobileAvatar, patientId)) titleGroup.append(mobileAvatar);
       titleGroup.append(cardTitle, cardSubtitle);
       headerRow.append(titleGroup, createStatusBadge(document, statusInfo));
 
@@ -1093,6 +1206,19 @@ export function createPatientsController({ document, client, onCreateAppointment
   }
 
   function updatePagination(result) {
+    const metrics = {
+      "patient-metric-total": result.totalElements,
+      "patient-metric-active": result.content.filter(patient => patient.status === "ACTIVO").length,
+      "patient-metric-other": result.content.filter(patient => patient.status !== "ACTIVO").length,
+      "patient-metric-chip": result.content.filter(patient => patient.microchip?.trim()).length
+    };
+    for (const [id, value] of Object.entries(metrics)) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = String(value);
+    }
+    const count = document.querySelector("#patients-result-count");
+    if (count) count.textContent = Number.isInteger(result.totalElements) && result.totalElements >= 0
+      ? new Intl.NumberFormat("es-PE").format(result.totalElements) + (result.totalElements === 1 ? " resultado" : " resultados") : "";
     s.previousButton.disabled = result.page <= 0;
     s.nextButton.disabled = result.page + 1 >= result.totalPages;
     s.pageStatus.textContent = result.totalPages > 0
@@ -1102,6 +1228,12 @@ export function createPatientsController({ document, client, onCreateAppointment
 
   function setSearchState(activeState) {
     if (!s) return;
+    if (!["content", "empty"].includes(activeState)) {
+      for (const id of ["patient-metric-total", "patient-metric-active", "patient-metric-other", "patient-metric-chip"]) {
+        const metric = document.getElementById(id);
+        if (metric) metric.textContent = "—";
+      }
+    }
     s.initial.hidden = activeState !== "initial";
     s.validation.hidden = activeState !== "validation";
     s.forbidden.hidden = activeState !== "forbidden";
@@ -1447,6 +1579,7 @@ function profileElements(document) {
     }
   }
   resolved.editButton = document.querySelector("#patient-profile-edit-button");
+  resolved.speciesAvatar = document.querySelector("#patient-profile-species-avatar");
   resolved.notice = document.querySelector("#patient-profile-notice");
   resolved.historyCount = document.querySelector("#patient-profile-history-count");
   resolved.historyLoading = document.querySelector("#patient-profile-history-loading");

@@ -323,6 +323,49 @@ async function runTests() {
   );
   passed.push("4. Precarga, cancelación, conflicto 409 y actualización exitosa del paciente en perfil clínico");
 
+  nextOwnerResponse = async () => ({
+    content: [sampleOwner, { ...sampleOwner, id: "other-owner", phone: null, email: null, documentNumber: null }],
+    page: 0, size: 10, totalElements: 23, totalPages: 3
+  });
+  document.querySelector("#owner-search").value = "Lucia";
+  document.querySelector("#owner-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  await waitFor(() => document.querySelector("#owners-summary-total").textContent === "23");
+  assert(document.querySelector("#owners-summary-phone").textContent === "1", "Teléfonos debe contar solo la página recibida");
+  assert(document.querySelector("#owners-summary-email").textContent === "1", "Correos debe omitir valores nulos");
+  assert(document.querySelector("#owners-summary-document").textContent === "1", "Documentos debe omitir valores nulos");
+  assert(!document.querySelector("#owners-overview").hidden, "El resumen debe mostrarse tras buscar");
+  assert(document.querySelectorAll("#owners-cards .pc-owner-avatar").length === 2, "Las fichas móviles deben incluir iniciales");
+  ownersController.sessionEnded();
+  assert(document.querySelector("#owners-overview").hidden, "Cerrar sesión debe ocultar el resumen");
+  passed.push("5. Resumen distingue total filtrado de contactos en página y se limpia al cerrar sesión");
+
+  ownersController.sessionReady({ authorities: ["OWNER_READ"] });
+  const beforeOpen = calls.length;
+  document.querySelector("#owners-nav-button").click();
+  assert(calls.length === beforeOpen, "Abrir Propietarios no debe consultar automáticamente");
+  nextOwnerResponse = async () => ({ content: [sampleOwner], page: 0, size: 6, totalElements: 8, totalPages: 2 });
+  document.querySelector("#owner-search").value = "";
+  document.querySelector("#owner-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  await waitFor(() => !document.querySelector("#owners-content").hidden);
+  let params = new URL(calls.at(-1).path, "http://test.local").searchParams;
+  assert(params.get("query") === "" && params.get("size") === "6", "Buscar vacío debe solicitar todos con tamaño 6");
+  nextOwnerResponse = async () => ({ content: [sampleOwner], page: 1, size: 6, totalElements: 8, totalPages: 2 });
+  document.querySelector("#owners-next-page").click();
+  await waitFor(() => document.querySelector("#owners-page-status").textContent.startsWith("Página 2 de"));
+  params = new URL(calls.at(-1).path, "http://test.local").searchParams;
+  assert(params.get("page") === "1" && params.get("query") === "", "Siguiente debe conservar la búsqueda vacía");
+  const beforeInvalid = calls.length;
+  document.querySelector("#owner-search").value = " x ";
+  document.querySelector("#owner-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  assert(calls.length === beforeInvalid, "Un carácter no debe enviar HTTP");
+  assert(document.querySelector("#owner-search").getAttribute("aria-invalid") === "true", "Validación debe ser accesible");
+  document.querySelector("#owner-search").value = "  ";
+  nextOwnerResponse = async () => ({ content: [sampleOwner], page: 0, size: 6, totalElements: 1, totalPages: 1 });
+  document.querySelector("#owner-search-form").dispatchEvent(new Event("submit", { cancelable: true }));
+  await waitFor(() => calls.length > beforeInvalid && !document.querySelector("#owners-content").hidden);
+  assert(document.querySelector("#owner-search").checkValidity(), "Vaciar debe recuperar la validez tras un error");
+  passed.push("6. Búsqueda vacía explícita, paginación de seis y rechazo de un carácter");
+
   window.__PETCARE_TEST_RESULTS__ = {
     passed: passed.length,
     failed: 0,

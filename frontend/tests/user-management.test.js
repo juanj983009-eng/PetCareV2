@@ -15,7 +15,7 @@ test("oculta la gestión sin permisos", async () => {
 
 test("USER_READ lista usuarios pero no ofrece mutaciones", async () => {
   const { controller, client } = setup(["USER_READ"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   assert(!document.querySelector("#users-content").hidden);
   assert(document.querySelector("#new-user-button").hidden);
@@ -26,7 +26,7 @@ test("USER_READ lista usuarios pero no ofrece mutaciones", async () => {
 
 test("USER_MANAGE habilita registro y controles de estado", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   assert(!document.querySelector("#new-user-button").hidden);
   assert(document.querySelector("#users-table-body").textContent.includes("Editar"));
@@ -36,7 +36,7 @@ test("USER_MANAGE habilita registro y controles de estado", async () => {
 
 test("envía búsqueda y filtros como parámetros permitidos", async () => {
   const { controller, client } = setup(["USER_READ"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   document.querySelector("#user-search").value = "ada@example.test";
   document.querySelector("#user-status-filter").value = "ACTIVO";
@@ -49,9 +49,39 @@ test("envía búsqueda y filtros como parámetros permitidos", async () => {
   controller.destroy();
 });
 
+test("el resumen distingue el total filtrado de los usuarios y sedes de la página", async () => {
+  const { controller, client } = setup(["USER_READ"]);
+  client.customPage = { content: [user(), { ...user(), id: "other", status: "BLOQUEADO", branch: null }], page: 0, totalElements: 23, totalPages: 3 };
+  await openUserList();
+  await waitFor(() => !document.querySelector("#users-content").hidden);
+  equal(document.querySelector("#users-summary-total").textContent, "23");
+  equal(document.querySelector("#users-summary-active").textContent, "1");
+  equal(document.querySelector("#users-summary-inactive").textContent, "1");
+  equal(document.querySelector("#users-summary-branches").textContent, "1");
+  assert(!document.querySelector("#users-overview").hidden);
+  controller.destroy();
+  assert(document.querySelector("#users-overview").hidden);
+});
+
+test("filtro de estado consulta el servidor y limpiar restaura sin recargar", async () => {
+  const { controller, client } = setup(["USER_READ"]);
+  await openUserList();
+  await waitFor(() => !document.querySelector("#users-content").hidden);
+  document.querySelector("#user-status-filter").value = "INACTIVO";
+  submit("#user-filters");
+  await waitFor(() => client.calls.some(call => call.input.includes("status=INACTIVO")));
+  equal(document.querySelector("#user-status-filter").value, "INACTIVO");
+  const beforeClear = client.calls.length;
+  click("#clear-user-filters");
+  equal(document.querySelector("#user-status-filter").value, "");
+  equal(client.calls.length, beforeClear);
+  assert(document.querySelector("#users-content").hidden);
+  controller.destroy();
+});
+
 test("registro envía contraseña inicial una vez y la limpia", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   click("#new-user-button");
   fillForm();
@@ -65,7 +95,7 @@ test("registro envía contraseña inicial una vez y la limpia", async () => {
 
 test("doble envío no duplica el registro", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   click("#new-user-button");
   fillForm();
@@ -78,7 +108,7 @@ test("doble envío no duplica el registro", async () => {
 
 test("edición no envía ni muestra contraseña", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   document.querySelector("#users-table-body button").click();
   await waitFor(() => document.querySelector("#user-email").value !== "");
@@ -94,7 +124,7 @@ test("edición no envía ni muestra contraseña", async () => {
 
 test("confirma la desactivación con la versión conocida", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   const buttons = Array.from(document.querySelectorAll("#users-table-body button"));
   buttons.find((button) => button.textContent === "Desactivar").click();
@@ -108,7 +138,7 @@ test("confirma la desactivación con la versión conocida", async () => {
 test("los datos hostiles se insertan como texto", async () => {
   const hostile = '<img src=x onerror="globalThis.compromised=true">';
   const { controller, client } = setup(["USER_READ"], { ...user(), firstName: hostile });
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   assert(document.querySelector("#users-table-body").textContent.includes(hostile));
   equal(document.querySelector("#users-table-body img"), null);
@@ -118,7 +148,7 @@ test("los datos hostiles se insertan como texto", async () => {
 
 test("un error de formulario conserva los valores y muestra correlation ID", async () => {
   const { controller, client } = setup(["USER_READ", "USER_MANAGE"]);
-  click("#users-nav-button");
+  await openUserList();
   await waitFor(() => client.calls.length === 2);
   click("#new-user-button");
   fillForm();
@@ -172,7 +202,7 @@ class FakeClient {
       return Promise.reject(this.createError);
     }
     if (input === "/api/v1/users/options") return Promise.resolve(optionsResponse());
-    if (input.startsWith("/api/v1/users?") ) return Promise.resolve(pageResponse(this.listedUser));
+    if (input.startsWith("/api/v1/users?") ) return Promise.resolve(this.customPage ?? pageResponse(this.listedUser));
     return Promise.resolve(this.listedUser);
   }
 }
@@ -212,6 +242,13 @@ function resetFixture() {
   document.querySelector("#dashboard-home").hidden = false;
 }
 
+async function openUserList() {
+  click("#users-nav-button");
+  await waitFor(() => document.querySelector("#user-role-filter").options.length > 1);
+  assert(document.querySelector("#users-content").hidden, "No debe listar antes de Buscar");
+  submit("#user-filters");
+  await waitFor(() => !document.querySelector("#users-content").hidden);
+}
 function click(selector) { document.querySelector(selector).click(); }
 function submit(selector) { document.querySelector(selector).dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }
 function test(name, body) { tests.push({ name, body }); }

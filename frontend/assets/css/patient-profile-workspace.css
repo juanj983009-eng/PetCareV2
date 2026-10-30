@@ -1,0 +1,112 @@
+/* Ficha clínica: identidad, precauciones e historia; sin alterar otras vistas. */
+#patient-profile-view { margin-top: 0 !important; color: #153d31; }
+#patient-profile-view #patient-profile-back-button { margin: 0 0 12px; padding: 0 !important; min-height: 30px; color: #0b5940 !important; font-size: .85rem; font-weight: 600; }
+#patient-profile-view .pc-patient-profile-hero { position: relative; isolation: isolate; min-height: 155px; padding: 22px; margin-bottom: 20px; border: 1px solid #fff; border-radius: 19px; background: linear-gradient(110deg,#f8fcfa,#e3f3eb); overflow: hidden; }
+#patient-profile-view .pc-patient-profile-hero::before { position: absolute; content: ''; width: 46%; height: 250px; right: -4%; bottom: -150px; border-radius: 60% 50% 0 0; background: linear-gradient(135deg,#9bccb8,#247c5b); z-index: -1; }
+#patient-profile-view .pc-patient-profile-hero > .d-flex { position: relative; z-index: 2; min-width: 0; }
+#patient-profile-view .pc-patient-profile-hero > .d-flex:first-child { max-width: 62%; }
+#patient-profile-view #patient-profile-title { font: 750 clamp(1.8rem,2.5vw,2.5rem)/1.1 'Source Sans 3','Segoe UI',sans-serif !important; color: #083f2d; overflow-wrap: anywhere; }
+#patient-profile-view .pc-species-avatar { width: 90px; height: 90px; border-radius: 19px; background: #e0f0e7; color: #0a6345; border: 3px solid #fff; box-shadow: 0 4px 12px #0e503c12; }
+#patient-profile-view #patient-profile-status-badge { border-radius: 20px; padding: .5rem .65rem; }
+#patient-profile-view #patient-profile-subtitle { gap: 6px !important; margin-top: 10px; }
+#patient-profile-view #patient-profile-subtitle .badge { margin: 0 !important; padding: .5rem .7rem; background: #ffffffdb; color: #215744; border: 1px solid #dae9e1; border-radius: 11px; box-shadow: 0 2px 5px #15503c08; font-weight: 500; }
+#patient-profile-view .pc-patient-profile-hero > .d-flex:nth-child(2) { align-self: flex-end; justify-content: flex-end; max-width: 39%; }
+#patient-profile-view .pc-patient-profile-hero .btn { min-height: 43px; border-radius: 12px; font-size: .85rem; font-weight: 600; padding: .6rem .85rem; }
+#patient-profile-view #patient-profile-new-appointment-button { background: #efb921; color: #3e2c00; border: 2px solid #fff; box-shadow: 0 3px 8px #77600016; }
+#patient-profile-view #patient-profile-new-appointment-button:hover { background: #ffce4b; }
+#patient-profile-view #patient-profile-edit-button { background: #fff; color: #075039; border-color: #bcd9cc; }
+#patient-profile-view #patient-profile-edit-button:hover { background: #edf8f1; }
+#patient-profile-view .pc-patient-profile-art { position: absolute; right: 29%; bottom: -9px; width: 168px; height: 150px; pointer-events: none; z-index: 0; }
+#patient-profile-view .pc-patient-profile-art img { width: 100%; height: 100%; object-fit: contain; object-position: bottom; }
+#patient-profile-view .pc-patient-profile-hero::after { content: ''; position: absolute; right: 20px; top: 10px; width: 58px; height: 58px; opacity: .15; background: center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='%23effbf5'%3E%3Cellipse cx='15' cy='21' rx='7' ry='10'/%3E%3Cellipse cx='29' cy='12' rx='7' ry='10'/%3E%3Cellipse cx='44' cy='15' rx='7' ry='10'/%3E%3Cellipse cx='54' cy='29' rx='6' ry='9'/%3E%3Cpath d='M16 43c1-8 9-16 16-16s15 7 18 15c6 16-6 18-13 14-4-2-7-2-11 0-10 5-15-3-10-13Z'/%3E%3C/svg%3E"); pointer-events: none; }
+#patient-profile-view #patient-profile-medical-alerts-banner { background: linear-gradient(110deg,#fff8ed,#fff2d5); border: 1px solid #edcd8a; border-left: 1px solid #edcd8a; border-radius: 16px; box-shadow: 0 3px 12px #8e6a1810; padding: 17px 20px !important; margin-bottom: 20px !important; }
+#patient-profile-view #patient-profile-medical-alerts-banner > div:first-child { border-bottom: 0 !important; margin-bottom: 10px !important; padding-bottom: 0 !important; }
+#patient-profile-view #patient-profile-medical-alerts-banner strong { font: 700 1rem/1.3 'Source Sans 3','Segoe UI',sans-serif; text-transform: none !important; color: #922711 !important; }
+#patient-profile-view .pc-badge-tag-allergy, #patient-profile-view .pc-badge-tag-warning { background: #ffe4a3; color: #7b2c15; border: 1px solid #f5ce7a; padding: .3rem .6rem; border-radius: 9px; font-size: .72rem; }
+#patient-profile-view #patient-profile-allergies-row, #patient-profile-view #patient-profile-alerts-row { flex-wrap: wrap; }
+#patient-profile-view #patient-profile-no-alerts { border-radius: 12px; border: 1px solid #cee4d8; background: #f4fbf7; margin-bottom: 20px !important; }
+#patient-profile-view #patient-profile-content > .row { --bs-gutter-x: 20px; --bs-gutter-y: 20px; }
+#patient-profile-view .card { border: 1px solid #deebe5 !important; border-radius: 17px; box-shadow: 0 2px 4px #174c3f07,0 9px 20px #174c3f0c; overflow: hidden; }
+#patient-profile-view .pc-folio-header { background: linear-gradient(110deg,#076448,#004735); color: #fff; border: 0; padding: 13px 17px; }
+#patient-profile-view .pc-folio-header h3 { font: 650 1rem/1.3 'Source Sans 3','Segoe UI',sans-serif; color: #fff; }
+#patient-profile-view .pc-folio-header .text-secondary { color: #e1eee6 !important; }
+#patient-profile-view .pc-folio-header .badge { background: #e6f7ed !important; color: #0b523b; border: 0 !important; border-radius: 10px; }
+#patient-profile-view .card-body { padding: 17px; }
+#patient-profile-view #patient-profile-history-list { border-left: 0; padding-left: 0; }
+#patient-profile-view #patient-profile-history-list .pc-history-card { border-radius: 15px; padding: 17px !important; margin-bottom: 14px !important; }
+#patient-profile-view .pc-history-card::before { display: none; }
+#patient-profile-view .pc-history-card .btn { border-radius: 10px; min-height: 38px; font-size: .8rem; }
+#patient-profile-view .pc-history-card > .row { --bs-gutter-x: 14px; }
+#patient-profile-view .pc-history-card > .row > div > .text-secondary { display: block; margin-bottom: 3px; font-size: .72rem; }
+#patient-profile-view .pc-history-card .pc-history-sub-box { border-radius: 13px !important; border-color: #e1ece7 !important; background: linear-gradient(130deg,#f7fcfa,#edf5f0); }
+#patient-profile-view .pc-history-sub-box h4 { font: 700 1rem/1.25 'Source Sans 3','Segoe UI',sans-serif !important; color: #0a573d; margin-bottom: 13px !important; }
+#patient-profile-view .pc-history-sub-box li { border-color: #d7e6dd !important; padding-bottom: 8px !important; margin-bottom: 8px !important; overflow-wrap: anywhere; }
+#patient-profile-view .pc-history-sub-box li:last-child { border: 0 !important; margin-bottom: 0 !important; padding-bottom: 0 !important; }
+#patient-profile-view .pc-history-card .badge { border-radius: 8px; padding: .4rem .5rem; white-space: normal; }
+#patient-profile-view #patient-profile-identification, #patient-profile-view #patient-profile-owner { display: grid; grid-template-columns: minmax(0,.85fr) minmax(0,1.15fr); column-gap: 10px; row-gap: 0; margin: 0; }
+#patient-profile-view dl > dt, #patient-profile-view dl > dd { width: auto; min-width: 0; margin: 0; padding: 7px 0; border-bottom: 1px solid #edf2ef; overflow-wrap: anywhere; font-size: .82rem; }
+#patient-profile-view dl > dt.text-secondary { color: #5d7469 !important; }
+#patient-profile-view dl > dd { font-weight: 500; color: #173f30; }
+#patient-profile-view dl > dt:nth-last-child(2), #patient-profile-view dl > dd:last-child { border: 0; }
+#patient-profile-view .pc-empty-state { border: 1px dashed #c7dfd1; border-radius: 12px; background: #f5fbf7; }
+@media (max-width:1399.98px) { #patient-profile-view .pc-patient-profile-art { display: none; } }
+@media (max-width:767.98px) {
+  #patient-profile-view .pc-patient-profile-hero { padding: 17px; min-height: 0; align-items: stretch; }
+  #patient-profile-view .pc-patient-profile-hero > .d-flex:first-child, #patient-profile-view .pc-patient-profile-hero > .d-flex:nth-child(2) { max-width: 100%; align-self: stretch; }
+  #patient-profile-view .pc-species-avatar { width: 70px; height: 70px; border-radius: 15px; }
+  #patient-profile-view .pc-patient-profile-hero .btn { flex: 1 1 auto; min-height: 44px; }
+  #patient-profile-view #patient-profile-title { font-size: 1.8rem !important; }
+  #patient-profile-view #patient-profile-subtitle .badge { font-size: .7rem; padding: .4rem .5rem; }
+  #patient-profile-view .pc-history-card > .d-flex { align-items: flex-start !important; }
+  #patient-profile-view .pc-history-card .btn { min-height: 44px; }
+  #patient-profile-view .card-body { padding: 14px; }
+}
+
+
+/* Densidad clínica: filas naturales, sin estirar recetas hasta el diagnóstico más largo. */
+#patient-profile-view .pc-patient-profile-hero { min-height: 136px; padding: 18px; margin-bottom: 15px; }
+#patient-profile-view .pc-patient-profile-art { width: 190px; height: 125px; bottom: -4px; }
+#patient-profile-view #patient-profile-medical-alerts-banner {
+  display: grid;
+  grid-template-columns: minmax(180px,.85fr) minmax(0,2fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 17px !important;
+  margin-bottom: 16px !important;
+  border-left: 1px solid #edcd8a !important;
+}
+#patient-profile-view #patient-profile-medical-alerts-banner > div:first-child { margin: 0 !important; }
+#patient-profile-view #patient-profile-medical-alerts-banner > .d-grid { display: flex !important; flex-wrap: wrap; column-gap: 20px !important; row-gap: 8px !important; }
+#patient-profile-view .pc-history-clinical-sections { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; margin: 0; }
+#patient-profile-view .pc-history-clinical-sections > div { width: 100%; padding: 0; margin: 0; min-width: 0; }
+#patient-profile-view .pc-history-sub-box { height: auto !important; }
+#patient-profile-view .pc-history-diagnoses,
+#patient-profile-view .pc-history-prescriptions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+#patient-profile-view .pc-history-sub-box .pc-history-diagnoses > li,
+#patient-profile-view .pc-history-sub-box .pc-history-prescriptions > li { padding: 10px !important; margin: 0 !important; border: 1px solid #e1ece6 !important; border-radius: 10px; background: #ffffffc9; }
+#patient-profile-view #patient-profile-record-meta { font-size: .65rem; overflow-wrap: anywhere; }
+@media (max-width:767.98px) {
+  #patient-profile-view #patient-profile-medical-alerts-banner { grid-template-columns: minmax(0,1fr); }
+  #patient-profile-view .pc-history-diagnoses,
+  #patient-profile-view .pc-history-prescriptions { grid-template-columns: minmax(0,1fr); }
+  #patient-profile-view .pc-patient-profile-hero { min-height: 0; }
+}
+
+
+/* Lectura de diagnósticos y pauta de las recetas sin mezclar etiquetas con el texto. */
+#patient-profile-view .pc-history-sub-box h4 { display: flex; align-items: center; gap: 9px; text-transform: none; letter-spacing: 0; }
+#patient-profile-view .pc-clinical-section-count { display: inline-grid; place-items: center; min-width: 25px; height: 25px; padding: 0 7px; border-radius: 9px; background: #ddefe5; color: #215b43; font: 650 .75rem/1 'Source Sans 3','Segoe UI',sans-serif; }
+#patient-profile-view .pc-history-diagnoses { align-items: start; }
+#patient-profile-view .pc-history-sub-box .pc-history-diagnoses > li { padding: 12px !important; border-radius: 12px; background: #fff; }
+#patient-profile-view .pc-diagnosis-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 9px; }
+#patient-profile-view .pc-diagnosis-meta .badge { margin: 0 !important; padding: .4rem .5rem; font-size: .64rem; line-height: 1.25; }
+#patient-profile-view .pc-diagnosis-description { margin: 0; color: #254e3e; font-size: .86rem; line-height: 1.5; overflow-wrap: anywhere; }
+#patient-profile-view .pc-history-diagnoses > li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+#patient-profile-view .pc-history-prescriptions { align-items: start; }
+#patient-profile-view .pc-history-sub-box .pc-history-prescriptions > li { background: #fff; padding: 14px !important; border-radius: 12px; }
+#patient-profile-view .pc-prescription-medication { color: #124b35; font-size: .91rem; line-height: 1.4; font-weight: 650; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid #e4eee8; overflow-wrap: anywhere; }
+#patient-profile-view .pc-prescription-instructions { display: grid; grid-template-columns: minmax(65px,.8fr) minmax(0,1.4fr); margin: 0; gap: 5px 10px; }
+#patient-profile-view .pc-prescription-instructions > dt,
+#patient-profile-view .pc-prescription-instructions > dd { border: 0; padding: 0; margin: 0; width: auto; font-size: .77rem; line-height: 1.4; }
+#patient-profile-view .pc-prescription-instructions > dt { font-weight: 400; color: #6a8074; }
+#patient-profile-view .pc-prescription-instructions > dd { font-weight: 500; color: #244f3c; overflow-wrap: anywhere; }

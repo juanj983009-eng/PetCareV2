@@ -1,0 +1,123 @@
+/* Surface hierarchy for the clinical workspace. Keep layout and clinical states intact. */
+#dashboard-view.pc-home-theme {
+  --pc-surface-border: #c8dcd3;
+  --pc-surface-shadow: 0 2px 4px rgb(9 55 39 / 7%), 0 12px 28px rgb(9 55 39 / 12%);
+  --pc-surface-shadow-raised: 0 5px 10px rgb(9 55 39 / 10%), 0 16px 32px rgb(9 55 39 / 16%);
+}
+
+#dashboard-view.pc-home-theme .pc-editorial-body {
+  background: radial-gradient(ellipse at 82% 8%, #eef8f4 0, transparent 55%), #e9f3ef;
+}
+
+#dashboard-view.pc-home-theme .pc-shell-header,
+#dashboard-view #dashboard-home .pc-home-hero,
+#dashboard-view #dashboard-home .pc-home-metric,
+#dashboard-view #dashboard-home .pc-shortcut-card,
+#dashboard-view #dashboard-home .pc-home-appointments,
+#dashboard-view #dashboard-home .pc-home-care-card,
+#dashboard-view #dashboard-home #home-session-details,
+#dashboard-view #appointments-view .pc-agenda-hero,
+#dashboard-view #appointments-view .pc-agenda-stat,
+#dashboard-view #appointments-view #appointment-search-form,
+#dashboard-view #appointments-view .pc-agenda-table-surface,
+#dashboard-view #patients-view .pc-patient-search-hero,
+#dashboard-view #patients-view #patient-search-form,
+#dashboard-view #patients-view #patients-content,
+#dashboard-view #owners-view .pc-owner-search-hero,
+#dashboard-view #owners-view #owner-search-form,
+#dashboard-view #owners-view #owners-content {
+  border: 1px solid var(--pc-surface-border) !important;
+  box-shadow: var(--pc-surface-shadow) !important;
+}
+
+#dashboard-view.pc-home-theme .pc-shell-header,
+#dashboard-view #appointments-view #appointment-search-form,
+#dashboard-view #appointments-view .pc-agenda-table-surface,
+#dashboard-view #patients-view #patient-search-form,
+#dashboard-view #patients-view #patients-content,
+#dashboard-view #owners-view #owner-search-form,
+#dashboard-view #owners-view #owners-content {
+  background-color: #fff !important;
+}
+
+/* Bootstrap's row gutter otherwise cancels the gap below the Owners hero. */
+#dashboard-view #owners-view #owner-search-form {
+  margin-top: 0 !important;
+}
+
+/* White filter panels sit above the canvas; each control has its own shallow surface. */
+#dashboard-view :is(#appointment-search-form, #patient-search-form, #owner-search-form, #user-filters) {
+  background-color: #fff !important;
+  border: 1px solid #c3d8cd !important;
+  border-radius: 18px !important;
+  box-shadow: 0 2px 3px rgb(9 55 39 / 5%), 0 9px 20px rgb(9 55 39 / 10%) !important;
+}
+
+#dashboard-view :is(#appointment-search-form, #patient-search-form, #owner-search-form, #user-filters)
+  :is(.form-control, .form-select):not(:disabled):not([readonly]):not(.is-invalid):not(.is-valid):not([aria-invalid="true"]) {
+  background-color: #f2f8f5;
+  border-color: #b9cec3;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 2px rgb(9 55 39 / 3%), 0 2px 3px rgb(9 55 39 / 5%);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+#dashboard-view :is(#appointment-search-form, #patient-search-form, #owner-search-form, #user-filters)
+  :is(.form-control, .form-select):not(:disabled):not([readonly]):not(.is-invalid):not(.is-valid):not([aria-invalid="true"]):focus {
+  background-color: #fff;
+  border-color: #157357;
+  box-shadow: 0 0 0 3px rgb(21 115 87 / 16%), 0 2px 3px rgb(9 55 39 / 5%);
+}
+
+#dashboard-view #appointments-view .pc-empty-state,
+#dashboard-view #patients-view .pc-empty-state,
+#dashboard-view #owners-view .pc-empty-state {
+  background: #fff;
+  border-color: #bad2c5;
+  box-shadow: 0 3px 12px rgb(9 55 39 / 7%);
+}
+
+#dashboard-view #owners-view .pc-owner-initial {
+  background: linear-gradient(110deg, #fff, #f4faf6);
+}
+
+/* Only actions and actionable rows respond to the pointer. */
+#dashboard-view #dashboard-home .pc-shortcut-card,
+#dashboard-view :is(#appointments-view, #patients-view, #owners-view) .table tbody tr,
+#dashboard-view :is(#appointments-view, #patients-view, #owners-view) .btn {
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #dashboard-view #dashboard-home .pc-shortcut-card:hover,
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view) .btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: var(--pc-surface-shadow-raised) !important;
+  }
+
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view) .table tbody tr:hover {
+    box-shadow: inset 3px 0 #298263;
+  }
+}
+
+#dashboard-view :is(#appointments-view, #patients-view, #owners-view) .btn:focus-visible,
+#dashboard-view #dashboard-home .pc-shortcut-card:focus-within {
+  outline: 2px solid #127257;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #dashboard-view :is(#appointment-search-form, #patient-search-form, #owner-search-form, #user-filters) :is(.form-control, .form-select) {
+    transition: none !important;
+  }
+  #dashboard-view #dashboard-home .pc-shortcut-card,
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view) .table tbody tr,
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view) .btn {
+    transition: none !important;
+  }
+
+  #dashboard-view #dashboard-home .pc-shortcut-card:hover,
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view) .btn:hover {
+    transform: none !important;
+  }
+}

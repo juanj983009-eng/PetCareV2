@@ -23,6 +23,22 @@ public interface AppointmentScheduleUseCase {
 
     AppointmentSummary cancelAppointment(CancelAppointmentCommand command);
 
+    AppointmentActivity getActivity(String branchId);
+
+    record AppointmentActivity(
+            String timeZone,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<AppointmentActivityDay> items) {
+    }
+
+    record AppointmentActivityDay(
+            LocalDate date,
+            long completedCount,
+            long otherCount,
+            long totalCount) {
+    }
+
     record UpdateAppointmentStatusCommand(
             UUID appointmentId,
             String status) {

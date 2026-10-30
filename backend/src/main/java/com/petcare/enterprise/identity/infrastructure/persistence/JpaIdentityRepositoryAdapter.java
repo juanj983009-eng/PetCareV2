@@ -55,6 +55,16 @@ class JpaIdentityRepositoryAdapter implements IdentityRepository {
     }
 
     @Override
+    public Optional<UserProfileData> findUserProfile(UUID tenantId, UUID userId) {
+        return users.findByTenantIdAndId(tenantId, userId)
+                .map(user -> new UserProfileData(
+                        user.toDomain().firstName(),
+                        user.toDomain().lastName(),
+                        user.toDomain().email().value(),
+                        users.findRoleNames(tenantId, userId)));
+    }
+
+    @Override
     public BootstrapIdentityResult ensureBootstrapIdentity(BootstrapIdentity command) {
         PermissionJpaEntity dashboard = permissions.findByCode(PermissionJpaEntity.DASHBOARD_VIEW)
                 .orElseGet(() -> permissions.saveAndFlush(

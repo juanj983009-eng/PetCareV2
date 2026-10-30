@@ -5,6 +5,30 @@ const CONSULTATION_ID = "11111111-aaaa-4111-8111-111111111111";
 const VET_ID = "22222222-bbbb-4222-8222-222222222222";
 const tests = [];
 
+test("el retrato de demo se vincula por ID y se limpia al cambiar de paciente, fallar la imagen o cerrar sesión", async () => {
+  let patientId = "e949393f-77aa-4e49-8d27-bddcbd4e0fbc";
+  const client = { requestJson: async () => ({ id: CONSULTATION_ID, patientId, patientName: "Paciente de prueba", status: "FINALIZADA", diagnoses: [], prescriptions: [] }) };
+  const controller = createConsultationEvaluationController({ document, client, onBackToAppointments: () => {} });
+  const avatar = document.querySelector("#evaluation-context-avatar");
+  controller.sessionReady({ authorities: ["CONSULTATION_READ"] });
+  await controller.openEvaluation(CONSULTATION_ID);
+  const oldImage = avatar.querySelector("img");
+  assert(oldImage?.getAttribute("src").endsWith("demo-luna.webp"), "El UUID de Luna debe usar su retrato de demo");
+  patientId = "patient-without-demo-portrait";
+  await controller.openEvaluation("other-consultation");
+  oldImage.dispatchEvent(new Event("error"));
+  assert(!avatar.querySelector("img"), "Otro paciente no debe heredar el retrato anterior");
+  assert(avatar.textContent.includes("Avatar original"), "Debe recuperar el avatar original");
+  patientId = "e949393f-77aa-4e49-8d27-bddcbd4e0fbc";
+  await controller.openEvaluation(CONSULTATION_ID);
+  avatar.querySelector("img").dispatchEvent(new Event("error"));
+  assert(!avatar.querySelector("img"), "Un recurso fallido debe recuperar el avatar original");
+  await controller.openEvaluation(CONSULTATION_ID);
+  controller.sessionEnded();
+  assert(!avatar.querySelector("img"), "Cerrar sesión debe retirar el retrato");
+  controller.destroy();
+});
+
 test("sin CONSULTATION_READ bloquea la vista con estado forbidden y no realiza peticiones", async () => {
   const calls = [];
   const client = {

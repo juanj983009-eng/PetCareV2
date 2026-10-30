@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -576,6 +577,48 @@ public class JdbcAppointmentScheduleRepositoryAdapter implements AppointmentSche
                 .addValue("changedAt", OffsetDateTime.ofInstant(record.changedAt(), ZoneOffset.UTC), Types.TIMESTAMP_WITH_TIMEZONE)
                 .addValue("correlationId", record.correlationId(), Types.OTHER);
         jdbc.update(sql, params);
+    }
+
+    @Override
+    public List<AppointmentActivityDayRecord> findActivityByDateRange(
+            UUID tenantId,
+            UUID branchId,
+            LocalDate startDate,
+            LocalDate endDate) {
+        OffsetDateTime windowStart = startDate.minusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime windowEnd = endDate.plusDays(2).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        String sql = """
+                SELECT
+                    (a.starts_at AT TIME ZONE b.time_zone)::date AS scheduled_date,
+                    count(*) FILTER (WHERE a.status = 'FINALIZADA') AS completed_count,
+                    count(*) FILTER (WHERE a.status != 'FINALIZADA') AS other_count
+                FROM appointments a
+                JOIN branches b
+                  ON b.tenant_id = a.tenant_id AND b.id = a.branch_id
+                WHERE a.tenant_id = :tenantId
+                  AND a.starts_at >= :windowStart
+                  AND a.starts_at < :windowEnd
+                  AND (a.starts_at AT TIME ZONE b.time_zone)::date >= :startDate
+                  AND (a.starts_at AT TIME ZONE b.time_zone)::date <= :endDate
+                  AND a.status != 'CANCELADA'
+                  AND (CAST(:branchId AS UUID) IS NULL OR a.branch_id = CAST(:branchId AS UUID))
+                GROUP BY (a.starts_at AT TIME ZONE b.time_zone)::date
+                ORDER BY scheduled_date ASC
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", tenantId, Types.OTHER)
+                .addValue("windowStart", windowStart, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("windowEnd", windowEnd, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("startDate", Date.valueOf(startDate), Types.DATE)
+                .addValue("endDate", Date.valueOf(endDate), Types.DATE)
+                .addValue("branchId", branchId, Types.OTHER);
+
+        return jdbc.query(sql, params, (rs, rowNum) -> new AppointmentActivityDayRecord(
+                rs.getDate("scheduled_date").toLocalDate(),
+                rs.getLong("completed_count"),
+                rs.getLong("other_count")));
     }
 
     private AppointmentSummary mapAppointment(ResultSet rs, int rowNum) throws SQLException {

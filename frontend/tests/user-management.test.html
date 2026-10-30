@@ -23,13 +23,15 @@
         <button id="users-back-button" type="button">Volver</button>
         <button id="new-user-button" type="button" hidden>Nuevo</button>
         <div id="users-notice" tabindex="-1" hidden></div>
+        <div id="users-overview" hidden><span id="users-summary-total"></span><span id="users-summary-active"></span><span id="users-summary-inactive"></span><span id="users-summary-branches"></span></div>
         <form id="user-filters">
           <input id="user-search" type="search">
           <select id="user-role-filter"><option value="">Todos</option></select>
-          <select id="user-status-filter"><option value="">Todos</option><option value="ACTIVO">Activo</option></select>
+          <select id="user-status-filter"><option value="">Todos</option><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option><option value="BLOQUEADO">Bloqueado</option></select>
           <select id="user-sort"><option value="firstName">Nombre</option></select>
           <select id="user-direction"><option value="asc">Ascendente</option></select>
           <button type="submit">Aplicar</button><button id="clear-user-filters" type="button">Limpiar</button>
+          <button type="button" data-user-status="" aria-pressed="true">Todos</button><button type="button" data-user-status="ACTIVO" aria-pressed="false">Activos</button><button type="button" data-user-status="INACTIVO" aria-pressed="false">Inactivos</button>
         </form>
         <div id="users-loading" hidden></div><div id="users-empty" hidden></div>
         <div id="users-error" hidden><p id="users-error-message"></p><p id="users-error-correlation" hidden></p><button id="retry-users-list" type="button">Reintentar</button></div>

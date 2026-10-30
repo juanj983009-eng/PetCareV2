@@ -16,7 +16,13 @@ test("ROLE_READ muestra roles como texto", async () => {
   click("#roles-nav-button"); await waitFor(() => client.calls.some((call) => call.input === "/api/v1/roles"));
   assert(!document.querySelector("#roles-content").hidden);
   assert(document.querySelector("#roles-list").textContent.includes("ADMINISTRADOR"));
+  assert(!document.querySelector("#roles-summary").hidden);
+  assert(document.querySelector("#roles-total").textContent === "2");
+  assert(document.querySelector("#roles-permissions-total").textContent === "1");
+  assert(document.querySelector("#roles-list button") === null);
   controller.sessionEnded();
+  assert(document.querySelector("#roles-summary").hidden);
+  assert(document.querySelector("#roles-total").textContent === "");
 });
 
 test("ROLE_MANAGE actualiza permisos y asigna roles", async () => {

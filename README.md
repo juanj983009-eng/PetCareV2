@@ -1,5 +1,7 @@
 # PetCare Enterprise
 
+En Propietarios, `GET /api/v1/owners` admite `query` ausente, vacío o solo espacios para listar todos los registros del tenant autenticado. Un filtro no vacío exige al menos dos caracteres; se conserva `OWNER_READ`. El frontend consulta solo al pulsar Buscar y pagina de seis en seis.
+
 PetCare Enterprise es una plataforma de gestión para clínicas veterinarias. El proyecto comienza como un MVP académico y se diseña para evolucionar de forma gradual hacia un producto SaaS multi-tenant.
 
 ## Estado actual

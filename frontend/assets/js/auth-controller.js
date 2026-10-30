@@ -40,6 +40,12 @@ export function createAuthController({ document, window, client, errors, lifecyc
     backBtn?.addEventListener("click", () => markActiveNav(optional.dashboardNavButton));
   }
   optional.homeActionAppointments?.addEventListener("click", () => optional.appointmentsNavButton?.click());
+  optional.homeNewAppointmentButton?.addEventListener("click", () => {
+    if (optional.appointmentsNavButton && !optional.appointmentsNavButton.hidden) {
+      optional.appointmentsNavButton.click();
+      document.querySelector("#new-appointment-view-button")?.click();
+    }
+  });
   optional.homeActionPatients?.addEventListener("click", () => optional.patientsNavButton?.click());
   optional.homeActionOwners?.addEventListener("click", () => optional.ownersNavButton?.click());
   optional.homeActionUsers?.addEventListener("click", () => {
@@ -304,6 +310,9 @@ export function createAuthController({ document, window, client, errors, lifecyc
       optional.homeCardUsers.hidden = !hasUserOrRole;
     }
     const authorities = new Set(authenticatedIdentity?.authorities ?? []);
+    if (optional.homeNewAppointmentButton) {
+      optional.homeNewAppointmentButton.hidden = !authorities.has("APPOINTMENT_CREATE") || !optional.appointmentsNavButton || optional.appointmentsNavButton.hidden;
+    }
     if (optional.homeNewOwnerButton) {
       optional.homeNewOwnerButton.hidden = !authorities.has("OWNER_CREATE");
     }
@@ -519,7 +528,8 @@ function findOptionalElements(document) {
     headerClinicName: document.querySelector("#header-clinic-name"),
     headerUserIdentity: document.querySelector("#header-user-identity"),
     homeNewOwnerButton: document.querySelector("#home-new-owner-button"),
-    homeNewPatientButton: document.querySelector("#home-new-patient-button")
+    homeNewPatientButton: document.querySelector("#home-new-patient-button"),
+    homeNewAppointmentButton: document.querySelector("#home-new-appointment-button")
   };
 }
 
@@ -555,7 +565,29 @@ function validSessionResponse(value) {
     userId: value.userId,
     tenantId: value.tenantId,
     branchId: value.branchId,
-    authorities: Object.freeze([...value.authorities])
+    authorities: Object.freeze([...value.authorities]),
+    profile: validProfile(value.profile)
+  });
+}
+
+function validProfile(profile) {
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+  const displayName = typeof profile.displayName === "string" ? profile.displayName : "";
+  const email = typeof profile.email === "string" ? profile.email : "";
+  const roles = Array.isArray(profile.roles) && profile.roles.every((role) => typeof role === "string")
+    ? Object.freeze([...profile.roles])
+    : Object.freeze([]);
+  const clinicName = typeof profile.clinicName === "string" ? profile.clinicName : "";
+  const branchName = typeof profile.branchName === "string" ? profile.branchName : null;
+
+  return Object.freeze({
+    displayName,
+    email,
+    roles,
+    clinicName,
+    branchName
   });
 }
 

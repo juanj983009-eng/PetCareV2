@@ -5,6 +5,11 @@ const ROLE_MANAGE = "ROLE_MANAGE";
 
 export function createRolesController({ document, client }) {
   const elements = required(document);
+  const overview = {
+    summary: document.querySelector("#roles-summary"),
+    roles: document.querySelector("#roles-total"),
+    permissions: document.querySelector("#roles-permissions-total")
+  };
   let catalog = null;
   let canRead = false;
   let canManage = false;
@@ -40,6 +45,9 @@ export function createRolesController({ document, client }) {
     elements.rolesView.hidden = true;
     elements.home.hidden = false;
     elements.list.replaceChildren();
+    if (overview.summary) overview.summary.hidden = true;
+    if (overview.roles) overview.roles.textContent = "";
+    if (overview.permissions) overview.permissions.textContent = "";
     close(elements.permissionsDialog);
     close(elements.assignmentDialog);
   }
@@ -70,28 +78,66 @@ export function createRolesController({ document, client }) {
 
   function renderRoles(roles) {
     elements.list.replaceChildren();
+    if (overview.roles) overview.roles.textContent = String(roles.length);
+    if (overview.permissions) overview.permissions.textContent = String(roles.reduce((total, role) => total + role.permissions.length, 0));
     for (const role of roles) {
       const article = document.createElement("article");
       article.className = "col-12 col-md-6";
+      const roleKey = role.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      article.dataset.roleTone = ["ALMACEN", "VETERINARIO"].includes(roleKey) ? "gold" : "sage";
       const card = document.createElement("div");
       card.className = "card h-100 pc-record-card";
       const body = document.createElement("div");
       body.className = "card-body";
+      const header = document.createElement("div");
+      header.className = "pc-role-heading";
+      const mark = document.createElement("span");
+      mark.className = "pc-role-monogram";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = Array.from(role.name).slice(0, 2).join("");
       const heading = document.createElement("h3");
       heading.className = "h5";
       heading.textContent = role.name;
       const description = document.createElement("p");
       description.className = "text-secondary small";
       description.textContent = role.description || "Rol del sistema.";
-      const permissions = document.createElement("p");
-      permissions.className = "small mb-3";
-      permissions.textContent = role.permissions.map((item) => item.code).join(", ") || "Sin permisos asignados";
-      body.append(heading, description, permissions);
+      const identity = document.createElement("div");
+      identity.className = "pc-role-identity";
+      identity.append(heading, description);
+      const emblem = document.createElement("span");
+      emblem.className = "pc-role-emblem";
+      emblem.append(roleIcon(document, roleKey));
+      header.append(mark, identity, emblem);
+      const permissions = document.createElement("details");
+      permissions.className = "pc-role-permissions";
+      const summary = document.createElement("summary");
+      summary.append(roleIcon(document, "SHIELD"), document.createTextNode(`${role.permissions.length} ${role.permissions.length === 1 ? "permiso asignado" : "permisos asignados"}`));
+      permissions.append(summary);
+      const list = document.createElement("ul");
+      for (const permission of role.permissions) {
+        const item = document.createElement("li");
+        const code = document.createElement("code");
+        code.textContent = permission.code;
+        item.append(code);
+        if (permission.description) {
+          const caption = document.createElement("span");
+          caption.textContent = permission.description;
+          item.append(caption);
+        }
+        list.append(item);
+      }
+      if (!role.permissions.length) {
+        const item = document.createElement("li");
+        item.textContent = "Este rol no tiene permisos asignados.";
+        list.append(item);
+      }
+      permissions.append(list);
+      body.append(header, permissions);
       if (canManage) {
         const edit = document.createElement("button");
         edit.type = "button";
         edit.className = "btn btn-outline-primary btn-sm";
-        edit.textContent = "Configurar permisos";
+        edit.append(roleIcon(document, "ADMINISTRADOR"), document.createTextNode("Configurar permisos"));
         edit.addEventListener("click", () => openPermissions(role));
         body.append(edit);
       }
@@ -195,12 +241,31 @@ export function createRolesController({ document, client }) {
   }
 
   function state(value) {
+    if (overview.summary) overview.summary.hidden = value !== "content";
     elements.loading.hidden = value !== "loading"; elements.empty.hidden = value !== "empty";
     elements.content.hidden = value !== "content"; elements.error.hidden = value !== "error";
   }
   function showError(error) { state("error"); elements.errorMessage.textContent = message(error); }
   function notice(value) { elements.notice.textContent = value; elements.notice.hidden = false; elements.notice.focus(); }
   function dialogError(element, error) { element.textContent = message(error); element.hidden = false; }
+}
+
+function roleIcon(document, key) {
+  const paths = {
+    ADMINISTRADOR: ["M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z", "m9 3 .6-2h4.8l.6 2 2 .9 1.9-.5 2.4 4.2-1.4 1.5V12l1.4 1.5-2.4 4.2-1.9-.5-2 .9-.6 2H9.6L9 18l-2-.9-1.9.5-2.4-4.2L4.1 12V9.1L2.7 7.6l2.4-4.2L7 3.9Z"],
+    ALMACEN: ["m12 3 9 5v9l-9 5-9-5V8Z", "m3 8 9 5 9-5M12 13v9M7 5.8l9 5"],
+    RECEPCIONISTA: ["M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 22v-4a7 7 0 0 1 14 0v4M17 4a4 4 0 0 1 0 8m2 3a6 6 0 0 1 3 5v2"],
+    VETERINARIO: ["M5 3v5a5 5 0 0 0 10 0V3M3 3h4m6 0h4M10 13v3a5 5 0 0 0 10 0v-3", "M20 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"],
+    SHIELD: ["m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"]
+  };
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [name, value] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.7", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false" })) svg.setAttribute(name, value);
+  for (const d of paths[key] ?? paths.SHIELD) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
 }
 
 function required(document) {

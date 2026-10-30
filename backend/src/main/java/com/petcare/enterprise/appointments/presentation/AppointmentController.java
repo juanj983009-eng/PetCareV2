@@ -51,6 +51,12 @@ class AppointmentController {
         return AppointmentOptionsResponse.from(schedule.listOptions(branchId));
     }
 
+    @GetMapping("/activity")
+    AppointmentActivityResponse getActivity(
+            @RequestParam(name = "branchId", required = false) String branchId) {
+        return AppointmentActivityResponse.from(schedule.getActivity(branchId));
+    }
+
     @PostMapping
     ResponseEntity<AppointmentCreatedResponse> createAppointment(
             @Valid @RequestBody CreateAppointmentRequest request) {

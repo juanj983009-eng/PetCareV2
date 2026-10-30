@@ -9,6 +9,7 @@ export function createUsersController({ document, client, errors }) {
   let canManage = false;
   let loaded = false;
   let loading = false;
+  let listRequestId = 0;
   let currentPage = 0;
   let totalPages = 0;
   let editingUser = null;
@@ -19,6 +20,7 @@ export function createUsersController({ document, client, errors }) {
   elements.openButton.addEventListener("click", openUsers);
   elements.backButton.addEventListener("click", showDashboard);
   elements.filters.addEventListener("submit", applyFilters);
+  elements.filters.addEventListener("click", applyQuickStatus);
   elements.clearFilters.addEventListener("click", clearFilters);
   elements.retryList.addEventListener("click", () => loadPage(currentPage));
   elements.previousPage.addEventListener("click", () => loadPage(currentPage - 1));
@@ -41,6 +43,8 @@ export function createUsersController({ document, client, errors }) {
   }
 
   function sessionEnded() {
+    listRequestId += 1;
+    loading = false;
     canRead = false;
     canManage = false;
     loaded = false;
@@ -51,6 +55,8 @@ export function createUsersController({ document, client, errors }) {
     elements.homeView.hidden = false;
     elements.rows.replaceChildren();
     elements.cards.replaceChildren();
+    const overview = document.querySelector("#users-overview");
+    if (overview) overview.hidden = true;
     closeDialog(elements.editorDialog);
     closeDialog(elements.statusDialog);
   }
@@ -63,7 +69,8 @@ export function createUsersController({ document, client, errors }) {
     elements.usersView.hidden = false;
     elements.usersTitle.focus({ preventScroll: true });
     if (!loaded) {
-      await Promise.all([loadOptions(), loadPage(0)]);
+      showListState("initial");
+      await loadOptions();
     }
   }
 
@@ -86,11 +93,12 @@ export function createUsersController({ document, client, errors }) {
       return;
     }
     loading = true;
+    const requestId = ++listRequestId;
     showListState("loading");
     try {
       const query = new URLSearchParams({
         page: String(page),
-        size: "10",
+        size: "6",
         sortBy: elements.sort.value,
         direction: elements.direction.value
       });
@@ -98,16 +106,18 @@ export function createUsersController({ document, client, errors }) {
       appendIfPresent(query, "roleId", elements.roleFilter.value);
       appendIfPresent(query, "status", elements.statusFilter.value);
       const result = validPage(await client.requestJson(`/api/v1/users?${query}`));
+      if (requestId !== listRequestId || !canRead) return;
       currentPage = result.page;
       totalPages = result.totalPages;
       loaded = true;
       renderUsers(result.content);
       updatePagination(result);
+      renderOverview(result);
       showListState(result.content.length === 0 ? "empty" : "content");
     } catch (error) {
-      showListError(error);
+      if (requestId === listRequestId && canRead) showListError(error);
     } finally {
-      loading = false;
+      if (requestId === listRequestId) loading = false;
     }
   }
 
@@ -118,9 +128,38 @@ export function createUsersController({ document, client, errors }) {
   }
 
   function clearFilters() {
+    listRequestId += 1;
+    loading = false;
+    loaded = false;
     elements.filters.reset();
     totalPages = 0;
+    elements.rows.replaceChildren();
+    elements.cards.replaceChildren();
+    showListState("initial");
+  }
+
+  function applyQuickStatus(event) {
+    const button = event.target.closest?.("button[data-user-status]");
+    if (!button || !elements.filters.contains(button) || !canRead || loading) return;
+    elements.statusFilter.value = button.dataset.userStatus;
+    totalPages = 0;
     loadPage(0);
+  }
+
+  function renderOverview(page) {
+    const values = {
+      "users-summary-total": page.totalElements,
+      "users-summary-active": page.content.filter(user => user.status === "ACTIVO").length,
+      "users-summary-inactive": page.content.filter(user => user.status !== "ACTIVO").length,
+      "users-summary-branches": new Set(page.content.map(user => user.branch?.id).filter(Boolean)).size
+    };
+    for (const [id, value] of Object.entries(values)) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = String(value);
+    }
+    for (const button of elements.filters.querySelectorAll("[data-user-status]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.userStatus === elements.statusFilter.value));
+    }
   }
 
   async function openEditor(mode, userId = null) {
@@ -283,9 +322,23 @@ export function createUsersController({ document, client, errors }) {
 
   function createTableRow(user) {
     const row = document.createElement("tr");
-    for (const value of [fullName(user), user.email, user.role?.name ?? "Sin rol", user.branch?.name ?? "Sin sede"]) {
-      row.append(textCell(value));
-    }
+    const name = document.createElement("td");
+    const identity = document.createElement("div");
+    identity.className = "pc-user-identity";
+    const avatar = document.createElement("span");
+    avatar.className = "pc-user-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = [user.firstName, user.lastName].map(value => Array.from(value.trim())[0] ?? "").join("").toLocaleUpperCase("es");
+    const label = document.createElement("strong");
+    label.textContent = fullName(user);
+    identity.append(avatar, label);
+    name.append(identity);
+    const role = document.createElement("td");
+    const roleBadge = document.createElement("span");
+    roleBadge.className = `pc-user-role ${user.role?.name === "ADMINISTRADOR" ? "pc-user-role-admin" : user.role?.name === "RECEPCIONISTA" ? "pc-user-role-reception" : ""}`.trim();
+    roleBadge.textContent = user.role?.name ?? "Sin rol";
+    role.append(roleBadge);
+    row.append(name, textCell(user.email), role, textCell(user.branch?.name ?? "Sin sede"));
     const status = document.createElement("td");
     status.append(statusBadge(user.status));
     row.append(status);
@@ -293,7 +346,7 @@ export function createUsersController({ document, client, errors }) {
     actions.className = "text-end text-nowrap";
     actions.append(actionButton(canManage ? "Editar" : "Ver", () => openEditor(canManage ? "edit" : "view", user.id)));
     if (canManage && user.status !== "BLOQUEADO") {
-      actions.append(actionButton(user.status === "INACTIVO" ? "Activar" : "Desactivar", () => requestStatusChange(user), "ms-2"));
+      actions.append(actionButton(user.status === "INACTIVO" ? "Activar" : "Desactivar", () => requestStatusChange(user), user.status === "INACTIVO" ? "ms-2 pc-user-activate" : "ms-2 pc-user-deactivate"));
     }
     row.append(actions);
     return row;
@@ -307,6 +360,13 @@ export function createUsersController({ document, client, errors }) {
     const heading = document.createElement("h3");
     heading.className = "h6 mb-1";
     heading.textContent = fullName(user);
+    const identity = document.createElement("div");
+    identity.className = "pc-user-mobile-identity";
+    const avatar = document.createElement("span");
+    avatar.className = "pc-user-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = [user.firstName, user.lastName].map(value => Array.from(value.trim())[0] ?? "").join("").toLocaleUpperCase("es");
+    identity.append(avatar, heading);
     const email = document.createElement("p");
     email.className = "small text-secondary text-break mb-3";
     email.textContent = user.email;
@@ -320,12 +380,22 @@ export function createUsersController({ document, client, errors }) {
     if (canManage && user.status !== "BLOQUEADO") {
       controls.append(actionButton(user.status === "INACTIVO" ? "Activar" : "Desactivar", () => requestStatusChange(user)));
     }
-    body.append(heading, email, details, controls);
+    body.append(identity, email, details, controls);
     article.append(body);
     return article;
   }
 
   function showListState(state) {
+    const initial = document.querySelector("#users-initial");
+    if (initial) initial.hidden = state !== "initial";
+    if (state === "initial") {
+      for (const id of ["users-summary-total", "users-summary-active", "users-summary-inactive", "users-summary-branches"]) {
+        const metric = document.getElementById(id);
+        if (metric) metric.textContent = "—";
+      }
+    }
+    const overview = document.querySelector("#users-overview");
+    if (overview) overview.hidden = state === "loading";
     elements.loading.hidden = state !== "loading";
     elements.empty.hidden = state !== "empty";
     elements.content.hidden = state !== "content";
@@ -333,6 +403,8 @@ export function createUsersController({ document, client, errors }) {
   }
 
   function showListError(error) {
+    const overview = document.querySelector("#users-overview");
+    if (overview) overview.hidden = true;
     const normalized = normalizeError(error);
     elements.loading.hidden = true;
     elements.empty.hidden = true;
@@ -352,6 +424,8 @@ export function createUsersController({ document, client, errors }) {
   }
 
   function updatePagination(page) {
+    const resultCount = document.querySelector("#users-result-count");
+    if (resultCount) resultCount.textContent = `${page.totalElements} ${page.totalElements === 1 ? "usuario" : "usuarios"}`;
     elements.pageStatus.textContent = page.totalPages === 0
       ? "Sin páginas"
       : `Página ${page.page + 1} de ${page.totalPages} · ${page.totalElements} usuarios`;
@@ -365,6 +439,7 @@ export function createUsersController({ document, client, errors }) {
   }
 
   function destroy() {
+    elements.filters.removeEventListener("click", applyQuickStatus);
     sessionEnded();
   }
 }

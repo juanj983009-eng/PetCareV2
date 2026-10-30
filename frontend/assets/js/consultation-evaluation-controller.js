@@ -1,4 +1,5 @@
 import { ApiRequestError } from "./api-client.js";
+import { applyDemoPatientPortrait } from "./demo-patient-portraits.js";
 
 const CONSULTATION_READ = "CONSULTATION_READ";
 const CONSULTATION_UPDATE = "CONSULTATION_UPDATE";
@@ -18,6 +19,7 @@ export function createConsultationEvaluationController({
     };
   }
 
+  const avatarFallback = elements.contextAvatar ? [...elements.contextAvatar.childNodes].map(node => node.cloneNode(true)) : [];
   let canRead = false;
   let canUpdate = false;
   let canFinalize = false;
@@ -150,6 +152,7 @@ export function createConsultationEvaluationController({
   }
 
   function resetContext() {
+    if (elements.contextAvatar) elements.contextAvatar.replaceChildren(...avatarFallback.map(node => node.cloneNode(true)));
     if (elements.contextPatient) elements.contextPatient.textContent = "—";
     if (elements.contextVeterinarian) elements.contextVeterinarian.textContent = "—";
     if (elements.contextBranch) elements.contextBranch.textContent = "—";
@@ -210,6 +213,11 @@ export function createConsultationEvaluationController({
     setFinalizingState(false);
     activeBackHandler = typeof options?.onBack === "function" ? options.onBack : null;
     isReadOnly = options?.readOnly === true;
+    if (elements.backButton) {
+      elements.backButton.textContent = typeof options?.onBack === "function"
+        ? "← Volver al expediente"
+        : "← Volver a la agenda";
+    }
 
     showOnlyEvaluationView();
     resetAlerts();
@@ -521,6 +529,10 @@ export function createConsultationEvaluationController({
   }
 
   function populateContext(consultation) {
+    if (elements.contextAvatar) {
+      elements.contextAvatar.replaceChildren(...avatarFallback.map(node => node.cloneNode(true)));
+      applyDemoPatientPortrait(elements.contextAvatar, consultation.patientId);
+    }
     if (elements.contextPatient) {
       elements.contextPatient.textContent = consultation.patientName || "—";
     }
@@ -2065,6 +2077,7 @@ function findElements(document) {
     validationSummary: document.querySelector("#evaluation-validation"),
     validationMessage: document.querySelector("#evaluation-validation-message"),
     contextPatient: document.querySelector("#evaluation-context-patient"),
+    contextAvatar: document.querySelector("#evaluation-context-avatar"),
     contextVeterinarian: document.querySelector("#evaluation-context-veterinarian"),
     contextBranch: document.querySelector("#evaluation-context-branch"),
     contextStatus: document.querySelector("#evaluation-context-status"),

@@ -19,12 +19,15 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +38,13 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase, A
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_REASON_LENGTH = 500;
     private static final int MAX_NOTES_LENGTH = 1000;
+
+    /**
+     * Zona horaria de referencia predeterminada para calcular el día calendario actual ("hoy")
+     * cuando no se filtra por una sucursal específica. Coherente con la configuración clínica
+     * y los horarios mostrados en la sede central de PetCare Enterprise (America/Lima).
+     */
+    private static final ZoneId DEFAULT_REFERENCE_ZONE = ZoneId.of("America/Lima");
 
     private final TenantContext tenantContext;
     private final AppointmentScheduleRepository repository;
@@ -88,6 +98,55 @@ public class AppointmentScheduleService implements AppointmentScheduleUseCase, A
                     .toList();
         }
         return new AppointmentFilterOptions(branches, veterinarians);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AppointmentActivity getActivity(String branchId) {
+        UUID tenantId = tenantContext.requireTenant().tenantId();
+        UUID filterBranchId = parseOptionalUuid(
+                branchId,
+                "branchId",
+                "El identificador de sucursal no es un UUID válido.");
+
+        ZoneId effectiveZone = DEFAULT_REFERENCE_ZONE;
+        if (filterBranchId != null) {
+            BranchOption branch = repository.findActiveBranchById(tenantId, filterBranchId)
+                    .orElseThrow(AppointmentResourceNotFoundException::new);
+            try {
+                effectiveZone = ZoneId.of(branch.timeZone());
+            } catch (Exception exception) {
+                throw new InvalidAppointmentScheduleQueryException(
+                        "branchId",
+                        "La zona horaria configurada en la sucursal no es válida.");
+            }
+        }
+
+        LocalDate today = LocalDate.ofInstant(clock.instant(), effectiveZone);
+        LocalDate startDate = today.minusDays(6);
+        LocalDate endDate = today;
+
+        List<AppointmentScheduleRepository.AppointmentActivityDayRecord> records =
+                repository.findActivityByDateRange(tenantId, filterBranchId, startDate, endDate);
+
+        Map<LocalDate, AppointmentScheduleRepository.AppointmentActivityDayRecord> recordMap =
+                records.stream()
+                        .collect(Collectors.toMap(
+                                AppointmentScheduleRepository.AppointmentActivityDayRecord::date,
+                                r -> r,
+                                (existing, replacing) -> existing,
+                                LinkedHashMap::new));
+
+        List<AppointmentActivityDay> items = new ArrayList<>(7);
+        for (int i = 6; i >= 0; i--) {
+            LocalDate day = today.minusDays(i);
+            AppointmentScheduleRepository.AppointmentActivityDayRecord rec = recordMap.get(day);
+            long completed = rec != null ? rec.completedCount() : 0L;
+            long other = rec != null ? rec.otherCount() : 0L;
+            items.add(new AppointmentActivityDay(day, completed, other, completed + other));
+        }
+
+        return new AppointmentActivity(effectiveZone.getId(), startDate, endDate, items);
     }
 
     @Override

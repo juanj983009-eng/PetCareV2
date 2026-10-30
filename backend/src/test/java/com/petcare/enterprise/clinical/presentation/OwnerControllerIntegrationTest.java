@@ -59,8 +59,34 @@ class OwnerControllerIntegrationTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/owners?query=x").with(authentication(auth(fixture, "OWNER_READ"))))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(get("/api/v1/owners").param("query", "  ").with(authentication(auth(fixture, "OWNER_READ"))))
+        mockMvc.perform(get("/api/v1/owners").param("query", " x ").with(authentication(auth(fixture, "OWNER_READ"))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listsOwnersWithoutQueryWithPaginationAndTenantIsolation() throws Exception {
+        Fixture tenantA = fixture("owners-list-a");
+        Fixture tenantB = fixture("owners-list-b");
+        owner(tenantA.tenantId(), "Ana", "Muestra", "DNI", "75210001", "999221001");
+        owner(tenantA.tenantId(), "Beatriz", "Muestra", "DNI", "75210002", "999221002");
+        owner(tenantB.tenantId(), "Ajena", "Muestra", "DNI", "75210003", "999221003");
+        for (String query : List.of("", "  ")) {
+            mockMvc.perform(get("/api/v1/owners").param("query", query).param("size", "1")
+                            .with(authentication(auth(tenantA, "OWNER_READ"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalElements").value(2))
+                    .andExpect(jsonPath("$.totalPages").value(2))
+                    .andExpect(jsonPath("$.content[0].firstName").value("Ana"));
+        }
+        mockMvc.perform(get("/api/v1/owners?page=1&size=1")
+                        .with(authentication(auth(tenantA, "OWNER_READ"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].firstName").value("Beatriz"));
+        mockMvc.perform(get("/api/v1/owners")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/owners").with(authentication(auth(tenantA, "USER_READ"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test

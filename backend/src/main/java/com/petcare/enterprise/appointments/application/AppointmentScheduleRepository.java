@@ -6,6 +6,7 @@ import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCas
 import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCase.NormalizedAppointmentQuery;
 import com.petcare.enterprise.appointments.application.AppointmentScheduleUseCase.VeterinarianOption;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,6 +50,18 @@ public interface AppointmentScheduleRepository {
     boolean cancelConditionally(CancelAppointmentMutation mutation);
 
     void insertStatusHistory(AppointmentStatusHistoryRecord record);
+
+    List<AppointmentActivityDayRecord> findActivityByDateRange(
+            UUID tenantId,
+            UUID branchId,
+            LocalDate startDate,
+            LocalDate endDate);
+
+    record AppointmentActivityDayRecord(
+            LocalDate date,
+            long completedCount,
+            long otherCount) {
+    }
 
     record VeterinarianEligibility(
             UUID id,

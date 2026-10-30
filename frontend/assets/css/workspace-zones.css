@@ -1,0 +1,66 @@
+/* Three-level composition: approved navigation, work canvas, useful context only. */
+#dashboard-view { --pc-work-canvas: #e8f0ec; --pc-work-edge: #d5e3db; }
+#dashboard-view .pc-work-region { min-width: 0; padding: 18px; border-radius: 22px; background: var(--pc-work-canvas); }
+#dashboard-view .pc-directory-work-region { margin-top: 20px; }
+#dashboard-view .pc-work-region > :last-child { margin-bottom: 0 !important; }
+#dashboard-view .pc-zone-title { margin: 0 0 14px; color: #234f3c; font: 700 1rem/1.35 'Source Sans 3','Segoe UI',sans-serif; }
+#dashboard-view .pc-context-column { min-width: 0; }
+
+/* Titles introduce sections on the canvas; only the results themselves need a surface. */
+#dashboard-view :is(#users-view,#patients-view,#owners-view,#appointments-view) :is(#users-content,#patients-content,#owners-content,#appointments-results) { padding: 0 !important; border: 0 !important; border-radius: 0; background: transparent !important; box-shadow: none !important; }
+#dashboard-view :is(.pc-users-results-heading,.pc-patient-results-band,.pc-owner-results-band,.pc-module-directory-heading) { margin: 22px 4px 14px; }
+#dashboard-view :is(#users-content,#patients-content,#owners-content,#appointments-results) .table-responsive { padding: 8px; border: 1px solid #cbded2 !important; border-radius: 16px !important; background: #fff; box-shadow: 0 2px 3px #164a3b05,0 7px 18px #164a3b0b !important; }
+#dashboard-view :is(#users-content,#patients-content,#owners-content,#appointments-results) table { margin-bottom: 0 !important; }
+#dashboard-view :is(#users-content,#patients-content,#owners-content,#appointments-results) :is(nav,.border-top) { border-color: #c7dacf !important; }
+#dashboard-view .pc-work-region :is(.pc-empty-state,#owners-initial,#patients-initial) { border-radius: 16px; background: #fff; }
+
+/* Agenda: work first, summary follows the exact filters applied by the existing API. */
+#appointments-view .pc-agenda-workspace { display: grid; grid-template-columns: minmax(0,1fr); gap: 22px; margin-top: 20px; align-items: start; }
+#appointments-view .pc-agenda-context { padding: 18px; border: 1px solid #d3e5db; border-radius: 22px; background: #f8fcfa; }
+#appointments-view .pc-agenda-context:has(#appointments-overview:not([hidden])) .pc-agenda-context-pending { display: none; }
+#appointments-view .pc-agenda-context #appointments-overview { margin: 0; }
+#appointments-view .pc-agenda-context .pc-agenda-overview-label { margin: 0 0 14px; line-height: 1.5; }
+#appointments-view .pc-agenda-context .pc-agenda-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+#appointments-view .pc-agenda-context .pc-agenda-stat { min-width: 0; min-height: 86px; padding: 14px; gap: 12px; }
+#appointments-view .pc-agenda-context .pc-agenda-stat strong { font-size: 1.65rem; }
+#appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; width: 100%; padding: 18px !important; }
+#appointments-view .pc-agenda-workspace #appointment-search-form > div { width: auto; min-width: 0; padding: 0; margin: 0 !important; }
+#appointments-view .pc-agenda-workspace #appointment-search-form > :is(.pc-module-filter-heading,div:last-child) { grid-column: 1 / -1; }
+#appointments-view .pc-agenda-workspace .pc-agenda-result-summary { padding: 0; margin: 0 4px 14px !important; background: transparent; }
+#appointments-view .pc-agenda-workspace .pc-agenda-table-surface { overflow-x: auto; overflow-y: hidden; }
+#appointments-view .pc-agenda-workspace .table td { padding: 14px 8px; }
+
+/* Clinical work and reference data stay distinct without adding new modules. */
+#dashboard-view .pc-context-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 22px; margin: 0; }
+#dashboard-view .pc-context-layout > * { width: auto; min-width: 0; padding: 0; margin: 0; }
+#dashboard-view .pc-context-layout > .pc-work-region { padding: 18px; }
+#dashboard-view .pc-context-layout .pc-context-column > .card { border: 1px solid #ccdfd2 !important; border-radius: 18px; background: #fff; box-shadow: 0 2px 3px #164a3b05,0 7px 18px #164a3b0b !important; }
+#dashboard-view .pc-profile-zones .pc-context-column .pc-folio-header { background: #edf6f0 !important; border-radius: 18px 18px 0 0; }
+#dashboard-view .pc-profile-zones .pc-context-column .pc-folio-header h3 { color: #164f39 !important; }
+#dashboard-view .pc-profile-zones > .pc-work-region > .card:first-child { border: 0 !important; background: transparent; box-shadow: none !important; }
+#dashboard-view .pc-profile-zones > .pc-work-region > .card:first-child > .pc-folio-header { padding: 0 4px 14px; border: 0 !important; background: transparent !important; }
+#dashboard-view .pc-profile-zones > .pc-work-region > .card:first-child > .pc-folio-header h3 { color: #234f3c !important; font-size: 1rem; }
+#dashboard-view .pc-profile-zones > .pc-work-region > .card:first-child > .card-body { border: 1px solid #d2e3d9; border-radius: 18px; background: #fff; }
+#dashboard-view .pc-evaluation-zones .pc-context-column .pc-zone-title { margin-bottom: 0; }
+
+@media (min-width: 1200px) {
+  #appointments-view .pc-agenda-workspace { grid-template-columns: minmax(0,1fr) 224px; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat-grid { grid-template-columns: minmax(0,1fr); }
+  #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > .pc-module-filter-heading { grid-column: 1 / span 2; grid-row: 1; background: transparent; }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child { grid-column: 3 / span 2; grid-row: 1; justify-self: end; align-self: center; }
+  #dashboard-view .pc-context-layout { grid-template-columns: minmax(0,1fr) 280px; }
+}
+@media (max-width: 767.98px) {
+  #dashboard-view .pc-work-region { padding: 12px; border-radius: 18px; }
+  #dashboard-view .pc-directory-work-region { margin-top: 16px; }
+  #dashboard-view .pc-context-layout { gap: 20px; }
+  #dashboard-view .pc-context-layout > .pc-work-region { padding: 12px; }
+  #appointments-view .pc-agenda-context { padding: 14px; border-radius: 18px; }
+  #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { padding: 14px !important; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat { padding: 10px; gap: 8px; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat-icon { width: 32px; height: 32px; flex-shrink: 0; }
+}
+@media (max-width: 575.98px) {
+  #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { grid-template-columns: minmax(0,1fr); }
+}

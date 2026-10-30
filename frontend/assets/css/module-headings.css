@@ -1,0 +1,53 @@
+/* Shared visual hierarchy for clinical module headers. The Home welcome card is a hero, not a module title. */
+#dashboard-view :is(#appointments-view, #patients-view, #owners-view, #users-view, #roles-view, #patient-profile-view, #consultation-evaluation-view) .pc-module-title {
+  margin: 0 0 .55rem !important;
+  color: #073e2c !important;
+  font: 700 clamp(1.75rem, 2.45vw, 2.2rem)/1.15 'Source Sans 3', 'Segoe UI', sans-serif !important;
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+
+#dashboard-view #patient-profile-view .pc-module-title { margin-bottom: 0 !important; }
+
+#dashboard-view :is(#appointments-back-button, #patients-back-button, #owners-back-button, #users-back-button, #roles-back-button, #patient-profile-back-button, #consultation-evaluation-back-button) {
+  min-height: 30px;
+  margin: 0 0 .65rem !important;
+  padding: 0 !important;
+  border: 0;
+  color: #0a5840 !important;
+  background: transparent;
+  font: 600 .85rem/1.35 'Source Sans 3', 'Segoe UI', sans-serif;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#dashboard-view :is(#appointments-back-button, #patients-back-button, #owners-back-button, #users-back-button, #roles-back-button, #patient-profile-back-button, #consultation-evaluation-back-button):focus-visible,
+#dashboard-view :is(#appointments-title, #patients-title, #owners-title, #users-title, #roles-title, #patient-profile-title, #consultation-evaluation-title):focus-visible {
+  outline: 2px solid #0e7664;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+#dashboard-view :is(#appointments-view, #patients-view, #owners-view, #users-view, #roles-view, #consultation-evaluation-view) :is(.pc-agenda-hero-copy, .pc-patient-search-hero, .pc-owner-hero-copy, .pc-module-hero) p.text-secondary,
+#dashboard-view #appointments-view .pc-agenda-hero-copy > p {
+  color: #3c6252 !important;
+  font: 400 .95rem/1.45 'Source Sans 3', 'Segoe UI', sans-serif;
+}
+
+#dashboard-view :is(#users-view, #roles-view, #consultation-evaluation-view) .pc-module-hero {
+  min-height: 152px;
+  padding: 16px 20px;
+  border: 1px solid #fff;
+  border-radius: var(--pc-radius-2xl, 18px);
+  background: linear-gradient(112deg, #f8fcfa 5%, #e5f4ed 72%, #d6ebdf);
+}
+
+@media (max-width: 767.98px) {
+  #dashboard-view :is(#appointments-view, #patients-view, #owners-view, #users-view, #roles-view, #patient-profile-view, #consultation-evaluation-view) .pc-module-title {
+    font-size: 1.75rem !important;
+  }
+  #dashboard-view :is(#users-view, #roles-view, #consultation-evaluation-view) .pc-module-hero {
+    min-height: 0;
+    padding: 14px;
+  }
+}

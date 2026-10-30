@@ -38,7 +38,7 @@ class OwnerController {
 
     @GetMapping
     OwnerPageResponse search(
-            @RequestParam @Size(min = 2, max = 100) @Pattern(regexp = "(?s).*\\S.*\\S.*") String query,
+            @RequestParam(required = false) @Size(max = 100) @Pattern(regexp = "(?s)\\s*|.*\\S.*\\S.*") String query,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(defaultValue = "name") @Pattern(regexp = "name|document|phone") String sortBy,
@@ -46,7 +46,7 @@ class OwnerController {
         return OwnerPageResponse.from(owners.search(new OwnerSearch(
                 page,
                 size,
-                query,
+                query == null ? "" : query.trim(),
                 sortField(sortBy),
                 sortDirection(direction))));
     }

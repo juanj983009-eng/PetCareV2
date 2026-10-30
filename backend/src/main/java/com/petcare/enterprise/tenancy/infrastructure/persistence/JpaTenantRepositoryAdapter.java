@@ -6,6 +6,7 @@ import com.petcare.enterprise.tenancy.application.TenantSlugAlreadyExistsExcepti
 import com.petcare.enterprise.tenancy.domain.Tenant;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
@@ -38,6 +39,11 @@ class JpaTenantRepositoryAdapter implements TenantRepository {
     @Override
     public Optional<Tenant> findBySlugForAuthentication(String slug) {
         return repository.findBySlug(slug).map(TenantJpaEntity::toDomain);
+    }
+
+    @Override
+    public Optional<Tenant> findById(UUID tenantId) {
+        return repository.findById(tenantId).map(TenantJpaEntity::toDomain);
     }
 
     private static String rootMessage(Throwable throwable) {

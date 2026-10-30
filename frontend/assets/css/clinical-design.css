@@ -1,0 +1,1432 @@
+/* Superficies de trabajo de PetCare: verde clínico, salvia y acentos dorados. */
+#dashboard-view {
+  --pc-design-ink: #103b30;
+  --pc-design-canvas: #eaf2ec;
+  --pc-design-edge: #d9e8de;
+  --pc-design-shadow: 0 2px 5px rgba(17, 64, 45, .06), 0 10px 24px rgba(17, 64, 45, .09);
+}
+#dashboard-view .pc-editorial-body { background: var(--pc-design-canvas); }
+#dashboard-home .pc-home-hero {
+  background: linear-gradient(115deg, #e7f2e7 0%, #e4f0e6 56%, #cbe3d2 100%);
+  border: 1px solid #d5e6d8;
+  box-shadow: var(--pc-design-shadow);
+}
+#dashboard-home .pc-home-hero h2 { color: #103d30; }
+#dashboard-home .pc-home-hero h2 > span { color: #916000; }
+#dashboard-home .pc-home-art-arch { background: linear-gradient(145deg, #c6e3ce, #76b698); }
+#dashboard-home .pc-home-hero-art img { object-position: center bottom; }
+#dashboard-home .pc-home-metric,
+#dashboard-home .pc-home-rail > section,
+#dashboard-home #home-activity-card,
+#dashboard-home #home-session-details {
+  border: 1px solid var(--pc-design-edge);
+  box-shadow: var(--pc-design-shadow);
+}
+#dashboard-home .pc-home-metric { background: #fff; }
+#dashboard-home .pc-home-metric-gold .pc-home-metric-symbol { background: #f9ebc8; color: #825800; }
+#dashboard-home .pc-home-metric-lilac .pc-home-metric-symbol { background: #e5f2e8; color: #14503a; }
+#dashboard-home .pc-home-section-title h3 { color: var(--pc-design-ink); }
+#dashboard-home .pc-shortcut-card {
+  border: 1px solid #d8e8dc !important;
+  box-shadow: var(--pc-design-shadow) !important;
+}
+#dashboard-home .pc-home-profile-card,
+#dashboard-home .pc-home-appointments,
+#dashboard-home #home-activity-card,
+#dashboard-home #home-session-details { background: #fff; }
+#dashboard-home #home-session-details[hidden] { display: none !important; }
+#dashboard-home .pc-home-profile-avatar { border-radius: 50%; }
+#dashboard-home .pc-home-profile-meta { background: #f3f8f4; }
+#dashboard-home .pc-home-appointments h3,
+#dashboard-home #home-activity-title { color: var(--pc-design-ink) !important; }
+#dashboard-home .pc-home-solid { background: #0b4938; border-color: #0b4938; }
+#dashboard-home .pc-home-solid:hover { background: #063629; }
+/* Mantener una columna contextual legible al 100 % en portátiles. */
+@media (min-width: 1200px) and (max-width: 1599.98px) {
+  #dashboard-home .pc-home-layout {
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: 18px;
+  }
+  #dashboard-home .pc-home-metric-symbol { display: grid; }
+  #dashboard-home .pc-home-metric { min-width: 0; gap: 8px; }
+  #dashboard-home .pc-home-metric-symbol { width: 34px; height: 36px; font-size: 20px; }
+  #dashboard-home .pc-home-metric > div > span { font-size: .75rem; line-height: 1.25; }
+}
+#dashboard-home .pc-home-panel-heading { align-items: flex-start; gap: 10px; }
+#dashboard-home .pc-home-panel-heading h3 { line-height: 1.25; }
+#dashboard-home .pc-home-panel-heading .pc-home-link { flex-shrink: 0; white-space: nowrap; }
+#dashboard-home .pc-home-agenda-date { color: #547264; }
+/* La fecha elegida se identifica por su etiqueta, sin enmarcar toda la barra. */
+#dashboard-home .pc-activity-bar-btn.is-selected { outline: none; }
+#dashboard-home .pc-activity-bar-btn:focus-visible { outline: 3px solid #956b06; outline-offset: 3px; }
+#dashboard-home .pc-activity-bar-col:has(.pc-activity-bar-btn.is-selected) .pc-activity-bar-label {
+  color: #064b37;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  #dashboard-home .pc-shortcut-card { transition: none; }
+  #dashboard-home .pc-shortcut-card:hover { transform: none; }
+}
+
+/* Inicio: lienzo luminoso y superficies diferenciadas, siguiendo la referencia. */
+#dashboard-view.pc-home-theme {
+  --home-canvas: #fff;
+  --pc-design-canvas: #fff;
+}
+#dashboard-view.pc-home-theme :is(.pc-editorial-main, .pc-editorial-body) {
+  background: #fff;
+}
+#dashboard-home .pc-home-hero {
+  background: #e7f1e6 url('/assets/img/dashboard-clinic-hero.png') right center / auto 100% no-repeat;
+  border-color: #e2ebe2;
+}
+#dashboard-home .pc-home-hero-copy { max-width: 54%; }
+#dashboard-home .pc-home-hero h2,
+#dashboard-home .pc-home-hero h2 > span { color: #103d30; }
+#dashboard-home .pc-home-hero h2 > span::after { display: none; }
+#dashboard-home .pc-home-hero-art {
+  display: none;
+}
+#dashboard-home .pc-home-hero-art img,
+#dashboard-home .pc-home-art-arch,
+#dashboard-home .pc-home-sunburst { display: none; }
+#dashboard-home .pc-home-metrics { gap: 12px; }
+#dashboard-home .pc-home-metric {
+  border-color: #e7eee8;
+  border-radius: 15px;
+  box-shadow: 0 2px 8px rgb(20 65 43 / 6%);
+}
+#dashboard-home .pc-home-section-title {
+  margin: 18px 0 0;
+  padding: 17px 18px 0;
+  border: 1px solid #e6eee8;
+  border-bottom: 0;
+  border-radius: 17px 17px 0 0;
+  background: #fff;
+}
+#dashboard-home .pc-home-section-title > span { display: none; }
+#dashboard-home .pc-home-shortcuts {
+  --bs-gutter-x: 10px;
+  --bs-gutter-y: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 8px 13px 16px;
+  border: 1px solid #e6eee8;
+  border-top: 0;
+  border-radius: 0 0 17px 17px;
+  background: #fff;
+  box-shadow: 0 4px 15px rgb(20 65 43 / 5%);
+}
+#dashboard-home .pc-home-shortcuts > div { width: auto; min-width: 0; margin-top: 10px; }
+#dashboard-home .pc-shortcut-card {
+  min-height: 0;
+  border: 0 !important;
+  border-radius: 13px;
+  box-shadow: none !important;
+}
+#dashboard-home .pc-home-profile-card,
+#dashboard-home .pc-home-appointments,
+#dashboard-home #home-activity-card {
+  border-color: #e5eee7;
+  box-shadow: 0 3px 14px rgb(20 65 43 / 6%);
+}
+@media (max-width: 767.98px) {
+  #dashboard-home .pc-home-hero { background: #e7f1e6; }
+  #dashboard-home .pc-home-hero-copy { max-width: 100%; }
+  #dashboard-home .pc-home-hero-art { display: none; }
+  #dashboard-home .pc-home-shortcuts { padding: 6px 12px 14px; }
+}
+@media (max-width: 1199.98px) {
+  #dashboard-home .pc-home-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  #dashboard-home .pc-home-shortcuts { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Salvia cálido y proporciones compactas del tablero de referencia. */
+#dashboard-view.pc-home-theme {
+  --pc-sage-window: #e6eadf;
+  --pc-sage-window-accent: #cbd0bd;
+}
+#dashboard-home .pc-home-hero { background-color: var(--pc-sage-window-accent); }
+#dashboard-home .pc-home-metric,
+#dashboard-home .pc-home-profile-card,
+#dashboard-home .pc-home-appointments,
+#dashboard-home #home-activity-card,
+#dashboard-home .pc-home-section-title,
+#dashboard-home .pc-home-shortcuts {
+  background: radial-gradient(ellipse at 12% 4%, rgb(255 255 255 / 30%), transparent 48%),
+    radial-gradient(ellipse at 90% 100%, rgb(113 129 98 / 9%), transparent 58%),
+    linear-gradient(135deg, #e9ede3, #dce3d5) !important;
+  border-color: #d5dccf !important;
+}
+#dashboard-home .pc-home-profile-meta,
+#dashboard-home .pc-home-activity-selection { background: #f5f7f1; }
+#dashboard-home .pc-shortcut-card {
+  background: radial-gradient(ellipse at 15% 0%, rgb(255 255 255 / 55%), transparent 65%),
+    linear-gradient(145deg, #edf3e9, #e2ebdf) !important;
+}
+#dashboard-home #home-card-appointments .pc-shortcut-card,
+#dashboard-home #home-card-users .pc-shortcut-card {
+  background: radial-gradient(ellipse at 15% 0%, rgb(255 255 255 / 60%), transparent 65%),
+    linear-gradient(145deg, #faf6ed, #f0ebdd) !important;
+}
+
+@media (min-width: 1200px) {
+  #dashboard-home .pc-home-layout { grid-template-columns: minmax(0, 1fr) 265px; gap: 14px; }
+  #dashboard-home .pc-home-rail { gap: 12px; }
+  #dashboard-home .pc-home-hero { min-height: 188px; padding: 15px 20px; }
+  #dashboard-home .pc-home-eyebrow { margin-bottom: 8px; }
+  #dashboard-home .pc-home-hero h2 { font-size: clamp(1.65rem, 2.1vw, 2.25rem); margin-bottom: 8px; }
+  #dashboard-home .pc-home-hero-copy > p { line-height: 1.35; margin-bottom: 10px; }
+  #dashboard-home .pc-home-hero-actions .btn { min-height: 38px; padding: .5rem .7rem; }
+  #dashboard-home .pc-home-metrics { gap: 8px; margin-top: 10px; }
+  #dashboard-home .pc-home-metric { min-height: 58px; padding: 8px 10px; }
+  #dashboard-home .pc-home-metric strong { font-size: 1.35rem; }
+  #dashboard-home .pc-home-section-title { margin-top: 12px; padding: 11px 14px 0; }
+  #dashboard-home .pc-home-shortcuts { padding: 3px 9px 12px; }
+  #dashboard-home .pc-shortcut-card { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 3px 8px; align-content: start; padding: 10px !important; }
+  #dashboard-home .pc-shortcut-card > div:first-child { grid-row: 1 / 3; margin: 0 !important; }
+  #dashboard-home .pc-shortcut-icon-wrap { width: 34px; height: 34px; border-radius: 50%; }
+  #dashboard-home .pc-shortcut-icon-wrap svg { width: 19px; height: 19px; }
+  #dashboard-home .pc-shortcut-card h3 { margin: 0 !important; font-size: .92rem; }
+  #dashboard-home .pc-shortcut-card p { margin: 0 !important; font-size: .8rem; line-height: 1.3; }
+  #dashboard-home .pc-shortcut-card .pc-shortcut-btn { grid-column: 2; width: fit-content !important; min-height: 32px; padding: 3px 8px; text-align: left; }
+  #dashboard-home #home-activity-card { margin-top: 12px !important; padding: 14px 16px; }
+  #dashboard-home .pc-home-activity-bars { height: 100px; }
+  #dashboard-home .pc-home-profile-summary { padding: 12px 14px 8px; }
+  #dashboard-home .pc-home-profile-body { padding: 0 14px 12px; gap: 8px; }
+  #dashboard-home .pc-home-appointments { padding: 14px; }
+}
+
+/* Jerarquía del tablero en tamaño real, sin depender del zoom del navegador. */
+#dashboard-home .pc-home-eyebrow {
+  color: #98701a;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+#dashboard-home .pc-home-primary,
+#dashboard-home .pc-home-rail { min-width: 0; }
+#dashboard-home .pc-home-hero-copy { max-width: min(54%, 420px); }
+#dashboard-home .pc-home-hero-copy > p { max-width: 38ch; }
+#dashboard-home .pc-home-metric,
+#dashboard-home .pc-home-profile-card,
+#dashboard-home .pc-home-appointments,
+#dashboard-home #home-activity-card {
+  box-shadow: 0 2px 8px rgb(30 57 40 / 7%) !important;
+}
+@media (min-width: 1200px) and (max-height: 800px) {
+  #dashboard-home .pc-home-hero { min-height: 172px; padding: 12px 18px; }
+  #dashboard-home .pc-home-eyebrow { margin-bottom: 5px; }
+  #dashboard-home .pc-home-hero h2 { font-size: 1.7rem; margin-bottom: 5px; }
+  #dashboard-home .pc-home-hero-copy > p { font-size: .85rem; margin-bottom: 7px; }
+  #dashboard-home .pc-home-hero-actions .btn { min-height: 34px; padding: .35rem .55rem; }
+  #dashboard-home .pc-home-metrics { margin-top: 8px; }
+  #dashboard-home .pc-home-metric { min-height: 52px; }
+  #dashboard-home .pc-home-section-title { margin-top: 8px; }
+  #dashboard-home #home-activity-card { margin-top: 8px !important; }
+  #dashboard-home .pc-home-activity-bars { height: 86px; }
+}
+@media (max-width: 767.98px) {
+  #dashboard-home .pc-home-hero-copy { max-width: 100%; }
+}
+
+/* Paleta clínica funcional: fondo salvia, superficies blancas y acciones accesibles. */
+#dashboard-view.pc-home-theme {
+  --home-canvas: #c7cec0;
+  --pc-design-canvas: #c7cec0;
+  --pc-work-canvas: #c7cec0;
+  --pc-bg-body: #c7cec0;
+  --pc-bg-surface: #fff;
+  --pc-text-main: #1c2826;
+  --pc-primary: #2d6a4f;
+  --bs-body-color: #1c2826;
+  --bs-primary: #2d6a4f;
+  --bs-primary-rgb: 45, 106, 79;
+}
+#dashboard-view.pc-home-theme :is(.pc-editorial-main, .pc-editorial-body) {
+  background: #c7cec0;
+  color: #1c2826;
+}
+#dashboard-view .pc-work-region { background: #c7cec0; }
+#dashboard-view :is(.card, .pc-filter-card, .pc-agenda-table-surface,
+  .pc-home-metric, .pc-home-profile-card, .pc-home-appointments,
+  #home-activity-card, .pc-home-section-title, .pc-home-shortcuts) {
+  background: #fff !important;
+  border-color: #dce3da !important;
+}
+#dashboard-home .pc-shortcut-card,
+#dashboard-home #home-card-appointments .pc-shortcut-card,
+#dashboard-home #home-card-users .pc-shortcut-card {
+  background: #fff !important;
+  border: 1px solid #e2e8e1 !important;
+}
+#dashboard-view :is(.btn-primary, .pc-home-solid) {
+  --bs-btn-bg: #2d6a4f;
+  --bs-btn-border-color: #2d6a4f;
+  --bs-btn-hover-bg: #24563f;
+  --bs-btn-hover-border-color: #24563f;
+  --bs-btn-active-bg: #204c39;
+  --bs-btn-active-border-color: #204c39;
+  background-color: #2d6a4f;
+  border-color: #2d6a4f;
+  color: #fff;
+}
+#dashboard-view :is(.btn-primary, .pc-home-solid):hover {
+  background-color: #24563f;
+  border-color: #24563f;
+  color: #fff;
+}
+#dashboard-view .pc-home-eyebrow { color: #914c3b; }
+#dashboard-view :is(.pc-home-metric-gold .pc-home-metric-symbol,
+  #home-card-appointments .pc-shortcut-icon-wrap) {
+  background: #fbe9e3;
+  color: #914c3b;
+}
+#dashboard-view :is(.btn, button):focus-visible {
+  outline: 3px solid #e07a5f;
+  outline-offset: 2px;
+}
+
+/* Columna de apoyo: perfil claro, agenda legible y cierre visual en verde bosque. */
+#dashboard-home .pc-home-rail { gap: 14px; }
+#dashboard-home :is(.pc-home-profile-card, .pc-home-appointments) {
+  background: #fff !important;
+  border: 1px solid #e1e6df !important;
+  border-radius: 16px;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important;
+}
+#dashboard-home .pc-home-profile-summary { padding: 16px 16px 12px; }
+#dashboard-home .pc-home-profile-avatar {
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: #e5eee4;
+  color: #2d6a4f;
+}
+#dashboard-home .pc-home-profile-caption { color: #914c3b; }
+#dashboard-home .pc-home-profile-name { color: #1c2826; font-size: 1.05rem; }
+#dashboard-home .pc-home-profile-email { color: #52635d; overflow-wrap: anywhere; white-space: normal; }
+#dashboard-home .pc-home-profile-body { padding: 0 16px 16px; gap: 10px; }
+#dashboard-home .pc-home-profile-roles-wrap { border-top-color: #e8ede7; }
+#dashboard-home .pc-home-profile-role-badge { background: #edf4ed; border-color: #d7e5d9; color: #24563f; }
+#dashboard-home .pc-home-profile-meta { background: #f6f8f4; border-color: #e7ece5; }
+#dashboard-home .pc-home-profile-meta-value { color: #1c2826; }
+#dashboard-home .pc-home-appointments { padding: 16px; }
+#dashboard-home .pc-home-panel-heading { align-items: center; border-bottom-color: #e8ede7; }
+#dashboard-home .pc-home-panel-heading h3 { color: #1c2826 !important; }
+#dashboard-home .pc-home-link { color: #2d6a4f; }
+#dashboard-home .pc-home-agenda-list li { border-bottom-color: #e8ede7; }
+#dashboard-home .pc-home-agenda-avatar { background: #edf4ed; color: #2d6a4f; }
+#dashboard-home .pc-home-agenda-time { background: #edf4ed; color: #24563f; }
+#dashboard-home .pc-home-care-card {
+  min-height: 155px;
+  border: 1px solid #2d6a4f !important;
+  background: #2d6a4f !important;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 10%) !important;
+}
+#dashboard-home .pc-home-care-card > div { width: 58%; }
+#dashboard-home .pc-home-care-card span { color: #e5f0e7; }
+#dashboard-home .pc-home-care-card h3,
+#dashboard-home .pc-home-care-card h3 em { color: #fff; }
+#dashboard-home .pc-home-care-card p { color: #edf6ee; }
+#dashboard-home .pc-home-care-card img { width: 48%; right: -2%; }
+
+/* El menú comparte el verde bosque de la tarjeta de bienestar. */
+#dashboard-view.pc-home-theme .pc-shell-nav { background: #2d6a4f; }
+
+/* Bienvenida: superficie blanca sobre salvia y mascotas completas sobre un arco. */
+#dashboard-home .pc-home-hero {
+  background: linear-gradient(110deg, #fff 0%, #f6f9f3 56%, #edf3ea 100%) !important;
+  border: 1px solid #fff !important;
+  box-shadow: 0 4px 16px rgb(28 40 38 / 12%) !important;
+}
+#dashboard-home .pc-home-hero-art {
+  display: block;
+  right: 0;
+  bottom: 0;
+  width: 42%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0;
+  background: none;
+}
+#dashboard-home .pc-home-hero-art .pc-home-art-arch {
+  display: block;
+  inset: 14% -18% -30% 4%;
+  border-radius: 55% 50% 0 0;
+  background: linear-gradient(140deg, #dcebdc, #8eb59a);
+  transform: none;
+}
+#dashboard-home .pc-home-hero-art img {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 5px 6px rgb(28 40 38 / 13%));
+}
+@media (max-width: 767.98px) {
+  #dashboard-home .pc-home-hero-art { display: none; }
+  #dashboard-home .pc-home-hero { background: #fff !important; }
+}
+
+/* Accesos independientes: el botón existente cubre cada tarjeta sin duplicar controles. */
+#dashboard-view #dashboard-home .pc-home-section-title {
+  margin: 18px 2px 10px;
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#dashboard-view #dashboard-home .pc-home-shortcuts {
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#dashboard-view #dashboard-home .pc-home-shortcuts > div {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+#dashboard-view #dashboard-home .pc-shortcut-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 4px 11px;
+  align-content: start;
+  min-height: 110px;
+  padding: 16px 34px 16px 14px !important;
+  border: 1px solid #e1e8df !important;
+  border-radius: 15px;
+  background: #fff !important;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+#dashboard-view #dashboard-home .pc-shortcut-card > div:first-child {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  margin: 0 !important;
+}
+#dashboard-view #dashboard-home .pc-shortcut-card h3,
+#dashboard-view #dashboard-home .pc-shortcut-card p { grid-column: 2; margin: 0 !important; }
+#dashboard-view #dashboard-home .pc-shortcut-card h3 { color: #1c2826 !important; font-size: .96rem; }
+#dashboard-view #dashboard-home .pc-shortcut-card p { line-height: 1.4; }
+#dashboard-view #dashboard-home .pc-shortcut-card .pc-shortcut-btn {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#dashboard-view #dashboard-home .pc-shortcut-btn > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#dashboard-view #dashboard-home .pc-shortcut-btn::after {
+  content: '→';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #2d6a4f;
+  font-size: 1.15rem;
+}
+#dashboard-view #dashboard-home .pc-shortcut-btn:focus-visible {
+  outline: none;
+}
+#dashboard-view #dashboard-home .pc-shortcut-card:has(.pc-shortcut-btn:focus-visible) {
+  outline: 3px solid #2d6a4f;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  #dashboard-view #dashboard-home .pc-shortcut-card { transition: none; }
+  #dashboard-view #dashboard-home .pc-shortcut-card:hover { transform: none; }
+}
+
+/* Perfil: terracota profundo con datos de sesión sobre superficies cálidas. */
+#dashboard-home .pc-home-profile-card {
+  background: #854b3b !important;
+  border-color: #854b3b !important;
+}
+#dashboard-home .pc-home-profile-avatar { background: #f8eee9; color: #854b3b; }
+#dashboard-home .pc-home-profile-caption,
+#dashboard-home .pc-home-profile-subheading { color: #fbefe7; }
+#dashboard-home .pc-home-profile-name,
+#dashboard-home .pc-home-profile-email { color: #fff; }
+#dashboard-home .pc-home-profile-roles-wrap { border-top-color: rgb(255 255 255 / 25%); }
+#dashboard-home .pc-home-profile-role-badge {
+  background: #f8eee9;
+  border-color: #f8eee9;
+  color: #65372c;
+}
+#dashboard-home .pc-home-profile-meta { background: #f8eee9; border-color: #f8eee9; }
+#dashboard-home .pc-home-profile-meta-label { color: #704a3d; }
+#dashboard-home .pc-home-profile-meta-value { color: #1c2826; }
+#dashboard-home .pc-home-profile-meta-row + .pc-home-profile-meta-row { border-top-color: #e8d5cb; }
+#dashboard-home .pc-home-profile-chevron { color: #fff; }
+
+/* La tarjeta completa comparte una sola superficie marrón. */
+#dashboard-view #dashboard-home #home-user-profile-card {
+  background: #854b3b !important;
+  border: 1px solid #854b3b !important;
+  color: #fff;
+}
+#dashboard-view #dashboard-home .pc-home-profile-summary { padding: 18px 18px 14px; }
+#dashboard-view #dashboard-home .pc-home-profile-header { gap: 12px; }
+#dashboard-view #dashboard-home .pc-home-profile-body { padding: 0 18px 18px; gap: 13px; }
+#dashboard-view #dashboard-home .pc-home-profile-roles-wrap {
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 30%);
+}
+#dashboard-view #dashboard-home .pc-home-profile-role-badge {
+  background: rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 48%);
+  color: #fff;
+}
+#dashboard-view #dashboard-home .pc-home-profile-meta {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 0;
+  background: transparent;
+}
+#dashboard-view #dashboard-home .pc-home-profile-meta-row { padding: 10px 0; }
+#dashboard-view #dashboard-home .pc-home-profile-meta-row + .pc-home-profile-meta-row {
+  border-top: 1px solid rgb(255 255 255 / 20%);
+}
+#dashboard-view #dashboard-home .pc-home-profile-meta-label { color: #fbefe7; }
+#dashboard-view #dashboard-home .pc-home-profile-meta-value { color: #fff; }
+#dashboard-view #dashboard-home .pc-home-profile-branch-unassigned { color: #fbefe7; }
+
+/* Marrón arena suave para mantener el perfil en armonía con el salvia. */
+#dashboard-view #dashboard-home #home-user-profile-card {
+  background: #eee1d5 !important;
+  border-color: #e5d1c2 !important;
+  color: #1c2826;
+}
+#dashboard-view #dashboard-home .pc-home-profile-avatar {
+  background: #fff8f2;
+  color: #854b3b;
+}
+#dashboard-view #dashboard-home :is(.pc-home-profile-name, .pc-home-profile-meta-value) { color: #1c2826; }
+#dashboard-view #dashboard-home .pc-home-profile-email { color: #485a52; }
+#dashboard-view #dashboard-home :is(.pc-home-profile-caption, .pc-home-profile-subheading, .pc-home-profile-meta-label) { color: #754838; }
+#dashboard-view #dashboard-home .pc-home-profile-roles-wrap,
+#dashboard-view #dashboard-home .pc-home-profile-meta,
+#dashboard-view #dashboard-home .pc-home-profile-meta-row + .pc-home-profile-meta-row {
+  border-color: #d9c3b4;
+}
+#dashboard-view #dashboard-home .pc-home-profile-role-badge {
+  background: #f9f3ed;
+  border-color: #dfc8b9;
+  color: #653d31;
+}
+#dashboard-view #dashboard-home .pc-home-profile-chevron,
+#dashboard-view #dashboard-home .pc-home-profile-branch-unassigned { color: #754838; }
+
+/* Agenda: área de trabajo y perfil contextual con la paleta aprobada. */
+#appointments-view .pc-agenda-workspace { margin-top: 0; align-items: start; }
+#appointments-view .pc-agenda-workspace > .pc-work-region { padding: 0; background: transparent; }
+#appointments-view .pc-agenda-hero {
+  margin-bottom: 14px;
+  border: 1px solid #fff;
+  border-radius: 18px;
+  background: linear-gradient(110deg, #fff 0%, #f6f9f3 55%, #e2eee1 100%);
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%);
+}
+#appointments-view .pc-agenda-create,
+#appointments-view #appointment-search-submit { background: #2d6a4f; border-color: #2d6a4f; color: #fff; }
+#appointments-view .pc-agenda-create:hover,
+#appointments-view #appointment-search-submit:hover { background: #24563f; color: #fff; }
+#appointments-view .pc-agenda-context {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+#appointments-view .pc-agenda-profile {
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid #e5d1c2;
+  border-radius: 16px;
+  background: #eee1d5;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%);
+}
+#appointments-view .pc-agenda-profile[hidden] { display: none; }
+#appointments-view .pc-agenda-profile-header { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; }
+#appointments-view .pc-agenda-profile-header > div { min-width: 0; }
+#appointments-view .pc-agenda-profile-avatar { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; background: #fff8f2; color: #854b3b; font-weight: 700; }
+#appointments-view .pc-agenda-profile-header strong,
+#appointments-view .pc-agenda-profile-header span:not(.pc-agenda-profile-avatar) { display: block; overflow-wrap: anywhere; }
+#appointments-view .pc-agenda-profile-header strong { color: #1c2826; }
+#appointments-view .pc-agenda-profile-header span:not(.pc-agenda-profile-avatar) { color: #485a52; font-size: .8rem; }
+#appointments-view .pc-agenda-profile-row { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 8px; padding: 9px 0; border-top: 1px solid #d9c3b4; font-size: .82rem; }
+#appointments-view .pc-agenda-profile-row span { color: #754838; }
+#appointments-view .pc-agenda-profile-row strong { color: #1c2826; overflow-wrap: anywhere; }
+#appointments-view .pc-agenda-context > .pc-zone-title,
+#appointments-view .pc-agenda-context-pending,
+#appointments-view .pc-agenda-overview {
+  margin: 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e1e6df;
+}
+#appointments-view .pc-agenda-context > .pc-zone-title { padding-bottom: 4px; border-bottom: 0; border-radius: 16px 16px 0 0; }
+#appointments-view .pc-agenda-context-pending,
+#appointments-view .pc-agenda-overview { border-top: 0; border-radius: 0 0 16px 16px; }
+#appointments-view .pc-agenda-context #appointments-overview { margin: 0; }
+#appointments-view .pc-agenda-context .pc-agenda-stat-grid { grid-template-columns: minmax(0,1fr); }
+#appointments-view .pc-agenda-context .pc-agenda-stat { min-height: 58px; padding: 10px; box-shadow: none; border-color: #e1e8df !important; }
+#appointments-view #appointment-search-form { background: #fff !important; }
+@media (min-width: 1200px) {
+  #appointments-view .pc-agenda-workspace { grid-template-columns: minmax(0,1fr) 265px; gap: 14px; }
+  #appointments-view .pc-agenda-workspace #appointment-search-form { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  #appointments-view .pc-agenda-hero { min-height: 190px; }
+}
+@media (max-width: 767.98px) {
+  #appointments-view .pc-agenda-hero { padding: 16px; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+/* Agenda: dimensiones y superficies alineadas con el tablero de Inicio. */
+#appointments-view .pc-agenda-hero {
+  min-height: 172px;
+  padding: 16px 18px;
+  overflow: hidden;
+  color: #1c2826;
+}
+#appointments-view .pc-agenda-hero-copy { max-width: 55%; }
+#appointments-view #appointments-back-button { margin-bottom: 7px; color: #2d6a4f; }
+#appointments-view #appointments-title {
+  margin-bottom: 8px;
+  color: #1c2826;
+  font-size: clamp(1.65rem, 2.1vw, 2.25rem);
+}
+#appointments-view .pc-agenda-hero-copy > p { max-width: 42ch; line-height: 1.4; color: #485a52; }
+#appointments-view .pc-agenda-hero-art { right: 140px; width: min(30%, 220px); height: 100%; }
+#appointments-view .pc-agenda-hero-art > span { background: linear-gradient(140deg, #dcebdc, #8eb59a); }
+#appointments-view .pc-agenda-create { flex: none; margin: 0; border: 1px solid #2d6a4f; border-radius: 11px; }
+#appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form {
+  gap: 12px;
+  padding: 16px !important;
+  border-color: #e1e6df !important;
+  border-radius: 16px !important;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%);
+}
+#appointments-view .pc-agenda-workspace #appointment-search-form > .pc-module-filter-heading { grid-column: 1 / -1; }
+#appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  justify-self: end;
+  padding: 0 !important;
+}
+#appointments-view .pc-agenda-workspace :is(.form-control, .form-select) {
+  min-height: 42px;
+  border-color: #d6ddd4;
+  color: #1c2826;
+}
+#appointments-view .pc-agenda-workspace .table th { color: #485a52; background: #edf2eb; }
+#appointments-view .pc-agenda-context .pc-agenda-stat-icon { background: #e5eee4; color: #2d6a4f; }
+#appointments-view .pc-agenda-context .pc-agenda-stat--gold .pc-agenda-stat-icon { background: #fbe9e3; color: #914c3b; }
+@media (min-width: 1200px) and (max-height: 800px) {
+  #appointments-view .pc-agenda-hero { min-height: 150px; }
+  #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { padding: 12px !important; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat { min-height: 52px; padding: 7px 10px; }
+}
+@media (max-width: 1199.98px) {
+  #appointments-view .pc-agenda-hero-copy { max-width: none; }
+}
+@media (max-width: 575.98px) {
+  #appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child { width: 100%; }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child .btn { flex: 1; }
+}
+
+/* Agenda compacta: controles y resumen mantienen la escala de Inicio. */
+#appointments-view .pc-agenda-hero { min-height: 168px; padding: 14px 18px; }
+#appointments-view .pc-agenda-hero-copy { position: relative; z-index: 1; max-width: 57%; }
+#appointments-view #appointments-title { font-size: clamp(1.55rem, 2vw, 2rem); margin-bottom: 5px; }
+#appointments-view #appointments-back-button { margin-bottom: 3px; padding-top: 0; padding-bottom: 0; }
+#appointments-view .pc-agenda-hero-copy > p { margin-bottom: 10px; font-size: .88rem; }
+#appointments-view .pc-agenda-create { padding: 7px 13px; font-size: .85rem; }
+#appointments-view .pc-agenda-hero-art { right: 0; width: 43%; max-width: 320px; }
+#appointments-view .pc-agenda-profile { padding: 12px 14px; }
+#appointments-view .pc-agenda-profile-header { padding-bottom: 8px; }
+#appointments-view .pc-agenda-profile-avatar { width: 38px; height: 38px; }
+#appointments-view .pc-agenda-profile-row { padding: 6px 0; }
+#appointments-view .pc-agenda-context > .pc-zone-title { padding: 12px 14px 4px; }
+#appointments-view .pc-agenda-overview { padding: 8px 14px 12px; }
+#appointments-view .pc-agenda-context .pc-agenda-overview-label { margin-bottom: 8px; }
+#appointments-view .pc-agenda-context .pc-agenda-stat-grid { gap: 0; }
+#appointments-view .pc-agenda-context .pc-agenda-stat {
+  min-height: 48px; padding: 6px 0; background: transparent !important;
+  border: 0 !important; border-radius: 0; border-bottom: 1px solid #e5ebe5 !important;
+  box-shadow: none !important;
+}
+#appointments-view .pc-agenda-context .pc-agenda-stat--mint :is(strong, div > span) { color: #1c2826; }
+#appointments-view .pc-agenda-context .pc-agenda-stat:last-child { border-bottom: 0 !important; }
+#appointments-view .pc-agenda-context .pc-agenda-stat-icon { width: 34px; height: 34px; }
+#appointments-view .pc-agenda-context .pc-agenda-stat strong { font-size: 1.25rem; line-height: 1; }
+#appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form { margin-bottom: 14px !important; gap: 8px; padding: 12px !important; }
+#appointments-view .pc-agenda-workspace :is(.form-control, .form-select) { min-height: 38px; font-size: .82rem; }
+#appointments-view #appointment-search-form .form-label { margin-bottom: 3px; font-size: .78rem; }
+#appointments-view #appointment-search-form .btn { padding: 8px 10px; font-size: .78rem; white-space: nowrap; }
+#appointments-view .pc-agenda-workspace .table td { padding: 8px; }
+@media (min-width: 1200px) {
+  #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > .pc-module-filter-heading { display: none; }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child {
+    grid-column: 1 / -1; grid-row: auto; justify-self: end;
+  }
+}
+@media (max-width: 767.98px) {
+  #appointments-view .pc-agenda-hero-copy { max-width: 100%; }
+  #appointments-view .pc-agenda-context .pc-agenda-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Una misma tarjeta de perfil para toda la aplicación. */
+#dashboard-view .pc-shared-profile {
+  box-sizing: border-box; min-width: 0; margin: 0 0 14px; padding: 14px;
+  border: 1px solid #e5d1c2; border-radius: 16px; background: #eee1d5;
+  color: #1c2826; box-shadow: 0 3px 12px rgb(28 40 38 / 8%);
+}
+#dashboard-view .pc-shared-profile[hidden] { display: none; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header > div { min-width: 0; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-avatar { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border-radius: 50%; background: #fff8f2; color: #854b3b; font-weight: 700; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header strong,
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header div > span { display: block; overflow-wrap: anywhere; }
+#dashboard-view .pc-shared-profile .pc-shared-profile-caption { color: #855c4c; font-size: .65rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header strong { font-size: .95rem; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-header div > span:last-child { color: #53645c; font-size: .75rem; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-row { display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 8px; padding: 8px 0; border-top: 1px solid #d9c3b4; font-size: .79rem; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-row > span { color: #754838; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-row strong { color: #1c2826; overflow-wrap: anywhere; }
+#dashboard-view .pc-shared-profile .pc-home-profile-role-badge { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; }
+#dashboard-view .pc-shared-profile .pc-agenda-profile-row:last-child { padding-bottom: 0; }
+@media (min-width: 1200px) {
+  #dashboard-view :is(#users-view, #roles-view, #owners-view, #patients-view) { position: relative; padding-right: 280px; }
+  #dashboard-view :is(#users-view, #roles-view, #owners-view, #patients-view) > .pc-shared-module-profile { position: absolute; top: 0; right: 0; width: 265px; }
+}
+
+/* Agenda: cabecera contenida y controles independientes. */
+#appointments-view .pc-agenda-hero { min-height: 142px; padding: 11px 16px; }
+#appointments-view #appointments-title { font-size: clamp(1.45rem, 1.8vw, 1.8rem); }
+#appointments-view .pc-agenda-hero-copy > p { margin-bottom: 7px; max-width: 38ch; font-size: .82rem; }
+#appointments-view .pc-agenda-create { min-height: 34px; padding: 5px 11px; }
+#appointments-view .pc-agenda-hero-art { height: 100%; }
+#appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form {
+  padding: 0 !important; border: 0 !important; border-radius: 0 !important;
+  background: transparent !important; box-shadow: none !important; gap: 8px;
+}
+#appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child) {
+  padding: 9px 10px !important; border: 1px solid #e0e7df; border-radius: 12px;
+  background: #fff; box-shadow: 0 2px 7px rgb(28 40 38 / 8%);
+}
+#appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child { gap: 8px !important; }
+#appointments-view .pc-agenda-workspace #appointment-search-form > div:last-child .btn {
+  min-height: 38px; border-radius: 10px; box-shadow: 0 2px 7px rgb(28 40 38 / 10%);
+}
+@media (max-width: 767.98px) {
+  #appointments-view .pc-agenda-hero { min-height: 0; }
+  #appointments-view .pc-agenda-workspace #appointment-search-form > .pc-module-filter-heading { display: none; }
+}
+
+/* El formulario es solo un contenedor: cada filtro aporta su propia superficie. */
+#dashboard-view #appointments-view .pc-agenda-workspace .pc-work-region #appointment-search-form {
+  background: transparent !important; background-color: transparent !important;
+  border: 0 !important; box-shadow: none !important; padding: 0 !important;
+}
+#dashboard-view #appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child) {
+  border-radius: 14px !important; overflow: visible;
+}
+#dashboard-view #appointments-view .pc-agenda-workspace :is(#appointments-empty, #appointments-loading, #appointments-initial-state) {
+  border: 1px solid #e0e7df !important; border-radius: 16px !important;
+  background: #fff !important; box-shadow: 0 2px 7px rgb(28 40 38 / 8%);
+}
+
+/* Filtros de agenda: salvia y tierra, con campos claros y texto legible. */
+#dashboard-view #appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child):nth-child(2),
+#dashboard-view #appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child):nth-child(4) {
+  background: #e8f1e9; border-color: #c4d9c9;
+}
+#dashboard-view #appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child):nth-child(3),
+#dashboard-view #appointments-view .pc-agenda-workspace #appointment-search-form > div:not(.pc-module-filter-heading):not(:last-child):nth-child(5) {
+  background: #f7f4ea; border-color: #e5d9c8;
+}
+#dashboard-view #appointments-view #appointment-search-form .form-label { color: #1c2826; }
+#dashboard-view #appointments-view #appointment-search-form :is(.form-control, .form-select) {
+  background-color: #fff; color: #1c2826; border-color: #c7cec0;
+}
+#dashboard-view #appointments-view #appointment-search-form :is(.form-control, .form-select):focus {
+  border-color: #2d6a4f; box-shadow: 0 0 0 3px rgb(45 106 79 / 18%);
+}
+
+/* Resumen: una superficie con separadores, sin recuadros por indicador. */
+#dashboard-view #appointments-view .pc-agenda-context .pc-agenda-stat {
+  background: transparent !important; background-color: transparent !important;
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  padding: 10px 0; min-height: 54px;
+}
+#dashboard-view #appointments-view .pc-agenda-context .pc-agenda-stat + .pc-agenda-stat {
+  border-top: 1px solid #e1e8df !important;
+}
+#dashboard-view #appointments-view .pc-agenda-context .pc-agenda-stat :is(strong, div > span) { color: #1c2826; }
+
+/* Listado de agenda: una superficie continua, con filas de lectura compacta. */
+#dashboard-view #appointments-view #appointments-results {
+  padding: 14px !important; border: 1px solid #dce3da !important;
+  border-radius: 16px !important; background: #fff !important;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important;
+}
+#dashboard-view #appointments-view #appointments-results .pc-module-directory-heading { margin: 0 0 8px; }
+#dashboard-view #appointments-view #appointments-results .pc-agenda-result-summary { margin: 0 0 10px !important; gap: 6px !important; }
+#dashboard-view #appointments-view #appointments-results .pc-filter-chip { background: #eef4ee; border-color: #dce7dc; color: #315c46; }
+#dashboard-view #appointments-view #appointments-results .pc-agenda-table-surface {
+  padding: 0; border: 0 !important; border-radius: 10px !important; box-shadow: none !important;
+}
+#dashboard-view #appointments-view #appointments-results table { width: 100%; font-size: .8rem; }
+#dashboard-view #appointments-view #appointments-results .table thead th {
+  padding: 9px 6px; font-size: .68rem; letter-spacing: .025em;
+  background: #edf3ed; color: #35594a; border: 0;
+}
+#dashboard-view #appointments-view #appointments-results .table tbody td {
+  padding: 8px 6px; border-bottom: 1px solid #e9eee9;
+  white-space: normal; overflow-wrap: anywhere; vertical-align: middle;
+}
+#dashboard-view #appointments-view #appointments-results .table tbody tr:last-child td { border-bottom: 0; }
+#dashboard-view #appointments-view #appointments-results .table td:first-child { white-space: nowrap; }
+#dashboard-view #appointments-view #appointments-results .pc-agenda-actions-toggle { min-width: 0; min-height: 34px; padding: 5px 9px; }
+#dashboard-view #appointments-view #appointments-results > div:last-child { padding: 10px 0 0 !important; border-top: 1px solid #e9eee9 !important; }
+#dashboard-view #appointments-view #appointments-results .pc-agenda-page-arrow { width: 40px; min-height: 40px; padding: 0; font-size: 1.5rem; line-height: 1; }
+
+/* Una escala de cabecera coherente entre Inicio y los módulos principales. */
+@media (min-width: 1200px) {
+  #dashboard-view :is(#dashboard-home .pc-home-hero, #appointments-view .pc-agenda-hero,
+    #patients-view .pc-patient-search-hero, #owners-view .pc-owner-search-hero,
+    #users-view > .pc-module-hero, #roles-view > .pc-module-hero) {
+    box-sizing: border-box; width: 100%; min-height: 172px; padding: 12px 18px;
+    border-radius: 18px;
+  }
+  #dashboard-view #appointments-view .pc-agenda-hero-copy > p { line-height: 1.3; margin-bottom: 6px; }
+  #dashboard-view #appointments-view #appointments-back-button { line-height: 1.2; }
+}
+
+/* La cabecera de agenda usa la misma altura concreta que Inicio en escritorio. */
+@media (min-width: 1200px) {
+  #dashboard-view #dashboard-home .pc-home-hero,
+  #dashboard-view #appointments-view .pc-agenda-hero { height: 172px; min-height: 172px; }
+  #dashboard-view #appointments-view .pc-agenda-hero-copy { align-self: center; }
+  #dashboard-view #appointments-view #appointments-back-button { margin-bottom: 2px; font-size: .78rem; }
+  #dashboard-view #appointments-view #appointments-title { font-size: 1.65rem; line-height: 1.1; margin-bottom: 4px; }
+  #dashboard-view #appointments-view .pc-agenda-hero-copy > p { line-height: 1.2; margin-bottom: 5px; }
+}
+
+/* Pacientes: área central y contexto, con los controles ya disponibles. */
+#dashboard-view #patients-view { padding-right: 0; }
+#dashboard-view #patients-view .pc-patient-directory-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+#dashboard-view #patients-view .pc-patient-directory-main,
+#dashboard-view #patients-view .pc-patient-directory-rail { min-width: 0; }
+#dashboard-view #patients-view .pc-patient-search-hero { margin-bottom: 14px; background: linear-gradient(110deg, #fff 0%, #f5f8f1 60%, #dcebdc 100%); }
+#dashboard-view #patients-view .pc-patient-search-hero > div:first-child { max-width: 55%; }
+#dashboard-view #patients-view #patients-back-button { margin-bottom: 2px !important; line-height: 1.2; font-size: .78rem; }
+#dashboard-view #patients-view #patients-title { margin-bottom: 4px !important; font-size: 1.65rem !important; line-height: 1.1; color: #1c2826; }
+#dashboard-view #patients-view .pc-patient-search-hero p { max-width: 38ch; margin-bottom: 6px !important; line-height: 1.2; font-size: .82rem; }
+#dashboard-view #patients-view #patients-new-patient-button { min-height: 34px; padding: 5px 11px; border: 1px solid #2d6a4f; background: #2d6a4f; }
+#dashboard-view #patients-view .pc-patient-search-art { width: 38%; max-width: 280px; height: 100%; right: 0; bottom: 0; }
+#dashboard-view #patients-view .pc-directory-work-region { padding: 0; margin: 0; background: transparent; }
+#dashboard-view #patients-view #patient-search-form { gap: 10px; margin-bottom: 14px !important; padding: 14px !important; border-radius: 16px !important; }
+#dashboard-view #patients-view #patient-search-form > .pc-patient-search-band { padding: 0; min-height: 0; margin-bottom: 2px; background: transparent; }
+#dashboard-view #patients-view #patient-search-form > div:last-child { position: static; grid-column: 1 / -1; grid-row: auto; justify-self: start; padding: 0; }
+#dashboard-view #patients-view #patient-search-form .form-label { margin-bottom: 4px; color: #1c2826; }
+#dashboard-view #patients-view #patient-search-form :is(.form-control, .form-select) { min-height: 40px; border-color: #c7cec0; color: #1c2826; }
+#dashboard-view #patients-view .pc-patient-search-tips { padding: 16px; border: 1px solid #dce3da; border-radius: 16px; background: #fff; box-shadow: 0 3px 12px rgb(28 40 38 / 8%); }
+#dashboard-view #patients-view .pc-patient-search-tips h3 { margin: 0 0 8px; color: #1c2826; font: 700 1rem 'Source Sans 3', sans-serif; }
+#dashboard-view #patients-view .pc-patient-search-tips ul { margin: 0; padding: 0; list-style: none; }
+#dashboard-view #patients-view .pc-patient-search-tips li { padding: 10px 0; border-top: 1px solid #e5ebe5; color: #53645c; font-size: .82rem; line-height: 1.4; }
+#dashboard-view #patients-view #patients-content { padding: 14px !important; border: 1px solid #dce3da !important; border-radius: 16px !important; background: #fff !important; box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important; }
+#dashboard-view #patients-view .pc-patient-results-band { margin: 0 0 8px; padding: 0; background: transparent; }
+#dashboard-view #patients-view #patients-content .table-responsive { padding: 0; border: 0 !important; box-shadow: none !important; }
+#dashboard-view #patients-view .table th { padding: 9px 6px; background: #edf3ed; color: #35594a; }
+#dashboard-view #patients-view .table td { padding: 8px 6px; }
+#dashboard-view #patients-view #patients-pagination .pc-patient-page-arrow { width: 40px; padding: 0; font-size: 1.5rem; line-height: 1; }
+@media (min-width: 1200px) {
+  #dashboard-view #patients-view .pc-patient-directory-layout { grid-template-columns: minmax(0,1fr) 265px; }
+  #dashboard-view #patients-view .pc-patient-search-hero { height: 172px; min-height: 172px; }
+  #dashboard-view #patients-view #patient-search-form { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); }
+  #dashboard-view #patients-view #patient-search-form > div:nth-child(2) { grid-column: 1 / -1; }
+}
+@media (max-width: 767.98px) {
+  #dashboard-view #patients-view .pc-patient-search-hero > div:first-child { max-width: 100%; }
+  #dashboard-view #patients-view .pc-patient-search-art { display: none; }
+}
+
+/* Búsqueda y filtros de pacientes como superficies independientes. */
+#dashboard-view #patients-view .pc-patient-directory-main #patient-search-form {
+  background: transparent !important; background-color: transparent !important;
+  border: 0 !important; box-shadow: none !important; padding: 0 !important;
+}
+#dashboard-view #patients-view #patient-search-form > .pc-patient-search-band { display: none; }
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child) {
+  box-sizing: border-box; min-width: 0; padding: 10px !important; margin: 0;
+  border: 1px solid #dce3da; border-radius: 14px; background: #fff;
+  box-shadow: 0 2px 7px rgb(28 40 38 / 8%);
+}
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child):nth-child(3),
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child):nth-child(5) { background: #e8f1e9; border-color: #c4d9c9; }
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child):nth-child(4),
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child):nth-child(6) { background: #f7f4ea; border-color: #e5d9c8; }
+#dashboard-view #patients-view #patient-search-form :is(.form-control, .form-select) { background-color: #fff; }
+#dashboard-view #patients-view #patient-search-form > div:last-child { margin: 0; }
+@media (min-width: 1200px) {
+  #dashboard-view #patients-view #patient-search-form > div:nth-child(2) { grid-column: 1 / -1; grid-row: auto; }
+}
+
+/* El directorio crece con sus resultados; las páginas limitan su longitud. */
+#dashboard-view #patients-view #patients-content .table-responsive {
+  height: auto !important; max-height: none !important; overflow-x: auto; overflow-y: hidden !important;
+}
+#dashboard-view #patients-view #patients-content .table td { padding: 7px 6px; }
+#dashboard-view #patients-view #patients-content .pc-demo-patient-avatar { width: 38px; height: 38px; }
+#dashboard-view #patients-view #patients-pagination { margin-top: 10px !important; }
+
+/* Buscador integrado en la paleta del directorio. */
+#dashboard-view #patients-view #patient-search-form > div:not(.pc-patient-search-band):not(:last-child):nth-child(2) {
+  padding: 10px 12px !important; border-color: #c4d9c9;
+  background: #e8f1e9; box-shadow: 0 2px 7px rgb(28 40 38 / 8%);
+}
+#dashboard-view #patients-view #patient-search-form #patient-search-query {
+  padding-left: 38px; background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%232d6a4f' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 11px center;
+}
+
+/* Perfil del paciente: ficha clínica coherente con Inicio y Agenda. */
+#dashboard-view #patient-profile-view { margin-top: 0 !important; color: #1c2826; }
+#dashboard-view #patient-profile-view #patient-profile-back-button { padding: 0 !important; margin: 0 0 8px; color: #2d6a4f !important; font-weight: 600; }
+#dashboard-view #patient-profile-view .pc-patient-profile-hero {
+  box-sizing: border-box; min-height: 150px; padding: 16px 18px;
+  border: 1px solid #dce3da; border-radius: 18px;
+  background: linear-gradient(110deg, #fff 0%, #f7f8f2 64%, #e3eee1 100%);
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%);
+}
+#dashboard-view #patient-profile-view #patient-profile-title { color: #1c2826; font-size: 1.8rem !important; }
+#dashboard-view #patient-profile-view #patient-profile-species-avatar { border-radius: 16px; background: #e4eee3; color: #2d6a4f; }
+#dashboard-view #patient-profile-view #patient-profile-new-appointment-button { background: #2d6a4f; border: 1px solid #2d6a4f; color: #fff; }
+#dashboard-view #patient-profile-view #patient-profile-edit-button { background: #fff; border-color: #96bba8; color: #2d6a4f; }
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner {
+  border: 1px solid #e6c7b5 !important; border-radius: 16px; background: #faf0e8;
+  box-shadow: 0 3px 10px rgb(80 55 40 / 6%);
+}
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner strong,
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner .pc-icon { color: #874a35 !important; }
+#dashboard-view #patient-profile-view :is(.pc-badge-tag-allergy, .pc-badge-tag-warning) { background: #f5ddcb; border-color: #e8c5ad; color: #754332; }
+#dashboard-view #patient-profile-view #patient-profile-no-alerts { background: #f4f7f1; border: 1px solid #dce7da; border-radius: 14px; }
+#dashboard-view #patient-profile-view .pc-profile-zones { gap: 14px; }
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region { padding: 0; background: transparent; }
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child > .pc-folio-header { padding: 0 2px 10px; }
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child > .card-body,
+#dashboard-view #patient-profile-view .pc-context-column > .card {
+  border: 1px solid #dce3da !important; border-radius: 16px; background: #fff;
+  box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important;
+}
+#dashboard-view #patient-profile-view .pc-context-column > .card { margin-bottom: 14px !important; }
+#dashboard-view #patient-profile-view .pc-context-column .pc-folio-header { padding: 12px 14px; background: #edf3ed !important; }
+#dashboard-view #patient-profile-view .pc-context-column .card-body { padding: 12px 14px; }
+#dashboard-view #patient-profile-view .pc-history-card { background: #fff !important; border-color: #e1e8df !important; }
+#dashboard-view #patient-profile-view .pc-history-sub-box { background: #f4f7f1 !important; border-color: #e1e8df !important; }
+#dashboard-view #patient-profile-view :is(#patient-profile-history-prev, #patient-profile-history-next) { border-radius: 10px; }
+@media (max-width: 767.98px) {
+  #dashboard-view #patient-profile-view .pc-patient-profile-hero { min-height: 0; padding: 14px; }
+  #dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Perfil clínico compacto con el perfil de sesión alineado arriba. */
+#dashboard-view #patient-profile-view .pc-patient-profile-hero { min-height: 120px; padding: 12px 16px; margin-bottom: 12px; }
+#dashboard-view #patient-profile-view .pc-patient-profile-hero .btn { min-height: 38px; padding: 6px 11px; }
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner { padding: 10px 14px !important; margin-bottom: 12px !important; }
+#dashboard-view #patient-profile-view #patient-profile-no-alerts { margin-bottom: 12px !important; }
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child > .card-body { padding: 12px; }
+#dashboard-view #patient-profile-view #patient-profile-history-list .pc-history-card { padding: 12px !important; margin-bottom: 0 !important; }
+#dashboard-view #patient-profile-view .pc-history-clinical-sections { gap: 10px; }
+#dashboard-view #patient-profile-view .pc-history-sub-box { padding: 12px !important; }
+#dashboard-view #patient-profile-view .pc-history-sub-box h4 { margin-bottom: 8px !important; }
+@media (min-width: 1200px) {
+  #dashboard-view #patient-profile-view { position: relative; }
+  #dashboard-view #patient-profile-view > .pc-shared-module-profile { position: absolute; top: 0; right: 0; width: 265px; }
+  #dashboard-view #patient-profile-view > :is(#patient-profile-back-button, .pc-patient-profile-hero),
+  #dashboard-view #patient-profile-view #patient-profile-content > :is(#patient-profile-medical-alerts-banner, #patient-profile-no-alerts) { max-width: calc(100% - 279px); }
+  #dashboard-view #patient-profile-view .pc-profile-zones { grid-template-columns: minmax(0, 1fr) 265px; }
+}
+
+/* Alerta clínica: superficie limpia, icono destacado y lectura vertical. */
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner {
+  display: block; padding: 12px 14px !important; background: #fff !important;
+  border: 1px solid #cddfcf !important; border-radius: 16px;
+}
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner[hidden] { display: none !important; }
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner > div:first-child { gap: 10px !important; margin-bottom: 8px !important; }
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner .pc-icon {
+  box-sizing: content-box; width: 18px; height: 18px; padding: 8px;
+  border-radius: 50%; background: #2d6a4f; color: #fff !important;
+}
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner strong { color: #1c2826 !important; }
+#dashboard-view #patient-profile-view #patient-profile-medical-alerts-banner > .d-grid { display: grid !important; gap: 6px !important; margin-left: 44px; }
+#dashboard-view #patient-profile-view :is(#patient-profile-allergies-row, #patient-profile-alerts-row) { align-items: center !important; }
+#dashboard-view #patient-profile-view :is(.pc-badge-tag-allergy, .pc-badge-tag-warning) {
+  background: #e8f1e9; border-color: #cddfcf; color: #28543e;
+  padding: 3px 8px; border-radius: 9px; font-size: .7rem;
+}
+
+/* Historia clínica: secciones claras sin tarjetas repetidas dentro de tarjetas. */
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child {
+  padding: 14px; border: 1px solid #dce3da !important; border-radius: 16px;
+  background: #fff; box-shadow: 0 3px 12px rgb(28 40 38 / 8%) !important;
+}
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child > .pc-folio-header { padding: 0 0 10px; }
+#dashboard-view #patient-profile-view .pc-profile-zones > .pc-work-region > .card:first-child > .card-body {
+  padding: 0; border: 0 !important; border-radius: 0; box-shadow: none !important;
+}
+#dashboard-view #patient-profile-view #patient-profile-history-list .pc-history-card {
+  padding: 12px !important; border: 1px solid #e0e8df !important; border-radius: 12px;
+  background: #fff !important;
+}
+#dashboard-view #patient-profile-view .pc-history-clinical-sections { gap: 6px; }
+#dashboard-view #patient-profile-view .pc-history-sub-box {
+  padding: 10px 0 0 !important; border: 0 !important; border-top: 1px solid #e5ece4 !important;
+  border-radius: 0 !important; background: transparent !important;
+}
+#dashboard-view #patient-profile-view :is(.pc-history-diagnoses, .pc-history-prescriptions) { gap: 0 16px; }
+#dashboard-view #patient-profile-view .pc-history-sub-box :is(.pc-history-diagnoses, .pc-history-prescriptions) > li {
+  padding: 8px 0 !important; border: 0 !important; border-bottom: 1px solid #edf1ec !important;
+  border-radius: 0; background: transparent;
+}
+#dashboard-view #patient-profile-view .pc-diagnosis-meta { margin-bottom: 4px; }
+#dashboard-view #patient-profile-view .pc-diagnosis-description { line-height: 1.35; }
+#dashboard-view #patient-profile-view .pc-prescription-medication { padding-bottom: 6px; margin-bottom: 6px; }
+#dashboard-view #patient-profile-view .pc-history-page-arrow { width: 38px; min-height: 38px; padding: 0; font-size: 1.4rem; line-height: 1; }
+
+/* Lectura clínica: dos secciones reconocibles y filas ligeras. */
+#dashboard-view #patient-profile-view .pc-history-clinical-sections { gap: 12px; }
+#dashboard-view #patient-profile-view .pc-history-sub-box {
+  padding: 12px 14px !important; border: 1px solid #e2e9df !important;
+  border-radius: 13px !important; background: #f6f8f3 !important;
+}
+#dashboard-view #patient-profile-view .pc-history-sub-box h4 { color: #1c4937; font-size: .95rem !important; margin: 0 0 8px !important; }
+#dashboard-view #patient-profile-view .pc-clinical-section-count { background: #e0eee3; color: #2d6a4f; }
+#dashboard-view #patient-profile-view :is(.pc-history-diagnoses, .pc-history-prescriptions) { gap: 8px; align-items: stretch; }
+#dashboard-view #patient-profile-view .pc-history-sub-box :is(.pc-history-diagnoses, .pc-history-prescriptions) > li {
+  padding: 9px 11px !important; border: 1px solid #e5ebe3 !important;
+  border-radius: 10px; background: #fff;
+}
+#dashboard-view #patient-profile-view .pc-diagnosis-meta { gap: 5px; margin-bottom: 6px; }
+#dashboard-view #patient-profile-view .pc-diagnosis-meta .badge { border-radius: 7px; font-size: .62rem; }
+#dashboard-view #patient-profile-view .pc-diagnosis-description { color: #1c2826; font-size: .82rem; line-height: 1.4; }
+#dashboard-view #patient-profile-view .pc-history-diagnoses > li:last-child:nth-child(odd) { grid-column: auto; }
+#dashboard-view #patient-profile-view .pc-prescription-medication { color: #245b43; font-size: .86rem; }
+
+/* Datos de referencia: superficies claras y divisiones discretas. */
+#dashboard-view #patient-profile-view .pc-context-column > .pc-zone-title {
+  margin: 0 0 10px; color: #1c4937; font-size: .92rem; font-weight: 700;
+}
+#dashboard-view #patient-profile-view .pc-context-column > .card {
+  overflow: hidden; border: 1px solid #d9e3d8 !important;
+  border-radius: 16px; background: #fff;
+  box-shadow: 0 3px 10px rgba(28, 40, 38, .07);
+}
+#dashboard-view #patient-profile-view .pc-context-column .pc-folio-header {
+  padding: 11px 14px; background: #f0f3ed !important;
+  border-bottom: 1px solid #e2e9df; color: #2d6a4f;
+}
+#dashboard-view #patient-profile-view .pc-context-column .pc-folio-header h3 {
+  color: #245b43; font-size: .9rem;
+}
+#dashboard-view #patient-profile-view .pc-context-column .card-body { padding: 10px 14px; }
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) {
+  display: grid; grid-template-columns: minmax(78px, 40%) minmax(0, 1fr);
+  margin: 0; gap: 0;
+}
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) :is(dt, dd) {
+  width: auto; min-width: 0; margin: 0; padding: 7px 0;
+  border-bottom: 1px solid #edf1ec; overflow-wrap: anywhere;
+}
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) :is(dt, dd):nth-last-child(-n+2) { border-bottom: 0; }
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) dt { color: #64786b !important; }
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) dd { color: #1c2826; }
+#dashboard-view #patient-profile-view :is(#patient-profile-identification, #patient-profile-owner) dd.fst-italic { color: #788a7a; }
+#dashboard-view #patient-profile-view #patient-profile-record-meta {
+  display: block; width: 100%; color: #63766a !important;
+  font-size: .72rem; line-height: 1.45; overflow-wrap: anywhere;
+}
+#dashboard-view #patient-profile-view #patient-profile-record-history { color: #536b5d !important; line-height: 1.5; }
+
+#dashboard-view #patient-profile-view .pc-patient-profile-hero #patient-profile-back-button {
+  flex: 0 0 100%; min-height: 0; width: 100%; margin: 0; padding: 0 !important;
+  text-align: left; line-height: 1.3;
+}
+
+/* Consulta: una composición compacta que conserva todo el contenido clínico. */
+#dashboard-view #consultation-evaluation-view .pc-module-hero {
+  min-height: 138px; padding: 15px 20px; margin-bottom: 12px !important;
+  border: 1px solid #dbe5db; border-radius: 16px;
+  background: #f6f8f3; box-shadow: 0 3px 12px rgba(28, 40, 38, .07);
+}
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card {
+  border: 1px solid #dce6db !important; border-radius: 16px;
+  margin-bottom: 12px !important; box-shadow: 0 3px 12px rgba(28, 40, 38, .07);
+}
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card .card-body { padding: 14px 18px !important; }
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card .border-top { border-top: 0 !important; }
+#dashboard-view #consultation-evaluation-view #evaluation-medical-alerts-banner {
+  margin-bottom: 14px !important; padding: 12px 16px; color: #1c4937;
+  background: #f7f4ea; border: 1px solid #e9d6b5; border-radius: 14px;
+}
+#dashboard-view #consultation-evaluation-view #evaluation-medical-alerts-banner h3 { color: #1c4937; }
+#dashboard-view #consultation-evaluation-view #evaluation-no-alerts { margin-bottom: 14px !important; }
+#dashboard-view #consultation-evaluation-view .pc-evaluation-zones { --bs-gutter-x: 14px; --bs-gutter-y: 14px; }
+#dashboard-view #consultation-evaluation-view .pc-work-region { gap: 14px !important; }
+#dashboard-view #consultation-evaluation-view :is(#consultation-evaluation-form, #evaluation-diagnoses-section, #evaluation-prescriptions-section, .pc-context-rail-card) {
+  border: 1px solid #dce6db !important; border-radius: 16px; background: #fff;
+  box-shadow: 0 3px 12px rgba(28, 40, 38, .06);
+}
+#dashboard-view #consultation-evaluation-view #consultation-evaluation-form { padding: 16px !important; }
+#dashboard-view #consultation-evaluation-view :is(#evaluation-diagnoses-section, #evaluation-prescriptions-section) { overflow: hidden; margin-top: 0 !important; }
+#dashboard-view #consultation-evaluation-view :is(#evaluation-diagnoses-section, #evaluation-prescriptions-section, .pc-context-rail-card) .pc-folio-header {
+  padding: 12px 16px !important; background: #f0f3ed; border-bottom: 1px solid #e1e9df;
+}
+#dashboard-view #consultation-evaluation-view :is(#evaluation-diagnoses-section, #evaluation-prescriptions-section) > .card-body { padding: 14px 16px !important; }
+#dashboard-view #consultation-evaluation-view #evaluation-diagnoses-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#dashboard-view #consultation-evaluation-view #evaluation-diagnoses-list[hidden] { display: none; }
+#dashboard-view #consultation-evaluation-view #evaluation-diagnoses-list > .list-group-item {
+  padding: 10px 12px !important; border: 1px solid #e0e9df; border-radius: 10px;
+  background: #f7f9f5;
+}
+#dashboard-view #consultation-evaluation-view .pc-vital-card { background: #f4f7f1; border-color: #dce6db; border-radius: 11px; }
+#dashboard-view #consultation-evaluation-view .pc-context-rail-card[hidden] { display: none !important; }
+@media (max-width: 767px) {
+  #dashboard-view #consultation-evaluation-view #evaluation-diagnoses-list { grid-template-columns: 1fr; }
+}
+
+/* El perfil de sesión comparte la columna derecha desde el inicio de la vista. */
+@media (min-width: 1200px) {
+  #dashboard-view #consultation-evaluation-view { position: relative; }
+  #dashboard-view #consultation-evaluation-view > .pc-shared-module-profile {
+    position: absolute; top: 0; right: 0; width: 265px;
+  }
+  #dashboard-view #consultation-evaluation-view > .pc-module-hero,
+  #dashboard-view #consultation-evaluation-view #evaluation-content-container > :is(.pc-patient-header-card, #evaluation-medical-alerts-banner, #evaluation-no-alerts) {
+    max-width: calc(100% - 279px);
+  }
+  #dashboard-view #consultation-evaluation-view .pc-evaluation-zones {
+    display: grid; grid-template-columns: minmax(0, 1fr) 265px; gap: 14px;
+    margin: 0;
+  }
+  #dashboard-view #consultation-evaluation-view .pc-evaluation-zones > * { width: auto; padding: 0; }
+}
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card .card-body > div { gap: 12px !important; }
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card .pc-patient-avatar { width: 64px; height: 64px; }
+#dashboard-view #consultation-evaluation-view .pc-patient-header-card p { max-width: none; }
+
+#dashboard-view #users-view #users-content {
+  padding: 14px !important; border: 1px solid #dce5d9 !important;
+  border-radius: 16px; background: #fff !important;
+  box-shadow: 0 3px 12px rgba(28,40,38,.06) !important;
+}
+#dashboard-view #users-view #users-content .pc-users-results-heading { margin: 0 0 12px; }
+#dashboard-view #users-view #users-content > .table-responsive {
+  padding: 0; border: 0 !important; box-shadow: none !important;
+}
+
+/* Tablas de directorio: superficies y estados compartidos. */
+#dashboard-view :is(#users-view, #owners-view, #patients-view) :is(#users-content, #owners-content, #patients-content) .table {
+  --bs-table-bg: #fff; --bs-table-color: #1c2826; --bs-table-hover-bg: #f5f8f1;
+  --bs-table-hover-color: #1c2826; --bs-table-border-color: #e4e9df;
+}
+#dashboard-view :is(#users-view, #owners-view, #patients-view) :is(#users-content, #owners-content, #patients-content) .table th {
+  background: #edf3e9; color: #405e4d; border: 0; font-size: .65rem;
+  padding: 9px 7px; letter-spacing: .035em;
+}
+#dashboard-view :is(#users-view, #owners-view, #patients-view) :is(#users-content, #owners-content, #patients-content) .table td {
+  background: #fff; color: #1c2826; border-color: #e4e9df;
+}
+#dashboard-view :is(#users-view, #owners-view, #patients-view) :is(#users-content, #owners-content, #patients-content) .table tr:hover td { background: #f5f8f1; }
+#dashboard-view #users-initial { background: #fff; border: 1px solid #dce5d9; border-radius: 16px; }
+
+/* Filtros independientes para todos los directorios. */
+#dashboard-view :is(#users-view #user-filters, #owners-view #owner-search-form) {
+  display: grid !important; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px;
+  padding: 0 !important; margin: 0 0 14px !important; border: 0 !important;
+  border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+}
+#dashboard-view :is(#user-filters, #owner-search-form) > :is(.pc-users-filter-heading, .pc-owner-search-band) { display: contents !important; }
+#dashboard-view :is(#user-filters, #owner-search-form) > :is(.pc-users-filter-heading, .pc-owner-search-band) > :not(.pc-users-filter-actions):not(.pc-owner-search-actions) { display: none; }
+#dashboard-view :is(#user-filters, #owner-search-form) > div:has(> input),
+#dashboard-view :is(#user-filters, #owner-search-form) > div:has(> select) {
+  width: auto; min-width: 0; margin: 0; padding: 10px !important;
+  border: 1px solid #dce5d9; border-radius: 14px; background: #f0f3ed;
+  box-shadow: 0 3px 9px rgba(28,40,38,.06); order: 1;
+}
+#dashboard-view :is(#user-filters, #owner-search-form) > div:has(> input) { grid-column: 1 / -1; order: 0; }
+#dashboard-view :is(#user-filters, #owner-search-form) > div:has(> select):nth-of-type(odd) { background: #f7f4ea; }
+#dashboard-view #owner-search-form > div:has(> select) { grid-column: span 2; }
+#dashboard-view :is(#user-filters .pc-users-filter-actions, #owner-search-form .pc-owner-search-actions) {
+  grid-column: 1 / -1; order: 2; margin: 0; justify-content: flex-start;
+}
+#dashboard-view #user-filters > .pc-users-quick-filters { grid-column: 1 / -1; order: 3; margin: 0; padding: 8px 0; }
+#dashboard-view .pc-patient-directory-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+#dashboard-view .pc-patient-directory-metrics article { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px; border: 1px solid #c7cec0; border-radius: 14px; background: #fff; color: #1c2826; font-size: .72rem; }
+#dashboard-view .pc-patient-directory-metrics article > span { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: #e4ede1; color: #2d6a4f; font-size: 1.1rem; }
+#dashboard-view .pc-patient-directory-metrics article:nth-child(3) > span { background: #f7e6de; color: #924b36; }
+#dashboard-view .pc-patient-directory-metrics article:nth-child(4) > span { background: #f5ead8; color: #80501f; }
+#dashboard-view .pc-patient-directory-metrics strong { display: block; font-size: 1.2rem; line-height: 1.3; }
+#dashboard-view .pc-patient-directory-metrics small { display: block; color: #566456; font-size: .65rem; }
+@media (max-width: 767px) {
+  #dashboard-view :is(#users-view #user-filters, #owners-view #owner-search-form),
+  #dashboard-view .pc-patient-directory-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  #dashboard-view #owner-search-form > div:has(> select) { grid-column: auto; }
+}
+
+/* Roles: cabecera y tarjetas compactas en salvia, marfil y terracota. */
+#dashboard-view #roles-view > .pc-directory-role-hero { min-height: 172px; height: 172px; padding: 12px 18px; }
+#dashboard-view #roles-view .pc-role-page-tools { margin-top: 8px; }
+#dashboard-view #roles-view > .pc-role-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
+#dashboard-view #roles-view > .pc-role-summary[hidden] { display: none; }
+#dashboard-view #roles-view > .pc-role-summary > div { padding: 9px 12px; gap: 10px; border: 1px solid #dce4d6; background: #fff; border-radius: 14px; }
+#dashboard-view #roles-view > .pc-role-summary > div > span:first-child { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #f0f3ed; font-size: 1.1rem; }
+#dashboard-view #roles-view > .pc-role-summary strong { color: #1c2826; font-size: 1.15rem; }
+#dashboard-view #roles-view > .pc-role-summary small { color: #536456; font-size: .72rem; }
+#dashboard-view #roles-view .pc-roles-section-title { font-size: .95rem; font-weight: 700; margin: 0 0 10px; color: #1e2e24; }
+#dashboard-view #roles-view #roles-list > article { --role-accent: #2d6a4f; --role-tint: #e4ede1; --role-bg: #f0f3ed; --role-edge: #dce4d6; }
+#dashboard-view #roles-view #roles-list > article[data-role-tone='gold'] { --role-accent: #80501f; --role-tint: #f5ead8; --role-bg: #f7f4ea; --role-edge: #e8ddca; }
+#dashboard-view #roles-view #roles-list .card-body { padding: 12px; gap: 10px; background: #fff; border-radius: inherit; }
+#dashboard-view #roles-view #roles-list .pc-role-monogram { width: 38px; height: 38px; border-radius: 12px; font-size: .95rem; }
+#dashboard-view #roles-view #roles-list .pc-role-emblem { width: 34px; height: 34px; }
+#dashboard-view #roles-view #roles-list .pc-role-emblem svg { width: 24px; height: 24px; }
+#dashboard-view #roles-view #roles-list .pc-role-heading h3 { font-size: .86rem; color: #1c2826; }
+#dashboard-view #roles-view #roles-list .pc-role-identity p { font-size: .74rem; color: #536456 !important; }
+#dashboard-view #roles-view #roles-list .pc-role-permissions summary { min-height: 36px; padding: 6px 9px; background: var(--role-bg); border-radius: 10px; font-size: .76rem; color: #283618; }
+#dashboard-view #roles-view #roles-list .card-body > .btn { min-height: 34px; padding: 6px 10px; align-self: stretch; font-size: .76rem; border-radius: 10px; }
+@media (max-width: 767px) {
+  #dashboard-view #roles-view > .pc-directory-role-hero { height: auto; min-height: 160px; }
+}
+
+/* Propietarios comparte la escala y las superficies del directorio de usuarios. */
+#dashboard-view #owners-view .pc-owners-overview { gap: 10px; margin-bottom: 14px; }
+#dashboard-view #owners-view .pc-owners-metric {
+  min-height: 74px; padding: 10px; gap: 8px; border: 1px solid #c7cec0;
+  border-radius: 14px; background: #fff !important; color: #1c2826;
+}
+#dashboard-view #owners-view .pc-owners-metric :is(strong, div > span) { color: #1c2826 !important; }
+#dashboard-view #owners-view .pc-owners-metric strong { font-size: 1.2rem; }
+#dashboard-view #owners-view .pc-owners-metric span { font-size: .72rem; line-height: 1.2; }
+#dashboard-view #owners-view .pc-owners-metric small { color: #566456 !important; font-size: .65rem; line-height: 1.2; }
+#dashboard-view #owners-view .pc-owners-metric-icon { width: 34px; height: 34px; background: #e4ede1; color: #2d6a4f; }
+#dashboard-view #owners-view .pc-owners-metric-email .pc-owners-metric-icon { background: #f7e6de; color: #924b36; }
+#dashboard-view #owners-view .pc-owners-metric-document .pc-owners-metric-icon { background: #f5ead8; color: #80501f; }
+#dashboard-view #owners-view .pc-owner-search-band h3 { color: #1c4937; font-size: 1.05rem; }
+#dashboard-view #owners-view :is(#owners-initial, #owners-empty) {
+  padding: 18px; border: 1px solid #dce5d9; border-radius: 16px; background: #fff;
+  box-shadow: 0 3px 12px rgba(28,40,38,.06);
+}
+#dashboard-view #owners-view .pc-owner-hero-actions .btn { min-height: 38px; padding: 7px 12px; font-size: .85rem; }
+@media (min-width: 1200px) {
+  #dashboard-view #owners-view > .pc-owner-search-hero,
+  #dashboard-view #users-view > .pc-module-hero { height: 206px; min-height: 206px; }
+}
+
+/* Usuarios: aplicación funcional de la paleta salvia y tierra aprobada. */
+#dashboard-view #users-view {
+  --users-ink: #1c2826; --users-primary: #2d6a4f; --users-edge: #c7cec0;
+  --users-sage: #f0f3ed; --users-cream: #f7f4ea; --users-warm: #e07a5f;
+  color: var(--users-ink);
+}
+#dashboard-view #users-view .pc-users-metric {
+  background: #fff !important; border: 1px solid var(--users-edge);
+  color: var(--users-ink);
+}
+#dashboard-view #users-view .pc-users-metric :is(strong, div > span) { color: var(--users-ink) !important; }
+#dashboard-view #users-view .pc-users-metric small { color: #566456 !important; }
+#dashboard-view #users-view .pc-users-metric-icon { background: #e4ede1; color: #2d6a4f; }
+#dashboard-view #users-view .pc-users-metric-inactive .pc-users-metric-icon { background: #f7e6de; color: #924b36; }
+#dashboard-view #users-view .pc-users-metric-branches .pc-users-metric-icon { background: #f5ead8; color: #80501f; }
+#dashboard-view #users-view .pc-users-quick-filters button[aria-pressed='true'] { background: #f7e6de; border-color: #e07a5f; color: #793f2e; }
+#dashboard-view #users-view .pc-user-role { background: #f0f3ed; border-color: #c7cec0; color: #283618; }
+#dashboard-view #users-view .pc-user-avatar { background: #e4ede1; color: #2d6a4f; }
+#dashboard-view #users-view tr:nth-child(even) .pc-user-avatar { background: #f7ecd9; color: #80501f; }
+#dashboard-view #users-view .pc-user-deactivate { color: #924b36; border-color: #d9ab98; background: #fcf4ef; }
+#dashboard-view #users-view .pc-user-deactivate:hover { color: #fff; border-color: #924b36; background: #924b36; }
+#dashboard-view #users-view .badge.text-bg-secondary { background: #f7e6de !important; color: #793f2e !important; }
+#dashboard-view #users-view :is(.pc-users-filter-icon, .pc-user-activate) { color: #2d6a4f; background: #f0f3ed; }
+#dashboard-view #users-view .pc-module-title { color: #1e2e24 !important; }
+
+/* Directorios: misma escala, paleta y columna contextual que los módulos clínicos. */
+#dashboard-view :is(#owners-view, #users-view, #roles-view) .pc-directory-context { display: grid; gap: 14px; margin-bottom: 14px; }
+#dashboard-view .pc-directory-help { padding: 16px; border: 1px solid #dce5d9; border-radius: 16px; background: #fff; box-shadow: 0 3px 12px rgba(28,40,38,.06); }
+#dashboard-view .pc-directory-help h3 { margin: 0 0 10px; color: #1c4937; font-size: .95rem; font-weight: 700; }
+#dashboard-view .pc-directory-help p { margin: 0; padding: 10px 0; color: #53675b; font-size: .82rem; line-height: 1.5; }
+#dashboard-view .pc-directory-help p + p { border-top: 1px solid #e6ece2; }
+#dashboard-view :is(#users-view > .pc-module-hero, #owners-view > .pc-owner-search-hero, #roles-view > .pc-directory-role-hero) {
+  position: relative; box-sizing: border-box; min-height: 172px; padding: 14px 18px; margin-bottom: 14px !important;
+  border: 1px solid #e0e8dc; border-radius: 18px; background: linear-gradient(115deg,#f7f9f3,#dcebdd);
+  box-shadow: 0 3px 12px rgba(28,40,38,.07); overflow: hidden;
+}
+#dashboard-view :is(#users-view, #owners-view, #roles-view) .pc-module-title { font-family: 'Source Sans 3','Segoe UI',sans-serif !important; font-size: 1.7rem; line-height: 1.15; color: #163f2d; }
+#dashboard-view :is(#users-view, #owners-view, #roles-view) .pc-module-title + p { max-width: 340px; font-size: .85rem; line-height: 1.4; }
+#dashboard-view :is(#users-view, #roles-view) .pc-module-art { position: absolute; right: 0; bottom: 0; width: 40%; height: 100%; margin: 0; pointer-events: none; }
+#dashboard-view :is(#users-view, #roles-view) .pc-module-art img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
+#dashboard-view #users-view > .pc-module-hero { display: block !important; }
+#dashboard-view #users-view #new-user-button { position: relative; margin-top: 8px; min-height: 36px; padding: 7px 12px; }
+#dashboard-view #roles-view .pc-role-page-heading { display: block; }
+#dashboard-view #roles-view .pc-role-page-tools { position: relative; align-items: start; margin-top: 10px; gap: 8px; max-width: 57%; }
+#dashboard-view #roles-view .pc-role-summary { flex-wrap: wrap; gap: 6px; }
+#dashboard-view #roles-view .pc-role-summary > div { gap: 6px; padding: 6px 9px; border-radius: 10px; background: #ffffffd9; }
+#dashboard-view #roles-view .pc-role-summary svg { width: 25px; height: 25px; padding: 4px; }
+#dashboard-view #roles-view .pc-role-summary strong { font-size: 1rem; }
+#dashboard-view #roles-view .pc-role-summary small { font-size: .66rem; }
+#dashboard-view #roles-view #assign-user-roles-button { background: #2d6a4f; color: #fff; border-color: #2d6a4f; min-height: 36px; padding: 7px 12px; }
+#dashboard-view :is(#users-view, #owners-view) .pc-directory-work-region { padding: 0; background: transparent; }
+#dashboard-view :is(#user-filters, #owner-search-form) { margin: 0 0 14px !important; width: 100%; padding: 12px !important; border: 1px solid #dce5d9 !important; border-radius: 16px !important; background: #fff; box-shadow: 0 3px 12px rgba(28,40,38,.06); }
+#dashboard-view :is(#user-filters, #owner-search-form) .form-label { font-size: .76rem; color: #2d5d44; }
+#dashboard-view :is(#user-filters, #owner-search-form) :is(.form-control, .form-select) { min-height: 38px; font-size: .8rem; border-radius: 10px; background-color: #f8faf6; }
+#dashboard-view :is(#user-filters, #owner-search-form) > :is(.pc-users-filter-heading, .pc-owner-search-band) { padding: 8px 10px; border-radius: 11px; background: #edf3e9; }
+#dashboard-view :is(#users-content, #owners-content) { padding: 12px; border: 1px solid #dce5d9; border-radius: 16px; background: #fff; box-shadow: 0 3px 12px rgba(28,40,38,.06); }
+#dashboard-view :is(#users-content, #owners-content) .table-responsive { max-height: none !important; overflow-y: visible; border: 0 !important; }
+#dashboard-view :is(#users-content, #owners-content) .table { font-size: .8rem; margin-bottom: 0; }
+#dashboard-view :is(#users-content, #owners-content) .table th { background: #edf3e9; color: #405e4d; font-size: .65rem; padding: 9px 7px; }
+#dashboard-view :is(#users-content, #owners-content) .table td { padding: 10px 7px; overflow-wrap: anywhere; }
+#dashboard-view #roles-view #roles-list { gap: 12px; align-items: stretch; }
+#dashboard-view #roles-view #roles-list .card { border-radius: 17px; background: linear-gradient(120deg,#fff,var(--role-bg)); }
+#dashboard-view #roles-view #roles-list .card-body { padding: 16px; gap: 14px; }
+#dashboard-view #roles-view .pc-role-heading { gap: 10px; }
+#dashboard-view #roles-view .pc-role-monogram { width: 48px; height: 48px; border-radius: 15px; font-size: 1.1rem; }
+#dashboard-view #roles-view .pc-role-heading h3 { font-size: .95rem; }
+#dashboard-view #roles-view .pc-role-identity p { margin: 4px 0 0; font-size: .78rem; }
+#dashboard-view #roles-view .pc-role-emblem { width: 42px; height: 42px; border-radius: 50%; }
+#dashboard-view #roles-view .pc-role-permissions summary { padding: 10px; font-size: .8rem; background: #ffffffc9; }
+#dashboard-view #roles-view #roles-list .card-body > .btn { min-height: 38px; background: #2d6a4f; border-color: #2d6a4f; color: #fff; font-size: .8rem; }
+#dashboard-view #roles-view #roles-list .card-body > .btn:hover { background: #24583f; }
+#dashboard-view #owners-view .pc-owner-search-hero { display: block !important; }
+#dashboard-view #owners-view .pc-owner-hero-copy { position: relative; z-index: 1; width: 58%; }
+#dashboard-view #owners-view .pc-owner-hero-art { right: 0; left: auto; width: 36%; height: 100%; pointer-events: none; }
+#dashboard-view #owners-view .pc-owner-hero-art img { height: 100%; width: 100%; object-fit: contain; object-position: center bottom; }
+#dashboard-view #owners-view .pc-owner-hero-actions { position: relative; z-index: 1; margin-top: 8px; }
+#dashboard-view #users-view .pc-users-overview { gap: 10px; margin-bottom: 14px; }
+#dashboard-view #users-view .pc-users-metric { min-height: 74px; padding: 10px; gap: 8px; border-radius: 14px; }
+#dashboard-view #users-view .pc-users-metric-icon { width: 34px; height: 34px; }
+#dashboard-view #users-view .pc-users-metric span { font-size: .72rem; line-height: 1.2; }
+#dashboard-view #users-view .pc-users-metric strong { font-size: 1.2rem; }
+#dashboard-view #users-view .pc-users-metric small { font-size: .65rem; line-height: 1.2; }
+@media (min-width: 1200px) {
+  #dashboard-view :is(#users-view, #roles-view, #owners-view) > .pc-directory-context { position: absolute; top: 0; right: 0; width: 265px; }
+}
+@media (max-width: 767px) {
+  #dashboard-view :is(#users-view, #roles-view) .pc-module-art { opacity: .25; width: 42%; }
+  #dashboard-view #roles-view .pc-role-page-tools { max-width: 100%; }
+  #dashboard-view #roles-view #roles-list { grid-template-columns: 1fr; }
+  #dashboard-view #owners-view .pc-owner-hero-copy { width: 100%; }
+  #dashboard-view #owners-view .pc-owner-hero-art { opacity: .18; }
+  #dashboard-view :is(#users-view, #roles-view) .pc-module-hero > div { position: relative; z-index: 1; }
+}
+
+#dashboard-view #roles-view .pc-role-page-tools { margin-top: 8px; }
+#dashboard-view #roles-view #roles-list .card-body { padding: 12px; gap: 10px; background: #fff; border-radius: inherit; }
+#dashboard-view #roles-view #roles-list .card-body > .btn { min-height: 34px; padding: 6px 10px; font-size: .76rem; }
+
+#dashboard-view .pc-directory-help h3 { display: flex; align-items: center; gap: 8px; }
+#dashboard-view .pc-directory-help h3 svg { width: 20px; height: 20px; flex: none; color: #2d6a4f; }
+#dashboard-view .pc-patient-directory-metrics article > span svg,
+#dashboard-view #roles-view > .pc-role-summary > div > span:first-child svg { width: 20px; height: 20px; padding: 0; border-radius: 0; background: transparent; color: #2d6a4f; }
+
+/* Un único campo de búsqueda visual para los tres directorios. */
+#dashboard-view #users-view #user-filters > div:has(> #user-search),
+#dashboard-view #owners-view #owner-search-form > div:has(> #owner-search) {
+  padding: 10px 12px !important; background: #e8f1e9; border-color: #c4d9c9;
+  border-radius: 14px; box-shadow: 0 2px 7px rgba(28,40,38,.08);
+}
+#dashboard-view #users-view #user-filters #user-search,
+#dashboard-view #owners-view #owner-search-form #owner-search {
+  min-height: 40px; padding: 8px 12px 8px 38px; font-size: .8rem;
+  color: #1c2826; border: 1px solid #c7cec0; border-radius: 12px; background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%232d6a4f' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 12px center;
+}
+#dashboard-view #users-view #user-filters > div:has(> #user-search) .form-label,
+#dashboard-view #owners-view #owner-search-form > div:has(> #owner-search) .form-label {
+  color: #1c2826; font-size: .76rem; font-weight: 600; margin-bottom: 4px;
+}
+#dashboard-view :is(#user-search-help, #owner-search-help) { font-size: .7rem; color: #536e5d; margin-top: 4px; }
+
+#dashboard-view #users-view #users-content > .table-responsive {
+  height: auto !important; max-height: none !important; overflow-y: hidden !important;
+  padding-bottom: 2px !important;
+}
+#dashboard-view #users-view #users-content .pc-directory-page-arrow {
+  display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0;
+  border-radius: 10px; font-size: 1.5rem; line-height: 1; color: #2d6a4f;
+  border-color: #c7cec0; background: #fff;
+}
+#dashboard-view #users-view #users-content .pc-directory-page-arrow:disabled { color: #89958b; background: #f0f3ed; opacity: .65; }
+
+/* Escala única de cabeceras, tomando Inicio como referencia. */
+#dashboard-view {
+  --pc-module-hero-height: 172px;
+  --pc-module-title-size: 1.55rem;
+}
+#dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) {
+  box-sizing: border-box; padding: 14px 18px !important; border-radius: 18px !important;
+  margin-bottom: 14px !important;
+}
+#dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) :is(h2, .pc-module-title) {
+  margin: 0 0 6px !important; color: #1e2e24 !important;
+  font: 700 var(--pc-module-title-size)/1.12 'Source Sans 3','Segoe UI',sans-serif !important;
+  letter-spacing: -.025em;
+}
+#dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) p {
+  font-size: .8rem !important; line-height: 1.35 !important; margin: 0 0 8px !important;
+  max-width: 340px; color: #405e4d !important;
+}
+#dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) .btn {
+  min-height: 34px !important; padding: 6px 10px !important; border-radius: 11px;
+  font-size: .75rem !important; line-height: 1.25; font-weight: 600;
+}
+#dashboard-view :is(.pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) .btn-link {
+  min-height: 0 !important; padding: 0 !important; margin: 0 0 8px !important;
+  color: #2d6a4f !important; font-size: .72rem !important;
+}
+#dashboard-view #roles-view .pc-role-page-tools { display: block; margin-top: 0; }
+#dashboard-view #users-view #new-user-button,
+#dashboard-view #owners-view .pc-owner-hero-actions { margin-top: 0; }
+@media (min-width: 1200px) {
+  #dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) {
+    height: var(--pc-module-hero-height) !important; min-height: var(--pc-module-hero-height) !important;
+  }
+}
+@media (max-width: 767px) {
+  #dashboard-view :is(.pc-home-hero, .pc-agenda-hero, .pc-patient-search-hero, .pc-owner-search-hero, #users-view > .pc-module-hero, .pc-directory-role-hero, #consultation-evaluation-view > .pc-module-hero) {
+    height: auto !important; min-height: 160px !important;
+  }
+}

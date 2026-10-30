@@ -12,6 +12,7 @@ export function createOwnersController({ document, client }) {
   let page = 0;
   let totalPages = 0;
   let loading = false;
+  let activeSearchId = 0;
   let submitting = false;
   let editingOwnerId = null;
   let editTrigger = null;
@@ -20,6 +21,11 @@ export function createOwnersController({ document, client }) {
   e.open.addEventListener("click", open);
   e.back.addEventListener("click", home);
   e.form.addEventListener("submit", submit);
+  e.search.addEventListener("input", () => {
+    e.search.setCustomValidity("");
+    if (e.search.checkValidity()) resetSearchValidation();
+  });
+  e.clear?.addEventListener("click", clearSearch);
   e.retry.addEventListener("click", () => search(page));
   e.previous.addEventListener("click", () => search(page - 1));
   e.next.addEventListener("click", () => search(page + 1));
@@ -52,6 +58,8 @@ export function createOwnersController({ document, client }) {
     editingOwnerId = null;
     editTrigger = null;
     ownersById.clear();
+    activeSearchId += 1;
+    loading = false;
     e.open.hidden = true;
     e.newOwner.hidden = true;
     e.view.hidden = true;
@@ -59,11 +67,15 @@ export function createOwnersController({ document, client }) {
     if (e.notice) e.notice.hidden = true;
     e.rows.replaceChildren();
     e.cards.replaceChildren();
+    e.search.value = "";
+    resetSearchValidation();
+    state("initial");
     closeEditor({ restoreFocus: false });
   }
 
   function open() {
     if (!permitted) return;
+    resetSearchValidation();
     e.home.hidden = true;
     e.view.hidden = false;
     e.title.focus({ preventScroll: true });
@@ -79,41 +91,72 @@ export function createOwnersController({ document, client }) {
   function submit(event) {
     event.preventDefault();
     if (e.notice) e.notice.hidden = true;
+    e.search.value = e.search.value.trim();
+    e.search.setCustomValidity(e.search.value.length === 1 ? "Ingresa al menos 2 caracteres o deja el campo vacío para ver todos." : "");
     if (!e.form.checkValidity()) {
       e.form.classList.add("was-validated");
+      e.search.setAttribute("aria-invalid", "true");
       e.search.focus();
       return;
     }
+    resetSearchValidation();
     totalPages = 0;
     search(0);
+  }
+
+  function resetSearchValidation() {
+    e.search.setCustomValidity("");
+    e.form.classList.remove("was-validated");
+    e.search.removeAttribute("aria-invalid");
+  }
+
+  function clearSearch() {
+    activeSearchId += 1;
+    loading = false;
+    e.search.value = "";
+    e.sort.value = "name";
+    e.direction.value = "asc";
+    page = 0;
+    totalPages = 0;
+    resetSearchValidation();
+    e.rows.replaceChildren();
+    e.cards.replaceChildren();
+    ownersById.clear();
+    state("initial");
+    e.search.focus({ preventScroll: true });
   }
 
   async function search(requestedPage, { keepNotice = false } = {}) {
     if (loading || requestedPage < 0 || (totalPages > 0 && requestedPage >= totalPages)) return;
     if (!keepNotice && e.notice) e.notice.hidden = true;
     loading = true;
+    const searchId = ++activeSearchId;
     state("loading");
     try {
       const q = new URLSearchParams({
         query: e.search.value.trim(),
         page: String(requestedPage),
-        size: "10",
+        size: "6",
         sortBy: e.sort.value,
         direction: e.direction.value
       });
       const result = valid(await client.requestJson(`/api/v1/owners?${q}`));
+      if (searchId !== activeSearchId) return;
       page = result.page;
       totalPages = result.totalPages;
       render(result.content);
       pagination(result);
+      renderOverview(result);
+      if (e.resultCount) e.resultCount.textContent = `${result.totalElements} ${result.totalElements === 1 ? "resultado" : "resultados"}`;
       state(result.content.length ? "content" : "empty");
     } catch (error) {
+      if (searchId !== activeSearchId) return;
       e.errorMessage.textContent = error instanceof ApiRequestError
         ? error.message
         : "No fue posible buscar propietarios.";
       state("error");
     } finally {
-      loading = false;
+      if (searchId === activeSearchId) loading = false;
     }
   }
 
@@ -130,9 +173,22 @@ export function createOwnersController({ document, client }) {
 
       const row = document.createElement("tr");
       row.dataset.ownerId = ownerId;
-      for (const text of [name, documentText, owner.phone ?? ""]) {
+      const nameCell = document.createElement("td");
+      const identity = document.createElement("div");
+      identity.className = "pc-owner-identity";
+      const avatar = document.createElement("span");
+      avatar.className = "pc-owner-avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      avatar.textContent = ownerInitials(owner);
+      const label = document.createElement("strong");
+      label.textContent = name;
+      identity.append(avatar, label);
+      nameCell.append(identity);
+      row.append(nameCell);
+      for (const [value, fallback] of [[owner.documentNumber ? documentText : null, "Sin documento"], [owner.phone, "Sin teléfono"], [owner.email, "Sin correo"]]) {
         const cell = document.createElement("td");
-        cell.textContent = text;
+        cell.textContent = value || fallback;
+        if (!value) cell.className = "pc-owner-missing";
         row.append(cell);
       }
       const actionCell = document.createElement("td");
@@ -148,10 +204,16 @@ export function createOwnersController({ document, client }) {
       card.dataset.ownerId = ownerId;
       const body = document.createElement("div");
       body.className = "card-body";
+      const cardAvatar = document.createElement("span");
+      cardAvatar.className = "pc-owner-avatar";
+      cardAvatar.setAttribute("aria-hidden", "true");
+      cardAvatar.textContent = ownerInitials(owner);
+      body.append(cardAvatar);
       for (const [tag, text, css] of [
         ["h3", name, "h6 mb-2"],
         ["p", documentText, "small mb-1"],
-        ["p", owner.phone ?? "", "small text-secondary mb-2"]
+        ["p", owner.phone || "Sin teléfono", "small text-secondary mb-1"],
+        ["p", owner.email || "Sin correo", "small text-secondary mb-2 text-break"]
       ]) {
         const node = document.createElement(tag);
         node.className = css;
@@ -194,11 +256,37 @@ export function createOwnersController({ document, client }) {
     e.previous.disabled = result.page <= 0;
     e.next.disabled = result.page + 1 >= result.totalPages;
     e.pageStatus.textContent = result.totalPages
-      ? `Página ${result.page + 1} de ${result.totalPages} · ${result.totalElements} propietarios`
+      ? `Página ${result.page + 1} de ${result.totalPages} · ${result.totalElements} ${result.totalElements === 1 ? "propietario" : "propietarios"}`
       : "Sin resultados";
   }
 
+  function renderOverview(result) {
+    const values = {
+      "owners-summary-total": result.totalElements,
+      "owners-summary-phone": result.content.filter(owner => owner.phone?.trim()).length,
+      "owners-summary-email": result.content.filter(owner => owner.email?.trim()).length,
+      "owners-summary-document": result.content.filter(owner => owner.documentNumber?.trim()).length
+    };
+    for (const [id, value] of Object.entries(values)) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = String(value);
+    }
+  }
+
+  function ownerInitials(owner) {
+    return [owner.firstName, owner.lastName].map(value => Array.from(value?.trim() ?? "")[0] ?? "").join("").toLocaleUpperCase("es");
+  }
+
   function state(value) {
+    const overview = document.querySelector("#owners-overview");
+    if (overview) overview.hidden = !permitted;
+    if (value === "initial" || value === "loading" || value === "error") {
+      for (const id of ["owners-summary-total", "owners-summary-phone", "owners-summary-email", "owners-summary-document"]) {
+        const metric = document.getElementById(id);
+        if (metric) metric.textContent = "—";
+      }
+    }
+    if (e.initial) e.initial.hidden = value !== "initial";
     e.loading.hidden = value !== "loading";
     e.empty.hidden = value !== "empty";
     e.content.hidden = value !== "content";
@@ -316,7 +404,7 @@ export function createOwnersController({ document, client }) {
           e.notice.hidden = false;
           e.notice.focus({ preventScroll: true });
         }
-        if (e.search.value.trim().length >= 2) {
+        if (e.search.value.trim().length !== 1) {
           await search(page, { keepNotice: true });
         } else {
           e.search.value = `${saved.firstName ?? ""} ${saved.lastName ?? ""}`.trim();
@@ -399,6 +487,9 @@ function elements(document) {
     if (!value) throw new Error(`Falta ${key}`);
   }
   result.notice = document.querySelector("#owner-notice");
+  result.clear = document.querySelector("#clear-owner-search");
+  result.initial = document.querySelector("#owners-initial");
+  result.resultCount = document.querySelector("#owners-result-count");
   result.dialogTitle = document.querySelector("#owner-editor-title");
   return result;
 }

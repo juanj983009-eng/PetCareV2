@@ -13,6 +13,17 @@ interface SpringDataUserRepository extends JpaRepository<UserJpaEntity, UUID> {
 
     Optional<UserJpaEntity> findByTenantIdAndEmail(UUID tenantId, String email);
 
+    Optional<UserJpaEntity> findByTenantIdAndId(UUID tenantId, UUID id);
+
+    @Query(value = """
+            SELECT DISTINCT r.name
+            FROM user_roles ur
+            JOIN roles r ON r.tenant_id = ur.tenant_id AND r.id = ur.role_id
+            WHERE ur.tenant_id = :tenantId AND ur.user_id = :userId
+            ORDER BY r.name
+            """, nativeQuery = true)
+    List<String> findRoleNames(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId);
+
     @Query(value = """
             SELECT ub.branch_id
             FROM user_branches ub

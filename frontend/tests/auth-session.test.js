@@ -36,6 +36,36 @@ test("token válido restaura identidad y dashboard", async () => {
   controller.destroy();
 });
 
+test("sesión aditiva preserva campos actuales y extrae profile completo", async () => {
+  const { controller, client } = setup({ token: "valid-test-token" });
+  client.behavior = () => ({
+    userId: USER_ID,
+    tenantId: TENANT_ID,
+    branchId: BRANCH_ID,
+    authorities: ["DASHBOARD_VIEW"],
+    profile: {
+      displayName: "Ana Torres",
+      email: "ana@example.test",
+      roles: ["ADMINISTRADOR"],
+      clinicName: "Clínica PetCare",
+      branchName: "Sede Norte"
+    }
+  });
+  await controller.start();
+  equal(controller.snapshot().status, "AUTHENTICATED");
+  const identity = controller.snapshot().identity;
+  equal(identity.userId, USER_ID);
+  equal(identity.tenantId, TENANT_ID);
+  equal(identity.branchId, BRANCH_ID);
+  equal(identity.authorities[0], "DASHBOARD_VIEW");
+  equal(identity.profile.displayName, "Ana Torres");
+  equal(identity.profile.email, "ana@example.test");
+  equal(identity.profile.roles[0], "ADMINISTRADOR");
+  equal(identity.profile.clinicName, "Clínica PetCare");
+  equal(identity.profile.branchName, "Sede Norte");
+  controller.destroy();
+});
+
 test("logout elimina token e identidad, vuelve al login y es idempotente", async () => {
   const { controller, client } = setup({ token: "valid-test-token" });
   client.behavior = () => sessionResponse();

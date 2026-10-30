@@ -95,6 +95,7 @@ test("búsqueda con filtros, renderizado seguro con textContent, paginación y p
   await flushPromises();
 
   equal(calls.length, 1);
+  assert(calls[0].includes("size=6"), "Debe solicitar seis pacientes por página");
   assert(calls[0].includes("query=Luna"), "Debe enviar query=Luna");
   assert(calls[0].includes("species=CANINO"), "Debe enviar species=CANINO");
   assert(calls[0].includes("status=ACTIVO"), "Debe enviar status=ACTIVO");

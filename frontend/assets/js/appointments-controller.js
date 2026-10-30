@@ -1,3 +1,4 @@
+import { applyDemoPatientPortrait } from "./demo-patient-portraits.js";
 import { ApiRequestError } from "./api-client.js";
 
 const APPOINTMENT_READ = "APPOINTMENT_READ";
@@ -22,37 +23,37 @@ const STATUS_META = Object.freeze({
   PROGRAMADA: {
     icon: "○",
     label: "Programada",
-    badgeClass: "badge text-bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
+    badgeClass: "badge pc-status-badge pc-status-programada"
   },
   CONFIRMADA: {
     icon: "●",
     label: "Confirmada",
-    badgeClass: "badge text-bg-primary-subtle text-primary-emphasis border border-primary-subtle"
+    badgeClass: "badge pc-status-badge pc-status-confirmada"
   },
   EN_ESPERA: {
     icon: "◔",
     label: "En espera",
-    badgeClass: "badge text-bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+    badgeClass: "badge pc-status-badge pc-status-en-espera"
   },
   EN_ATENCION: {
     icon: "▶",
     label: "En atención",
-    badgeClass: "badge text-bg-info-subtle text-info-emphasis border border-info-subtle"
+    badgeClass: "badge pc-status-badge pc-status-en-atencion"
   },
   FINALIZADA: {
     icon: "✓",
     label: "Finalizada",
-    badgeClass: "badge text-bg-success-subtle text-success-emphasis border border-success-subtle"
+    badgeClass: "badge pc-status-badge pc-status-finalizada"
   },
   CANCELADA: {
     icon: "✕",
     label: "Cancelada",
-    badgeClass: "badge text-bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+    badgeClass: "badge pc-status-badge pc-status-cancelada"
   },
   NO_ASISTIO: {
     icon: "▲",
     label: "No asistió",
-    badgeClass: "badge text-bg-dark-subtle text-dark-emphasis border border-dark-subtle"
+    badgeClass: "badge pc-status-badge pc-status-no-asistio"
   }
 });
 
@@ -102,6 +103,13 @@ export function createAppointmentsController({
     s.previousButton.addEventListener("click", () => executeSearch(page - 1));
     s.nextButton.addEventListener("click", () => executeSearch(page + 1));
     s.view.addEventListener("click", handleDelegatedClick);
+    // Close top-layer actions when scrolling or navigating away from the schedule.
+    const closeActionPopovers = () => s.view.querySelectorAll('.pc-agenda-action-menu:popover-open').forEach(menu => menu.hidePopover());
+    document.querySelector('.pc-editorial-body')?.addEventListener('scroll', closeActionPopovers, { passive: true });
+    document.querySelector('#logout-button')?.addEventListener('click', closeActionPopovers);
+    document.querySelector('.pc-shell-nav-list')?.addEventListener('click', closeActionPopovers);
+    document.querySelector('#appointments-back-button')?.addEventListener('click', closeActionPopovers);
+    document.defaultView?.addEventListener('resize', closeActionPopovers);
   }
 
   if (d) {
@@ -694,6 +702,7 @@ export function createAppointmentsController({
     s.rows.replaceChildren();
     s.cards.replaceChildren();
     renderStatusIndicators(items, response);
+    renderOverview(response);
 
     if (items.length === 0) {
       setViewState("empty");
@@ -702,7 +711,7 @@ export function createAppointmentsController({
 
     const startItem = page * 10 + 1;
     const endItem = startItem + items.length - 1;
-    s.summary.textContent = `Mostrando ${startItem}–${endItem} de ${totalElements} citas para ${dateValue}`;
+    s.summary.textContent = `Mostrando ${startItem}–${endItem} de ${totalElements} citas para ${formatDescriptiveDate(dateValue)}`;
     s.pagination.textContent = `Página ${page + 1} de ${Math.max(1, totalPages)}`;
     s.previousButton.disabled = page <= 0;
     s.nextButton.disabled = page + 1 >= totalPages;
@@ -713,6 +722,18 @@ export function createAppointmentsController({
     }
 
     setViewState("results");
+  }
+
+  // Resumen del conjunto filtrado; nunca se estiman totales a partir de una página.
+  function renderOverview(response) {
+    if (!s?.overview) return;
+    const counts = { total: response?.totalElements, confirmed: response?.confirmedCount,
+      waiting: response?.waitingCount, noShow: response?.noShowCount };
+    for (const [key, value] of Object.entries(counts)) {
+      const output = s.overview.querySelector('[data-agenda-count="' + key + '"]');
+      if (output) output.textContent = Number.isInteger(value) && value >= 0
+        ? new Intl.NumberFormat('es-PE').format(value) : '—';
+    }
   }
 
   function renderStatusIndicators(items, response) {
@@ -733,15 +754,16 @@ export function createAppointmentsController({
     const totalEnEspera = Number.isFinite(response?.waitingCount) ? response.waitingCount : enEspera;
     const totalNoShow = Number.isFinite(response?.noShowCount) ? response.noShowCount : noAsistieron;
     const chips = [
-      { key: "programadas", label: `Programadas: ${totalProgramadas}` },
-      { key: "confirmadas", label: `Confirmadas: ${totalConfirmadas}` },
-      { key: "en-espera", label: `En espera: ${totalEnEspera}` },
-      { key: "no-show", label: `No asistieron: ${totalNoShow}` }
+      { key: "programadas", status: "PROGRAMADA", label: `Programadas: ${totalProgramadas}` },
+      { key: "confirmadas", status: "CONFIRMADA", label: `Confirmadas: ${totalConfirmadas}` },
+      { key: "en-espera", status: "EN_ESPERA", label: `En espera: ${totalEnEspera}` },
+      { key: "no-show", status: "NO_ASISTIO", label: `No asistieron: ${totalNoShow}` }
     ];
     for (const chip of chips) {
       const span = document.createElement("span");
-      span.className = "badge text-bg-light border text-dark";
+      span.className = "badge pc-filter-chip";
       span.dataset.indicator = chip.key;
+      span.dataset.status = chip.status;
       span.textContent = chip.label;
       s.indicators.append(span);
     }
@@ -837,6 +859,46 @@ export function createAppointmentsController({
     return buttons;
   }
 
+  function createActionDisclosure(item, buttons, variant) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pc-agenda-action-disclosure';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'btn btn-outline-primary btn-sm pc-agenda-actions-toggle';
+    trigger.textContent = 'Acciones ▾';
+    trigger.setAttribute('aria-label', 'Acciones para ' + (item.patientName || 'la cita'));
+    trigger.setAttribute('aria-expanded', 'false');
+    const popup = document.createElement('div');
+    popup.className = 'pc-agenda-action-menu';
+    popup.id = 'agenda-actions-' + variant + '-' + item.id;
+    popup.setAttribute('popover', 'auto');
+    popup.setAttribute('role', 'group');
+    popup.setAttribute('aria-label', 'Opciones de la cita de ' + (item.patientName || 'paciente'));
+    trigger.setAttribute('popovertarget', popup.id);
+    trigger.setAttribute('aria-controls', popup.id);
+    popup.append(...buttons);
+    popup.addEventListener('beforetoggle', event => {
+      if (event.newState !== 'open') return;
+      const rect = trigger.getBoundingClientRect();
+      const viewport = document.defaultView;
+      const width = Math.min(210, viewport.innerWidth - 24);
+      const height = buttons.length * 43 + 18;
+      popup.style.width = width + 'px';
+      popup.style.left = Math.max(12, Math.min(rect.right - width, viewport.innerWidth - width - 12)) + 'px';
+      popup.style.top = Math.max(12, rect.bottom + height + 8 <= viewport.innerHeight
+        ? rect.bottom + 6 : rect.top - height - 6) + 'px';
+    });
+    popup.addEventListener('toggle', event => {
+      trigger.setAttribute('aria-expanded', String(event.newState === 'open'));
+      if (event.newState === 'open') buttons.find(button => !button.disabled)?.focus();
+    });
+    popup.addEventListener('click', event => {
+      if (event.target.closest('button') && !event.target.closest('button').disabled) popup.hidePopover();
+    });
+    wrapper.append(trigger, popup);
+    return wrapper;
+  }
+
   function createTableRow(item) {
     const tr = document.createElement("tr");
     const timeZone = branchTimeZones.get(item.branchId) || "America/Lima";
@@ -847,7 +909,13 @@ export function createAppointmentsController({
 
     const tdPatient = document.createElement("td");
     const patientWrapper = document.createElement("div");
-    patientWrapper.className = "d-flex flex-wrap align-items-center gap-2";
+    patientWrapper.className = "d-flex flex-wrap align-items-center gap-2 pc-agenda-patient";
+    const avatar = document.createElement("span");
+    avatar.className = "pc-agenda-patient-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = Array.from(item.patientName || "Paciente")[0].toLocaleUpperCase("es");
+    applyDemoPatientPortrait(avatar, item.patientId);
+    patientWrapper.append(avatar);
     const patientSpan = document.createElement("span");
     patientSpan.className = "fw-semibold";
     patientSpan.textContent = item.patientName || "Paciente";
@@ -879,10 +947,7 @@ export function createAppointmentsController({
     tdActions.className = "text-end";
     const statusButtons = createStatusActionButtons(item);
     if (statusButtons.length > 0) {
-      const btnGroup = document.createElement("div");
-      btnGroup.className = "d-inline-flex flex-wrap justify-content-end gap-1";
-      btnGroup.append(...statusButtons);
-      tdActions.append(btnGroup);
+      tdActions.append(createActionDisclosure(item, statusButtons, "table"));
     } else {
       tdActions.textContent = "—";
     }
@@ -908,6 +973,10 @@ export function createAppointmentsController({
     const patientTitle = document.createElement("h3");
     patientTitle.className = "h6 fw-semibold mb-1";
     patientTitle.textContent = item.patientName || "Paciente";
+    const mobileAvatar = document.createElement('span');
+    mobileAvatar.className = 'pc-demo-patient-avatar';
+    mobileAvatar.setAttribute('aria-hidden', 'true');
+    if (applyDemoPatientPortrait(mobileAvatar, item.patientId)) patientTitle.prepend(mobileAvatar);
 
     const metaList = document.createElement("div");
     metaList.className = "small text-secondary d-grid gap-1";
@@ -939,7 +1008,7 @@ export function createAppointmentsController({
         profileBtn.textContent = "Ver perfil clínico";
         actionsDiv.append(profileBtn);
       }
-      actionsDiv.append(...statusButtons);
+      if (statusButtons.length) actionsDiv.append(createActionDisclosure(item, statusButtons, "mobile"));
       body.append(actionsDiv);
     }
 
@@ -1509,6 +1578,7 @@ export function createAppointmentsController({
 
   function setViewState(activeState) {
     if (!s) return;
+    if (s.overview) s.overview.hidden = !["results", "empty"].includes(activeState);
     s.initial.hidden = activeState !== "initial";
     s.loading.hidden = activeState !== "loading";
     s.validation.hidden = activeState !== "validation";
@@ -1592,6 +1662,26 @@ function isValidIsoDate(value) {
     && candidate.getUTCDate() === d;
 }
 
+function formatDescriptiveDate(isoDate) {
+  if (!isValidIsoDate(isoDate)) return isoDate;
+  const parts = isoDate.split("-").map(Number);
+  if (parts.length !== 3) return isoDate;
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (isNaN(date.getTime())) return isoDate;
+  try {
+    const formatted = new Intl.DateTimeFormat("es-ES", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(date);
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  } catch (_e) {
+    return isoDate;
+  }
+}
+
 function findElements(document) {
   const view = document.querySelector("#appointments-view");
   const navButton = document.querySelector("#appointments-nav-button");
@@ -1625,6 +1715,7 @@ function findElements(document) {
     results: document.querySelector("#appointments-results"),
     summary: document.querySelector("#appointments-summary"),
     indicators: document.querySelector("#appointments-status-indicators"),
+    overview: document.querySelector("#appointments-overview"),
     rows: document.querySelector("#appointments-table-body"),
     cards: document.querySelector("#appointments-cards"),
     pagination: document.querySelector("#appointments-pagination"),
