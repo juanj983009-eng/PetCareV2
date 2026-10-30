@@ -108,3 +108,6 @@ AGENTS.md
 .gemini/
 .agents/
 scratch/
+
+# Private local project documentation
+/docs/
